@@ -14,15 +14,13 @@ export class VAmigaView {
       return;
     }
 
-    const column = vscode.window.activeTextEditor
-      ? vscode.window.activeTextEditor.viewColumn
-      : undefined;
+    const column = this.getConfiguredViewColumn();
 
     // Create new panel
     this._panel = vscode.window.createWebviewPanel(
       VAmigaView.viewType,
       "VAmiga",
-      column || vscode.ViewColumn.One,
+      column,
       {
         enableScripts: true,
         retainContextWhenHidden: true, // Keep webview alive when hidden
@@ -40,6 +38,7 @@ export class VAmigaView {
     this._panel.onDidDispose(() => {
       this._panel = undefined;
     });
+
   }
 
   public reveal(): void {
@@ -67,6 +66,20 @@ export class VAmigaView {
   }
 
   // Helper methods:
+
+  private getConfiguredViewColumn(): vscode.ViewColumn {
+    const config = vscode.workspace.getConfiguration('vamiga-debugger');
+    const setting = config.get<string>('defaultViewColumn', 'beside');
+    
+    switch (setting) {
+      case 'one': return vscode.ViewColumn.One;
+      case 'two': return vscode.ViewColumn.Two;
+      case 'three': return vscode.ViewColumn.Three;
+      case 'beside': return vscode.ViewColumn.Beside;
+      case 'active': return vscode.window.activeTextEditor?.viewColumn || vscode.ViewColumn.One;
+      default: return vscode.ViewColumn.Beside;
+    }
+  }
 
   private absolutePathToWebviewUri(absolutePath: string): vscode.Uri {
     if (!this._panel) {

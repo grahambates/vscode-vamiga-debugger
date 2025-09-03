@@ -21,6 +21,24 @@
         "title": "Open Vamiga Debugger Panel"
       }
     ],
+    "configuration": {
+      "title": "Vamiga Debugger",
+      "properties": {
+        "vamiga-debugger.defaultViewColumn": {
+          "type": "string",
+          "enum": ["one", "two", "three", "beside", "active"],
+          "enumDescriptions": [
+            "First editor column",
+            "Second editor column", 
+            "Third editor column",
+            "Next to the active editor",
+            "Same column as active editor"
+          ],
+          "default": "beside",
+          "description": "Default position for the Vamiga emulator window"
+        }
+      }
+    },
     "debuggers": [
       {
         "type": "vamiga",
