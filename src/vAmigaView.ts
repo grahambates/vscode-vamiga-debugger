@@ -4,17 +4,9 @@ import { join } from "path";
 
 export class VAmigaView {
   public static readonly viewType = "vamiga-debugger.webview";
-  private static _instance: VAmigaView | undefined;
   private _panel?: vscode.WebviewPanel;
 
   constructor(private readonly _extensionUri: vscode.Uri) { }
-
-  public static getInstance(extensionUri: vscode.Uri): VAmigaView {
-    if (!VAmigaView._instance) {
-      VAmigaView._instance = new VAmigaView(extensionUri);
-    }
-    return VAmigaView._instance;
-  }
 
   public openFile(filePath: string): void {
     if (!existsSync(filePath)) {
@@ -26,22 +18,14 @@ export class VAmigaView {
       ? vscode.window.activeTextEditor.viewColumn
       : undefined;
 
-    // If we already have a panel, reveal it and load the file
-    if (this._panel) {
-      this._panel.reveal(column);
-      const programUri = this.absolutePathToWebviewUri(filePath);
-      this.sendCommand("loadFile", { uri: programUri?.toString(), fileName: filePath.split('/').pop() });
-      this.sendCommand("reset");
-      return;
-    }
-
     // Create new panel
     this._panel = vscode.window.createWebviewPanel(
       VAmigaView.viewType,
-      "VAmiga Emulator",
+      "VAmiga",
       column || vscode.ViewColumn.One,
       {
         enableScripts: true,
+        retainContextWhenHidden: true, // Keep webview alive when hidden
         localResourceRoots: [
           this._extensionUri,
           ...(vscode.workspace.workspaceFolders?.map(folder => folder.uri) || [])
@@ -52,34 +36,25 @@ export class VAmigaView {
     const programUri = this.absolutePathToWebviewUri(filePath);
     this._panel.webview.html = this._getHtmlForWebview(programUri);
 
+    // Handle webview lifecycle
     this._panel.onDidDispose(() => {
       this._panel = undefined;
     });
   }
 
-  public pause(): void {
-    this.sendCommand("pause");
-  }
-
-  public run(): void {
-    this.sendCommand("run");
+  public reveal(): void {
+    this._panel?.reveal();
   }
 
   public onDidReceiveMessage(callback: (data: any) => void): void {
-    if (this._panel) {
-      this._panel.webview.onDidReceiveMessage(callback);
-    }
+    this._panel?.webview.onDidReceiveMessage(callback);
   }
 
-  private absolutePathToWebviewUri(absolutePath: string): vscode.Uri {
-    if (!this._panel) {
-      throw new Error("Panel not initialized");
-    }
-    const fileUri = vscode.Uri.file(absolutePath);
-    return this._panel.webview.asWebviewUri(fileUri);
+  public onDidDispose(callback: () => void): void {
+    this._panel?.onDidDispose(callback);
   }
 
-  private sendCommand(command: string, args?: any): void {
+  public sendCommand(command: string, args?: any): void {
     if (this._panel) {
       this._panel.webview.postMessage({ command, args });
     } else {
@@ -89,7 +64,16 @@ export class VAmigaView {
 
   public dispose(): void {
     this._panel?.dispose();
-    this._panel = undefined;
+  }
+
+  // Helper methods:
+
+  private absolutePathToWebviewUri(absolutePath: string): vscode.Uri {
+    if (!this._panel) {
+      throw new Error("Panel not initialized");
+    }
+    const fileUri = vscode.Uri.file(absolutePath);
+    return this._panel.webview.asWebviewUri(fileUri);
   }
 
   private _getHtmlForWebview(programUri: vscode.Uri): string {

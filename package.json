@@ -10,7 +10,8 @@
     "Debuggers"
   ],
   "activationEvents": [
-    "onCommand:vamiga-debugger.openPanel"
+    "onCommand:vamiga-debugger.openPanel",
+    "onDebugResolve:vamiga"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -18,6 +19,59 @@
       {
         "command": "vamiga-debugger.openPanel",
         "title": "Open Vamiga Debugger Panel"
+      }
+    ],
+    "debuggers": [
+      {
+        "type": "vamiga",
+        "languages": ["c", "cpp", "assembly"],
+        "label": "Vamiga Debug",
+        "program": "./out/debugAdapter.js",
+        "runtime": "node",
+        "configurationAttributes": {
+          "launch": {
+            "required": ["program"],
+            "properties": {
+              "program": {
+                "type": "string",
+                "description": "Path to the ADF disk image to debug",
+                "default": "${workspaceFolder}/build/program.adf"
+              },
+              "stopOnEntry": {
+                "type": "boolean",
+                "description": "Automatically stop after launch",
+                "default": true
+              },
+              "trace": {
+                "type": "boolean",
+                "description": "Enable logging of the Debug Adapter Protocol",
+                "default": false
+              }
+            }
+          }
+        },
+        "initialConfigurations": [
+          {
+            "type": "vamiga",
+            "request": "launch",
+            "name": "Launch Vamiga",
+            "program": "${workspaceFolder}/build/program.adf",
+            "stopOnEntry": true
+          }
+        ],
+        "configurationSnippets": [
+          {
+            "label": "Vamiga: Launch",
+            "description": "A new configuration for debugging with Vamiga",
+            "body": {
+              "type": "vamiga",
+              "request": "launch",
+              "name": "Launch Vamiga",
+              "program": "${workspaceFolder}/build/program.adf",
+              "stopOnEntry": true
+            }
+          }
+        ]
       }
     ]
   },
@@ -28,6 +82,9 @@
     "pretest": "npm run compile && npm run lint",
     "lint": "eslint src --ext ts",
     "test": "vscode-test"
+  },
+  "dependencies": {
+    "@vscode/debugadapter": "^1.64.0"
   },
   "devDependencies": {
     "@types/vscode": "^1.74.0",

@@ -11,20 +11,29 @@
             "outFiles": [
                 "${workspaceFolder}/out/**/*.js"
             ],
-            "preLaunchTask": "npm: compile"
+            "preLaunchTask": "compile"
         },
+        // Example configuration for debugging Amiga programs
+        // Copy this to your workspace launch.json to use the vAmiga debugger
+        // {
+        //     "name": "Debug Amiga Program",
+        //     "type": "vamiga",
+        //     "request": "launch",
+        //     "program": "${workspaceFolder}/build/program.adf",
+        //     "stopOnEntry": false
+        // },
         {
             "name": "Extension Tests",
             "type": "extensionHost",
             "request": "launch",
             "args": [
                 "--extensionDevelopmentPath=${workspaceFolder}",
-                "--extensionTestsPath=${workspaceFolder}/out/test"
+                "--extensionTestsPath=${workspaceFolder}/out/test/suite/index"
             ],
             "outFiles": [
                 "${workspaceFolder}/out/test/**/*.js"
             ],
-            "preLaunchTask": "npm: compile"
+            "preLaunchTask": "compile"
         }
     ]
 }

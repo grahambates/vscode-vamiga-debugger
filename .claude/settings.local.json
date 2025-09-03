@@ -1,7 +1,10 @@
 {
   "permissions": {
     "allow": [
-      "Read(/tmp/**)"
+      "Read(/tmp/**)",
+      "Bash(npm install)",
+      "Bash(npm run compile:*)",
+      "Bash(npm run lint)"
     ],
     "deny": [],
     "ask": []

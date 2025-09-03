@@ -4,32 +4,16 @@
         {
             "type": "npm",
             "script": "compile",
-            "group": "build",
-            "presentation": {
-                "panel": "shared",
-                "reveal": "silent"
-            },
-            "problemMatcher": [
-                "$tsc"
-            ]
-        },
-        {
-            "type": "npm",
-            "script": "watch",
+            "label": "compile",
             "group": {
                 "kind": "build",
                 "isDefault": true
             },
             "presentation": {
-                "panel": "shared",
+                "panel": "dedicated",
                 "reveal": "never"
             },
-            "problemMatcher": [
-                "$tsc-watch"
-            ],
-            "runOptions": {
-                "runOn": "folderOpen"
-            }
+            "problemMatcher": ["$tsc"]
         }
     ]
 }
