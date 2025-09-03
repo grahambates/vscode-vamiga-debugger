@@ -1,17 +1,29 @@
 import * as vscode from 'vscode';
-import { VamigaWebviewProvider } from './webviewProvider';
+import { VAmigaView } from './vAmigaView';
 
 export function activate(context: vscode.ExtensionContext) {
-    const provider = new VamigaWebviewProvider(context.extensionUri);
-    
-    const disposable = vscode.commands.registerCommand('vamiga-debugger.openPanel', () => {
-        VamigaWebviewProvider.createOrShow(context.extensionUri);
-    });
+    const vAmiga = VAmigaView.getInstance(context.extensionUri);
 
-    context.subscriptions.push(disposable);
     context.subscriptions.push(
-        vscode.window.registerWebviewViewProvider(VamigaWebviewProvider.viewType, provider)
-    );
+        vscode.commands.registerCommand('vamiga-debugger.openPanel', () => {
+            const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+            vAmiga.openFile(`${workspacePath}/build/program.adf`);
+
+            // // example of receiving a message from the webview
+            // this._panel.webview.onDidReceiveMessage((data) => {
+            //   switch (data.type) {
+            //     case "alert": {
+            //       vscode.window.showInformationMessage(data.value);
+            //       break;
+            //     }
+            //   }
+            // });
+        }));
+
+    // Clean up when extension deactivates
+    context.subscriptions.push({
+        dispose: () => vAmiga.dispose()
+    });
 }
 
-export function deactivate() {}
+export function deactivate() { }

@@ -46,12 +46,12 @@ let load_sound = async function(url){
     let buffer = await response.arrayBuffer();
     let audio_buffer= await audioContext.decodeAudioData(buffer);
     return audio_buffer;
-} 
+}
 let parallel_playing=0;
 let keyboard_sound_volume=0.04;
 let play_sound = function(audio_buffer, sound_volume=0.1){
         if(audio_buffer== null)
-        {                 
+        {
             load_all_sounds();
             return;
         }
@@ -63,7 +63,7 @@ let play_sound = function(audio_buffer, sound_volume=0.1){
         source.buffer = audio_buffer;
 
         let gain_node = audioContext.createGain();
-        gain_node.gain.value = sound_volume; 
+        gain_node.gain.value = sound_volume;
         gain_node.connect(audioContext.destination);
 
         source.addEventListener('ended', () => {
@@ -72,7 +72,7 @@ let play_sound = function(audio_buffer, sound_volume=0.1){
         source.connect(gain_node);
         parallel_playing++;
         source.start();
-}   
+}
 
 let audio_df_insert=null;
 let audio_df_eject=null;
@@ -90,13 +90,13 @@ async function load_all_sounds()
         audio_df_eject=await load_sound('sounds/eject.mp3');
     if(audio_df_step == null)
         audio_df_step=await load_sound('sounds/step.mp3');
-    if(audio_hd_step == null)   
+    if(audio_hd_step == null)
         audio_hd_step=await load_sound('sounds/stephd.mp3');
-    if(audio_key_standard == null)   
+    if(audio_key_standard == null)
         audio_key_standard=await load_sound('sounds/key_standard.mp3');
-    if(audio_key_backspace == null)   
+    if(audio_key_backspace == null)
         audio_key_backspace=await load_sound('sounds/key_backspace.mp3');
-    if(audio_key_space == null)   
+    if(audio_key_space == null)
         audio_key_space=await load_sound('sounds/key_space.mp3');
 }
 load_all_sounds();
@@ -118,7 +118,7 @@ exported_hd_path = '/exported_hd';
 async function mount_folder(folder_path) {
     return new Promise((resolve, reject) => {
         try{
-            FS.mkdir(folder_path) 
+            FS.mkdir(folder_path)
         } catch(e) {console.log(e)}
         try{
             FS.mount(IDBFS, {}, folder_path);
@@ -132,7 +132,7 @@ async function mount_folder(folder_path) {
     });
 }
 
-function ToBase64_small(u8) 
+function ToBase64_small(u8)
 {
     return btoa(String.fromCharCode.apply(null, u8));
 }
@@ -159,13 +159,13 @@ function get_parameter_link()
     let param_part = decodeURIComponent(window.location.href.substring(param_pos));
     if( param_pos >= 0 && param_part.startsWith("#{") &&
     param_part.endsWith("}"))
-    {//json notation 
+    {//json notation
         /*
         #{"url":"http://csdb.dk/getinternalfile.php/205771/CopperBooze.prg","buttons": [{"title":"hello","key":"h","script": "alert('d2hpbGUobm90X3N0b3BwZWQodGhpc19pZCkpIHthd2FpdCBhY3Rpb24oIkE9Pjk5OW1zIik7fQ');"}] }
         #{"buttons":[{"position":"top:10vh;left:90vw","title":"hello","key":"h","run":true,"script":"d2hpbGUobm90X3N0b3BwZWQodGhpc19pZCkpIHthd2FpdCBhY3Rpb24oIkE9Pjk5OW1zIik7fQ=="}]}
         */
-        call_obj = JSON.parse(param_part.substring(1), (key, value) => {            
-            console.log(key); 
+        call_obj = JSON.parse(param_part.substring(1), (key, value) => {
+            console.log(key);
             if(key=='script_base64')
             {//base64decode
                 return atob(value);
@@ -191,11 +191,11 @@ function get_parameter_link()
 
         if(call_obj.touch)
         {
-            call_param_touch=true; 
+            call_param_touch=true;
         }
         if(call_obj.port1)
         {
-            port1=call_param_touch == true ?"touch":"keys";          
+            port1=call_param_touch == true ?"touch":"keys";
             port2="none";
             $('#port1').val(port1);
             $('#port2').val(port2);
@@ -204,10 +204,10 @@ function get_parameter_link()
         {
             port1="none";
             port2=call_param_touch == true ? "touch":"keys";
-            $('#port1').val(port1);       
+            $('#port1').val(port1);
             $('#port2').val(port2);
         }
-        
+
         if(call_obj.buttons !== undefined && call_param_buttons.length==0)
         {
             for(let b of call_obj.buttons)
@@ -245,11 +245,11 @@ function get_parameter_link()
         var call_url = window.location.href.split('#');
         if(call_url.length>1)
         {//there are # inside the URL
-            //process settings 
+            //process settings
             for(var i=1; i<call_url.length;i++)
             {//in case there was a # inside the parameter link ... rebuild that
-                var token = call_url[i]; 
-                
+                var token = call_url[i];
+
                 if(parameter_link != null)
                 {
                     parameter_link+="#"+token;
@@ -271,8 +271,8 @@ function get_parameter_link()
                     }
                     else if(token.match(/port1=true/i))
                     {
-                        port1=call_param_touch != true ? "keys":"touch";          
-                        port2="none";     
+                        port1=call_param_touch != true ? "keys":"touch";
+                        port2="none";
                         $('#port1').val(port1);
                         $('#port2').val(port2);
                     }
@@ -280,7 +280,7 @@ function get_parameter_link()
                     {
                         port1="none";
                         port2=call_param_touch != true ? "keys":"touch";
-                        $('#port1').val(port1);       
+                        $('#port1').val(port1);
                         $('#port2').val(port2);
                     }
                     else if(token.match(/navbar=hidden/i))
@@ -318,10 +318,10 @@ function get_parameter_link()
                     else if(token.match(/mouse=(true|false)/i))
                     {
                         call_param_mouse=token.match(/.*(true|false)/i)[1].toLowerCase() == 'true';
-                    }            
+                    }
                     else if(token.match(/display=.*/i))
                     {
-                        call_param_display=token.replace(/display=/i,""); 
+                        call_param_display=token.replace(/display=/i,"");
                     }
                 }
             }
@@ -348,13 +348,13 @@ async function load_parameter_link()
 
     if(parameter_link__already_checked)
       return null;
-    
+
     parameter_link__already_checked=true;
     var parameter_link = get_parameter_link();
     if(parameter_link != null)
     {
         parameter_link_mount_in_df0=parameter_link.match(/[.](adf|hdf|dms|exe|st)$/i);
-        //get_data_collector("csdb").run_link("call_parameter", 0,parameter_link);            
+        //get_data_collector("csdb").run_link("call_parameter", 0,parameter_link);
         let response = await fetch(parameter_link);
         file_slot_file_name = decodeURIComponent(response.url.match(".*/(.*)$")[1]);
         file_slot_file = new Uint8Array( await response.arrayBuffer());
@@ -374,7 +374,7 @@ function fire_on_message( msg, callback_fn)
     var handler = new Object();
     handler.message = msg;
     handler.callback_fn = callback_fn;
-    msg_callback_stack.push(handler); 
+    msg_callback_stack.push(handler);
 }
 
 function wait_on_message(msg)
@@ -384,7 +384,7 @@ function wait_on_message(msg)
 
 window.serial_port_out_buffer="";
 function set_serial_port_out_handler(new_handler){
-	window.serial_port_out_handler = new_handler;  
+	window.serial_port_out_handler = new_handler;
 }
 set_serial_port_out_handler((data) => {
     //clear buffer when nobody consumes after 4kb of incoming data
@@ -397,7 +397,7 @@ set_serial_port_out_handler((data) => {
     window.parent.postMessage({ msg: 'serial_port_out', value: data},"*");
 });
 function message_handler(msg, data, data2)
-{   
+{
     queueMicrotask(()=>{
         message_handler_queue_worker( msg, data, data2 )
     });
@@ -414,7 +414,7 @@ function message_handler_queue_worker(msg, data, data2)
         }
         //start it async
         //setTimeout(()=>{try{wasm_run();}catch(e){}},100);
-        setTimeout(async function() { 
+        setTimeout(async function() {
             try{
                 if(call_param_navbar=='hidden')
                 {
@@ -426,12 +426,12 @@ function message_handler_queue_worker(msg, data, data2)
 
                 if(url == null && hd_mount_list.length==0 && df_mount_list.length==0)
                 { //when there is no media url to load, power on the Amiga directly here
-                  //otherwise it will be started after media is inserted 
+                  //otherwise it will be started after media is inserted
                   setTimeout(function(){
                     try{wasm_run();running=true;}catch(e){}
                   },100);
-                } 
-                
+                }
+
                 if(call_param_wide != null)
                 {
                     use_wide_screen = call_param_wide;
@@ -446,7 +446,7 @@ function message_handler_queue_worker(msg, data, data2)
         0);
     }
     else if(msg == "MSG_ROM_MISSING")
-    {        
+    {
         //try to load roms from local storage
         setTimeout(async function() {
             if(call_param_wait_for_kickstart_injection)
@@ -470,7 +470,7 @@ function message_handler_queue_worker(msg, data, data2)
                 get_parameter_link(); //just make sure the parameters are set
                 if(call_param_openROMS==true)
                 {
-                    await fetchOpenROMS();        
+                    await fetchOpenROMS();
                 }
                 else if(call_param_dialog_on_missing_roms != false)
                 {
@@ -478,7 +478,7 @@ function message_handler_queue_worker(msg, data, data2)
                 }
             }
         },0);
- 
+
     }
     else if(msg == "MSG_RUN")
     {
@@ -499,7 +499,7 @@ function message_handler_queue_worker(msg, data, data2)
     }
     else if(msg == "MSG_VIDEO_FORMAT")
     {
-        $('#ntsc_pixel_ratio_switch').prop('checked', data==1);  
+        $('#ntsc_pixel_ratio_switch').prop('checked', data==1);
     }
     else if(msg == "MSG_DRIVE_STEP" || msg == "MSG_DRIVE_POLL")
     {
@@ -515,12 +515,12 @@ function message_handler_queue_worker(msg, data, data2)
     }
     else if(msg == "MSG_DISK_INSERT")
     {
-        play_sound(audio_df_insert); 
+        play_sound(audio_df_insert);
     }
     else if(msg == "MSG_DISK_EJECT")
     {
         $("#drop_zone").html(`file slot`);
-        play_sound(audio_df_eject); 
+        play_sound(audio_df_eject);
     }
     else if(msg == "MSG_HDR_STEP")
     {
@@ -544,7 +544,7 @@ function message_handler_queue_worker(msg, data, data2)
 
         let v=wasm_get_config_item("BLITTER.ACCURACY");
         $(`#button_OPT_BLITTER_ACCURACY`).text(`blitter accuracy=${v} ${cause}`);
-        
+
         v=wasm_get_config_item("DC.SPEED");
         $(`#button_OPT_DRIVE_SPEED`).text(`drive speed=${v} ${cause}`);
 
@@ -553,7 +553,7 @@ function message_handler_queue_worker(msg, data, data2)
             $(`#button_OPT_CPU_REVISION`).text(`CPU=680${v}0 ${cause}`);
         else
             $(`#button_OPT_CPU_REVISION`).text(`CPU=fake 030 for Settlers map size 8`);
-        
+
         v=wasm_get_config_item("CPU.OVERCLOCKING");
         $(`#button_OPT_CPU_OVERCLOCKING`).text(`${Math.round((v==0?1:v)*7.09)} MHz ${cause}`);
         v=wasm_get_config_item("AGNUS.REVISION");
@@ -567,17 +567,17 @@ function message_handler_queue_worker(msg, data, data2)
         let denise_description = denise_map.filter((e) => e.v == denise_revs[v]);
         denise_description= denise_description.length>0 ? denise_description[0].t : denise_revs[v];
         $(`#button_OPT_DENISE_REVISION`).text(`denise revision=${denise_description} ${cause}`);
-      
+
         $(`#button_${"OPT_CHIP_RAM"}`).text(`chip ram=${wasm_get_config_item('CHIP_RAM')} KB ${cause}`);
         $(`#button_${"OPT_SLOW_RAM"}`).text(`slow ram=${wasm_get_config_item('SLOW_RAM')} KB ${cause}`);
         $(`#button_${"OPT_FAST_RAM"}`).text(`fast ram=${wasm_get_config_item('FAST_RAM')} KB ${cause}`);
-    
-        wasm_configure("OPT_AMIGA_SPEED_BOOST", 
+
+        wasm_configure("OPT_AMIGA_SPEED_BOOST",
             current_speed.toString());
 
         rom_restored_from_snapshot=true;
         rom_restored_cause = cause;
-    } 
+    }
     else if(msg == "MSG_SER_OUT")
     {
       serial_port_out_handler(data);
@@ -608,14 +608,14 @@ async function fetchOpenROMS(osname='aros'){
             console.log ("could not install system rom file");
             fill_rom_icons();
             fill_ext_icons();
-        }  
+        }
     }
     if(osname=='aros')
     {
         let response = await fetch("roms/aros-rom-20250219.bin");
         await installer('.rom_file', response);
         response = await fetch("roms/aros-ext-20250219.bin");
-        await installer('.rom_ext_file', response);   
+        await installer('.rom_ext_file', response);
     }
     else if(osname=='emutos')
     {
@@ -649,9 +649,9 @@ function fill_rom_icons(){
         icon="img/rom_hyperion.png";
     }
     else if(rom_infos.romTitle.toLowerCase().indexOf("emutos")>=0)
-    {   
+    {
         icon="img/rom_emutos.png";
-    }    
+    }
     else
     {
         icon="img/rom_original.png";
@@ -700,24 +700,24 @@ function fill_ext_icons()
 
 /**
 * load_roms
-  if we open ROM-Dialog then we could 
+  if we open ROM-Dialog then we could
         A) show current roms in c64 instance,
         or
-        B) saved roms in local storage ... 
-    
-        we choose A) because there is no method in the core for B) , 
+        B) saved roms in local storage ...
+
+        we choose A) because there is no method in the core for B) ,
  *
- * 
- * @param {*} install_to_core true when we should load roms from local storage into the core. 
  *
- * TODO: maybe split up functionality into load_roms() and refresh_rom_dialog() 
+ * @param {*} install_to_core true when we should load roms from local storage into the core.
+ *
+ * TODO: maybe split up functionality into load_roms() and refresh_rom_dialog()
  */
 
 async function load_roms(install_to_core){
     var loadStoredItem= async function (item_name, type){
         if(item_name==null)
             return null;
-        //var stored_item = local_storage_get(item_name); 
+        //var stored_item = local_storage_get(item_name);
         let stored_item = await load_rom(item_name);
         if(stored_item != null)
         {
@@ -743,9 +743,9 @@ async function load_roms(install_to_core){
     }
 
     fill_available_roms('rom', 'stored_roms');
-    fill_available_roms('rom_ext', 'stored_exts');       
+    fill_available_roms('rom_ext', 'stored_exts');
 
-    
+
     var all_fine = true;
     try{
         let selected_rom=local_storage_get('rom');
@@ -796,16 +796,16 @@ async function drop_handler(ev) {
     ev.stopPropagation();
 
     var dt = ev.dataTransfer;
- 
+
     if( dt.items ) {
         for (item of dt.items) {
-            if (item.kind == "file") 
+            if (item.kind == "file")
             {
                 var f = item.getAsFile();
                 pushFile(f);
                 break;
             }
-            else if (item.kind == "string") 
+            else if (item.kind == "string")
             {
                 var dropped_uri = dt.getData("text"); //dt.getData("text/uri-list");
                 //e.g. dropped_uri=https://csdb.dk/release/download.php?id=244060"
@@ -815,7 +815,7 @@ async function drop_handler(ev) {
                 //              e.g. dropped_html =
                 //                "<meta http-equiv="Content-Type" content="text/html;charset=UTF-8">
                 //                <a href="https://csdb.dk/release/download.php?id=244060">http://csdb.dk/getinternalfile.php/205910/joyride.prg</a>"
-                var dropped_id_and_name = dropped_html.match(`id=([0-9]+)">(https?://csdb.dk/getinternalfile.php/.*?)</a>`); 
+                var dropped_id_and_name = dropped_html.match(`id=([0-9]+)">(https?://csdb.dk/getinternalfile.php/.*?)</a>`);
                 if(dropped_id_and_name != null && dropped_id_and_name.length>1)
                 {
                     var id = dropped_id_and_name[1];
@@ -823,19 +823,19 @@ async function drop_handler(ev) {
                     title_name = title_name[title_name.length-1];
                     var parameter_link = dropped_id_and_name[2];
                     setTimeout(() => {
-                        get_data_collector("csdb").run_link(title_name, id ,parameter_link);            
+                        get_data_collector("csdb").run_link(title_name, id ,parameter_link);
                     }, 200);
                 }
 */
                 if(dropped_uri.startsWith("https://csdb.dk/release/download.php?id="))
                 {
                     setTimeout(() => {
-                        get_data_collector("csdb").run_link("call_parameter", -1,dropped_uri);            
+                        get_data_collector("csdb").run_link("call_parameter", -1,dropped_uri);
                     }, 150);
                 }
                 else if(dropped_uri.startsWith("https://csdb.dk/release/?id="))
                 {
-                    $('#snapshotModal').modal('show');                    
+                    $('#snapshotModal').modal('show');
 
                     //current_browser_datasource
                     await switch_collector("csdb");
@@ -860,7 +860,7 @@ async function drop_handler(ev) {
     }
 }
 
-function handleFileInput(event) 
+function handleFileInput(event)
 {
     var myForm = document.getElementById('theFileInput');
     var myfiles = myForm.elements['theFileDialog'].files;
@@ -886,7 +886,7 @@ function pushFile(file) {
         file_slot_file = new Uint8Array(this.result);
         configure_file_dialog();
         //we have to null the file input otherwise when ejecting and inserting the same
-        //file again it would not trigger the onchange/onload event 
+        //file again it would not trigger the onchange/onload event
         document.getElementById('filedialog').value=null;
     }
     fileReader.readAsArrayBuffer(file);
@@ -922,7 +922,7 @@ function configure_file_dialog(reset=false)
         else
         {
             $("#file_slot_dialog_label").html(" "+file_slot_file_name);
-            //configure file_slot  
+            //configure file_slot
             $("#button_insert_file").removeAttr("disabled");
             $("#div_zip_content").hide();
             $("#button_eject_zip").hide();
@@ -930,7 +930,7 @@ function configure_file_dialog(reset=false)
 
             var return_icon=`&nbsp;<svg width="1em" height="1em" viewBox="0 0 16 16" class="bi bi-arrow-return-left" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" d="M14.5 1.5a.5.5 0 0 1 .5.5v4.8a2.5 2.5 0 0 1-2.5 2.5H2.707l3.347 3.346a.5.5 0 0 1-.708.708l-4.2-4.2a.5.5 0 0 1 0-.708l4-4a.5.5 0 1 1 .708.708L2.707 8.3H12.5A1.5 1.5 0 0 0 14 6.8V2a.5.5 0 0 1 .5-.5z"/></svg>`;
 
-            if(file_slot_file_name.match(/[.](zip)$/i)) 
+            if(file_slot_file_name.match(/[.](zip)$/i))
             {
                 $("#div_zip_content").show();
 
@@ -941,7 +941,7 @@ function configure_file_dialog(reset=false)
 
                     last_zip_archive_name = null;
                     last_zip_archive = null;
-                    
+
                     $("#drop_zone").html("file slot");
                     $("#drop_zone").css("border", "");
 
@@ -950,7 +950,7 @@ function configure_file_dialog(reset=false)
                 zip = new JSZip();
                 zip.loadAsync(file_slot_file).then(async function (zip) {
                     await mount_folder(workspace_path);
- 
+
                     let workspaces_found = Object.keys(zip.files).filter(f=>f.includes(".vamiga/config") && !f.startsWith("__MACOSX"));
                     if(workspaces_found.length>0)
                     {
@@ -968,16 +968,16 @@ function configure_file_dialog(reset=false)
                                 function incrementLastNumber(str) {
                                     // Find the index of the last dot in the string
                                     const lastDotIndex = str.lastIndexOf('.');
-                                
+
                                     // If there's no dot, check the whole string for a number at the end
                                     if (lastDotIndex === -1) {
                                         const numberMatch = str.match(/(\d+)$/);
-                                        
+
                                         if (numberMatch) {
                                             // If a number is found at the end, increment it by 1
                                             const number = parseInt(numberMatch[0], 10);
                                             const incrementedNumber = number + 1;
-                                
+
                                             // Replace the old number with the incremented one
                                             return str.replace(numberMatch[0], incrementedNumber);
                                         } else {
@@ -985,18 +985,18 @@ function configure_file_dialog(reset=false)
                                             return str + '1';
                                         }
                                     }
-                                
+
                                     // If there's a dot, extract the part after the last dot
                                     const lastPart = str.slice(lastDotIndex + 1);
-                                
+
                                     // Search for a number at the end of the last part
                                     const numberMatch = lastPart.match(/(\d+)$/);
-                                
+
                                     if (numberMatch) {
                                         // If a number is found, increment it by 1
                                         const number = parseInt(numberMatch[0], 10);
                                         const incrementedNumber = number + 1;
-                                
+
                                         // Replace the old number with the incremented one
                                         const newStr = str.slice(0, lastDotIndex + 1) + lastPart.replace(numberMatch[0], incrementedNumber);
                                         return newStr;
@@ -1005,9 +1005,9 @@ function configure_file_dialog(reset=false)
                                         return str + '1';
                                     }
                                 }
-                                
 
-                                alternate_filename = incrementLastNumber(current_path)                              
+
+                                alternate_filename = incrementLastNumber(current_path)
                                 while (FS.analyzePath(workspace_path+"/"+alternate_filename).exists) {
                                     alternate_filename = incrementLastNumber(alternate_filename)
                                 }
@@ -1020,11 +1020,11 @@ function configure_file_dialog(reset=false)
                                 {
                                     let fs_path = workspace_path+"/"+relativePath.replace(".vamiga","").replace(".vamiga","").replace(".vamiga","");
                                     if(alternate_filename){
-                                        fs_path = fs_path.replace(current_path, alternate_filename); // Path in FS                          
+                                        fs_path = fs_path.replace(current_path, alternate_filename); // Path in FS
                                     }
                                     FS.writeFile(fs_path, fileData);
                                 }
-                            }    
+                            }
                         }
                         FS.syncfs(()=>{});
 
@@ -1043,7 +1043,7 @@ function configure_file_dialog(reset=false)
                         setTimeout(()=>document.getElementById("sel_browser_workspace_db").click(), 500);
                         return;
                     }
-                    
+
                     var list='<ul id="ui_file_list" class="list-group">';
                     var mountable_count=0;
                     zip.forEach(function (relativePath, zipfile){
@@ -1053,7 +1053,7 @@ function configure_file_dialog(reset=false)
                             list+='<li '+
 //                            `${zipfile.dir ? 'style="background-color: #444 !important"':""}` +
                             (mountable ? 'id="li_fileselect'+mountable_count+'"':'')
-                            +' class="list-group-item list-group-item-action'+ 
+                            +' class="list-group-item list-group-item-action'+
                                 (mountable ? '':' disabled')+'">'+relativePath+'</li>';
                             if(mountable)
                             {
@@ -1062,7 +1062,7 @@ function configure_file_dialog(reset=false)
                         }
                     });
                     list += '</ul>';
-                    $("#div_zip_content").html("select a file<br><br>"+ list);                    
+                    $("#div_zip_content").html("select a file<br><br>"+ list);
                     $('#ui_file_list li').click( function (e) {
                         e.preventDefault();
                         if(typeof uncompress_progress !== 'undefined' && uncompress_progress!=null)
@@ -1077,7 +1077,7 @@ function configure_file_dialog(reset=false)
                         if(f!==null)
                         {
                             uncompress_progress='0';
-                            f.async("uint8array", 
+                            f.async("uint8array",
                             function updateCallback(metadata) {
                                 //console.log("progression: " + metadata.percent.toFixed(2) + " %");
                                 let current_progress=metadata.percent.toFixed(0);
@@ -1123,7 +1123,7 @@ function configure_file_dialog(reset=false)
                         $("#drop_zone").css("border", "");
 
                         last_zip_archive_name = null;
-                        last_zip_archive = null; 
+                        last_zip_archive = null;
                     }
 
                     if(mountable_count>=1)
@@ -1144,7 +1144,7 @@ function configure_file_dialog(reset=false)
                                     file_slot_file_name=path;
                                     file_slot_file = await zip.file(path).async("uint8array");
                                     insert_file(drive_number);
-                                } 
+                                }
                             }
                             if(df_mount_list.length == 0 && hd_mount_list.length==0)
                             {//when there is no auto mount list let the user decide
@@ -1169,7 +1169,7 @@ function configure_file_dialog(reset=false)
                     insert_file(drive_number);
                 }
                 else
-                    prompt_for_drive();            
+                    prompt_for_drive();
             }
             else
             {
@@ -1187,7 +1187,7 @@ function configure_file_dialog(reset=false)
                 }
             }
 
-        }    
+        }
     } catch(e) {
         console.log(e);
     }
@@ -1224,7 +1224,7 @@ async function prompt_for_drive(folder=false)
         }
         else
         {
-            setTimeout(()=>$("#div_drive_select").hide(),1000); 
+            setTimeout(()=>$("#div_drive_select").hide(),1000);
         }
     }
 
@@ -1232,7 +1232,7 @@ async function prompt_for_drive(folder=false)
     {
         $('#alert_import').show();
         await mount_folder(imported_hd_path);
-        deleteAllFiles(imported_hd_path); 
+        deleteAllFiles(imported_hd_path);
 
 
         function ensureDirectoryExists(path) {
@@ -1270,16 +1270,16 @@ async function prompt_for_drive(folder=false)
         file_slot_file_name = file_slot_file_name+".hdf";
         file_slot_file = filebuffer;
 
-        deleteAllFiles(imported_hd_path); 
+        deleteAllFiles(imported_hd_path);
 
         await sync_fs();
-        $('#alert_import').hide(); 
+        $('#alert_import').hide();
     }
     else if(file_slot_file_name.match(/[.](disk)$/i) && file_slot_file.length>1710000) //HD floppy disk 1.71MB
     {
         $('#alert_import').show();
         await mount_folder(imported_hd_path);
-        deleteAllFiles(imported_hd_path); 
+        deleteAllFiles(imported_hd_path);
 
         FS.writeFile(imported_hd_path+"/"+file_slot_file_name.replace(".disk",""), file_slot_file);
         await sync_fs();
@@ -1292,9 +1292,9 @@ async function prompt_for_drive(folder=false)
         file_slot_file_name = file_slot_file_name.replace(".disk",".hdf");
         file_slot_file = filebuffer;
 
-        deleteAllFiles(imported_hd_path); 
+        deleteAllFiles(imported_hd_path);
         await sync_fs();
-        $('#alert_import').hide(); 
+        $('#alert_import').hide();
     }
 
     if(file_slot_file_name.match(/[.](adf|dms|exe|st|disk)$/i))
@@ -1317,7 +1317,7 @@ async function prompt_for_drive(folder=false)
                 :
                 `${cancel}
                 <div id="drive_select_file" class="gc_choice_text">insert <span class="mx-2 px-2">${file_slot_file_name}</span> into</div>`;
-                       
+
             drv_html+=`<div id="drive_select_choice">`;
 
             for(var dn=0;dn<df_count;dn++)
@@ -1358,7 +1358,7 @@ joystick_keydown_map[1]={
     'ArrowLeft':'PULL_LEFT',
     'ArrowRight':'PULL_RIGHT',
     'Space':'PRESS_FIRE',
-} 
+}
 joystick_keydown_map[2]=Object.assign({}, joystick_keydown_map[1]);
 joystick_keydown_map[2].KeyB='PRESS_FIRE2';
 joystick_keydown_map[3]=Object.assign({}, joystick_keydown_map[2]);
@@ -1387,12 +1387,12 @@ function is_any_text_input_active()
     var active = false;
     var element = document.activeElement;
     if(element != null)
-    {                 
+    {
         if(element.tagName != null)
         {
             var type_name = element.tagName.toLowerCase();
             active = type_name == 'input' || type_name == 'textarea';
-        }     
+        }
     }
     return active;
 }
@@ -1429,17 +1429,17 @@ function keydown(e) {
     let serialized_code=serialize_key_code(e);
     for(action_button of custom_keys)
     {
-        if(action_button.key == e.key /* e.key only for legacy custom keys*/   
+        if(action_button.key == e.key /* e.key only for legacy custom keys*/
            || action_button.key == serialized_code)
         {
             if(e.repeat)
             {
-              //if a key is being pressed for a long enough time, it starts to auto-repeat: 
+              //if a key is being pressed for a long enough time, it starts to auto-repeat:
               //the keydown triggers again and again, and then when it’s released we finally get keyup
               //we just have to ignore the autorepeats here
               return;
             }
-            let running_script=get_running_script(action_button.id);                    
+            let running_script=get_running_script(action_button.id);
             if(running_script.running == false)
             {
                 running_script.action_button_released = false;
@@ -1492,7 +1492,7 @@ function keyup(e) {
     let serialized_code=serialize_key_code(e);
     for(action_button of custom_keys)
     {
-        if(action_button.key == e.key /* e.key only for legacy custom keys*/   
+        if(action_button.key == e.key /* e.key only for legacy custom keys*/
            || action_button.key == serialized_code)
         {
             get_running_script(action_button.id).action_button_released = true;
@@ -1529,9 +1529,9 @@ function query_input_controllers()
     }
     else
     {
-        gamepads = navigator.getGamepads();        
+        gamepads = navigator.getGamepads();
         var joy1= gamepads[port1];
-        
+
         if(joy1 != null && timestampjoy1 != joy1.timestamp)
         {
             timestampjoy1 = joy1.timestamp;
@@ -1545,15 +1545,15 @@ function query_input_controllers()
     else if(port2 == 'touch')
     {
         handle_touch("2");
-    }	
+    }
     else
     {
         if(gamepads==null)
         {
-            gamepads = navigator.getGamepads();        
+            gamepads = navigator.getGamepads();
         }
         var joy2= gamepads[port2];
-        
+
         if(joy2 != null && timestampjoy2 != joy2.timestamp)
         {
             timestampjoy2 = joy2.timestamp;
@@ -1564,7 +1564,7 @@ function query_input_controllers()
 
 
 function handle_touch(portnr)
-{    
+{
     if(v_joystick == null || v_fire == null)
         return;
     try {
@@ -1600,7 +1600,7 @@ function handle_touch(portnr)
         var new_fire   = 1==fire_button_number&&v_fire._pressed?"PRESS_FIRE":"RELEASE_FIRE";
         var new_fire_2 = 2==fire_button_number&&v_fire._pressed?"PRESS_FIRE2":"RELEASE_FIRE2";
         var new_fire_3 = 3==fire_button_number&&v_fire._pressed?"PRESS_FIRE3":"RELEASE_FIRE3";
-        
+
         var new_touch_cmd = portnr + new_touch_cmd_x + new_touch_cmd_y;
 
         if( last_touch_cmd != new_touch_cmd)
@@ -1620,7 +1620,7 @@ function handle_touch(portnr)
             emit_joystick_cmd(portnr+new_fire_3);
         }
     } catch (error) {
-        console.error("error while handle_touch: "+ error);        
+        console.error("error while handle_touch: "+ error);
     }
 }
 
@@ -1633,7 +1633,7 @@ function handleGamePad(portnr, gamepad)
         {
             axes_output += axe.toFixed(2)+", ";
         }
-        
+
         var btns_output = "";
         for(var btn of gamepad.buttons)
         {
@@ -1662,7 +1662,7 @@ function handleGamePad(portnr, gamepad)
             emit_joystick_cmd(portnr+"PULL_LEFT");
             bReleaseX=false;
         }
- 
+
         if(bReleaseY && 0.5<gamepad.axes[stick+vertical_axis])
         {
             emit_joystick_cmd(portnr+"PULL_DOWN");
@@ -1679,11 +1679,11 @@ function handleGamePad(portnr, gamepad)
     {
         if(gamepad.buttons[12].pressed)
         {bReleaseY=false;
-            emit_joystick_cmd(portnr+"PULL_UP");   
+            emit_joystick_cmd(portnr+"PULL_UP");
         }
         else if(gamepad.buttons[13].pressed)
         {bReleaseY=false;
-            emit_joystick_cmd(portnr+"PULL_DOWN");   
+            emit_joystick_cmd(portnr+"PULL_DOWN");
         }
         else
         {
@@ -1691,11 +1691,11 @@ function handleGamePad(portnr, gamepad)
         }
         if(gamepad.buttons[14].pressed)
         {bReleaseX=false;
-            emit_joystick_cmd(portnr+"PULL_LEFT");   
+            emit_joystick_cmd(portnr+"PULL_LEFT");
         }
         else if(gamepad.buttons[15].pressed)
         {bReleaseX=false;
-            emit_joystick_cmd(portnr+"PULL_RIGHT");   
+            emit_joystick_cmd(portnr+"PULL_RIGHT");
         }
         else
         {
@@ -1752,8 +1752,8 @@ var port_state={};
 function emit_joystick_cmd(command)
 {
     var port = command.substring(0,1);
-    var cmd  = command.substring(1); 
-  
+    var cmd  = command.substring(1);
+
     if(cmd == "PULL_RIGHT")
     {
         port_state[port+'x'] = cmd;
@@ -1824,7 +1824,7 @@ const PORT_ACCESSOR = {
 var current_port_owner = {
     1:PORT_ACCESSOR.MANUAL,
     2:PORT_ACCESSOR.MANUAL,
-}; 
+};
 
 function set_port_owner(port, new_owner)
 {
@@ -1846,15 +1846,15 @@ function send_joystick( accessor, port, command )
 
 function restore_manual_state(port)
 {
-    if(port_state[port+'x'] !== undefined && !port_state[port+'x'].includes("RELEASE")) 
+    if(port_state[port+'x'] !== undefined && !port_state[port+'x'].includes("RELEASE"))
     {
         wasm_joystick( port + port_state[port+'x'] );
     }
-    if(port_state[port+'y'] !== undefined && !port_state[port+'y'].includes("RELEASE")) 
+    if(port_state[port+'y'] !== undefined && !port_state[port+'y'].includes("RELEASE"))
     {
         wasm_joystick( port + port_state[port+'y'] );
     }
-    if(port_state[port+'fire'] !== undefined && !port_state[port+'fire'].includes("RELEASE")) 
+    if(port_state[port+'fire'] !== undefined && !port_state[port+'fire'].includes("RELEASE"))
     {
         wasm_joystick( port + port_state[port+'fire'] );
     }
@@ -1869,14 +1869,14 @@ function InitWrappers() {
         Module.HEAPU8.set(file_buffer, file_slot_wasmbuf);
         let retVal=Module.ccall('wasm_loadFile', 'string', ['string','number','number', 'number'], [file_name,file_slot_wasmbuf,file_buffer.byteLength, drv_number]);
         Module._free(file_slot_wasmbuf);
-        return retVal;                    
+        return retVal;
     }
     wasm_mem_patch = function (amiga_mem_address, file_buffer) {
         let file_slot_wasmbuf = Module._malloc(file_buffer.byteLength);
         Module.HEAPU8.set(file_buffer, file_slot_wasmbuf);
         let retVal=Module.ccall('wasm_mem_patch', 'string', ['number','number', 'number'], [amiga_mem_address, file_slot_wasmbuf,file_buffer.byteLength]);
         Module._free(file_slot_wasmbuf);
-        return retVal;                    
+        return retVal;
     }
     wasm_write_bytes_to_ser = function (bytes_to_send) {
         for(let b of bytes_to_send)
@@ -1907,7 +1907,7 @@ function InitWrappers() {
         if(do_animation_frame == null)
         {
             execute_amiga_frame=()=>{
-                Module._wasm_execute(); 
+                Module._wasm_execute();
                 queued_executes--;
             };
 
@@ -1922,7 +1922,7 @@ function InitWrappers() {
                 calculate_and_render=(now)=>
                 {
                     query_input_controllers();
-                    Module._wasm_worker_run();                    
+                    Module._wasm_worker_run();
                     let current_rendered_frame_id=Module._wasm_frame_info();
                     if(rendered_frame_id !== current_rendered_frame_id)
                     {
@@ -1954,14 +1954,14 @@ function InitWrappers() {
                 // request another animation frame
                 if(!stop_request_animation_frame)
                 {
-                    requestAnimationFrame(do_animation_frame);   
+                    requestAnimationFrame(do_animation_frame);
                 }
             }
-        }  
+        }
         if(stop_request_animation_frame)
         {
             stop_request_animation_frame=false;
-            requestAnimationFrame(do_animation_frame);   
+            requestAnimationFrame(do_animation_frame);
         }
     }
 
@@ -2011,8 +2011,8 @@ function InitWrappers() {
     const volumeSlider = document.getElementById('volume-slider');
     set_volume = (new_volume)=>{
         const volume = parseFloat(new_volume);
-        current_sound_volume = volume*10; 
-        if(typeof gainNode !== "undefined") 
+        current_sound_volume = volume*10;
+        if(typeof gainNode !== "undefined")
             gainNode.gain.value = current_sound_volume;
         console.log(`Volume set to: ${volume * 100}%`);
 
@@ -2022,7 +2022,7 @@ function InitWrappers() {
     volumeSlider.addEventListener('input', (event) => {
         set_volume(event.target.value);
     });
- 
+
     let loaded_vol=load_setting('master_sound_volume', 0.5);
     set_volume(loaded_vol);
     $("#volume-slider").val(loaded_vol);
@@ -2030,7 +2030,7 @@ function InitWrappers() {
 
     resume_audio=async ()=>{
         try {
-            await audioContext.resume();  
+            await audioContext.resume();
         }
         catch(e) {
             console.error(e); console.error("try to setup audio from scratch...");
@@ -2039,20 +2039,20 @@ function InitWrappers() {
             }
             finally
             {
-                audio_connected=false; 
+                audio_connected=false;
                 audioContext=new AudioContext();
             }
         }
     }
-    
+
     connect_audio_processor_standard = async () => {
         if(audioContext.state !== 'running') {
             await resume_audio();
         }
         if(audio_connected==true)
-            return; 
+            return;
         if(audioContext.state === 'suspended') {
-            return;  
+            return;
         }
         audio_connected=true;
         wasm_set_sample_rate(audioContext.sampleRate);
@@ -2072,7 +2072,7 @@ function InitWrappers() {
         gainNode.gain.value = current_sound_volume;
         worklet_node.connect(gainNode);
         gainNode.connect(audioContext.destination);
-      
+
         init_sound_buffer=function(){
             console.log("get wasm sound buffer adresses");
             let sound_buffer_address = wasm_get_sound_buffer_address();
@@ -2122,12 +2122,16 @@ function InitWrappers() {
                 worklet_node.port.postMessage(shuttle, [shuttle.buffer]);
                 shuttle=null;
                 samples-=1024;
-            }            
+            }
         };
         worklet_node.port.onmessageerror = (msg) => {
             console.log("audio processor error:"+msg);
         };
-        //worklet_node.connect(audioContext.destination);        
+        //worklet_node.connect(audioContext.destination);
+
+        vscode.postMessage({
+            command: 'initWrappersDone',
+        });
     }
 
     connect_audio_processor_shared_memory= async ()=>{
@@ -2135,9 +2139,9 @@ function InitWrappers() {
             await resume_audio();
         }
         if(audio_connected==true)
-            return; 
+            return;
         if(audioContext.state === 'suspended') {
-            return;  
+            return;
         }
         audio_connected=true;
 
@@ -2181,7 +2185,7 @@ function InitWrappers() {
            console.log("fullscreen="+is_full_screen);
            if(!is_full_screen)
            {//safari bug: goes visible=hidden when entering fullscreen
-            //in that case don't disable the audio 
+            //in that case don't disable the audio
                try { audioContext.suspend(); } catch(e){ console.error(e);}
            }
         }
@@ -2220,10 +2224,10 @@ function InitWrappers() {
         //iOS safari does not bubble click events on canvas so we add this extra event handler here
         let canvas=document.getElementById('canvas');
         canvas.removeEventListener('touchstart',touch_unlock_WebAudio);
-        canvas.addEventListener('touchstart',touch_unlock_WebAudio,false);        
+        canvas.addEventListener('touchstart',touch_unlock_WebAudio,false);
     }
     remove_unlock_user_action = function(){
-        //if it runs we dont need the unlock handlers, has no effect when handler already removed 
+        //if it runs we dont need the unlock handlers, has no effect when handler already removed
         document.removeEventListener('click',click_unlock_WebAudio);
         document.getElementById('canvas').removeEventListener('touchstart',touch_unlock_WebAudio);
     }
@@ -2240,28 +2244,28 @@ function InitWrappers() {
     }
 
     click_unlock_WebAudio=async function() {
-        try { 
-            await connect_audio_processor(); 
+        try {
+            await connect_audio_processor();
             if(audioContext.state=="running")
                 remove_unlock_user_action();
         } catch(e){ console.error(e);}
     }
     touch_unlock_WebAudio=async function() {
-        try { 
-            await connect_audio_processor(); 
+        try {
+            await connect_audio_processor();
             if(audioContext.state=="running")
                 remove_unlock_user_action();
         } catch(e){ console.error(e);}
-    }    
+    }
 
     add_unlock_user_action();
-    
+
     window.addEventListener('message', event => {
         if(event.data == "poll_state")
         {
             window.parent.postMessage({ msg: 'render_run_state', value: is_running(), is_warping:  Module._wasm_is_warping() },"*");
-            window.parent.postMessage({ msg: 'render_current_audio_state', 
-                value: audioContext == null ? 'suspended' : audioContext.state},"*"); 
+            window.parent.postMessage({ msg: 'render_current_audio_state',
+                value: audioContext == null ? 'suspended' : audioContext.state},"*");
         }
         else if(event.data == "button_run()")
         {
@@ -2283,12 +2287,12 @@ function InitWrappers() {
                     audioContext.suspend();
                 }
             }
-            window.parent.postMessage({ msg: 'render_current_audio_state', 
+            window.parent.postMessage({ msg: 'render_current_audio_state',
                 value: audioContext == null ? 'suspended' : audioContext.state },"*");
         }
         else if(event.data == "open_zip()")
         {
-            var modal = $('#modal_file_slot'); 
+            var modal = $('#modal_file_slot');
             if(modal.is(':visible'))
             {
                 modal.modal('hide');
@@ -2317,7 +2321,7 @@ function InitWrappers() {
                 {
                     try{
                         local_storage_set(romtype+".bin", ToBase64(byteArray));
-                        await save_rom(romtype+".bin", romtype,  byteArray);                    
+                        await save_rom(romtype+".bin", romtype,  byteArray);
                         await load_roms(false);
                     }
                     catch(e){
@@ -2335,7 +2339,7 @@ function InitWrappers() {
             {
                 wasm_loadfile("kick-rom.disk", event.data.kickemu_rom, event.data.mount_kickstart_in_dfn);
             }
-            //check if any roms should be preloaded first... 
+            //check if any roms should be preloaded first...
             if(event.data.kickstart_rom !== undefined)
             {
                 wasm_loadfile("kick.rom_file", event.data.kickstart_rom);
@@ -2379,14 +2383,14 @@ function InitWrappers() {
             }
         }
     });
-    
+
     dark_switch = document.getElementById('dark_switch');
 
 
     $('#modal_roms').on('hidden.bs.modal', async function () {
-        //check again if required roms are there when user decides to exit rom-dialog 
+        //check again if required roms are there when user decides to exit rom-dialog
         if(required_roms_loaded == false)
-        {//if they are still missing ... we make the decision for the user and 
+        {//if they are still missing ... we make the decision for the user and
          //just load the open roms for him instead ...
             await fetchOpenROMS();
         }
@@ -2397,7 +2401,7 @@ function InitWrappers() {
     dark_switch.addEventListener('change', () => {
         setTheme();
     });
-    
+
     //--- mouse pointer lock
     canvas = document.querySelector('canvas');
     canvas.requestPointerLock = canvas.requestPointerLock ||
@@ -2417,7 +2421,7 @@ function InitWrappers() {
         {
             if(!has_pointer_lock_fallback)
             {
-                add_pointer_lock_fallback();      
+                add_pointer_lock_fallback();
             }
             return;
         }
@@ -2430,19 +2434,19 @@ function InitWrappers() {
                 try_to_lock_pointer=0;
             } catch (error) {
                 await sleep(100);
-                await request_pointerlock();                
+                await request_pointerlock();
             }
         }
     };
-    
+
     window.add_pointer_lock_fallback=()=>{
-        document.addEventListener("mousemove", updatePosition_fallback, false); 
+        document.addEventListener("mousemove", updatePosition_fallback, false);
         document.addEventListener("mousedown", mouseDown, false);
         document.addEventListener("mouseup", mouseUp, false);
         has_pointer_lock_fallback=true;
     };
     window.remove_pointer_lock_fallback=()=>{
-        document.removeEventListener("mousemove", updatePosition_fallback, false); 
+        document.removeEventListener("mousemove", updatePosition_fallback, false);
         document.removeEventListener("mousedown", mouseDown, false);
         document.removeEventListener("mouseup", mouseUp, false);
         has_pointer_lock_fallback=false;
@@ -2463,7 +2467,7 @@ function InitWrappers() {
             document.addEventListener("mouseup", mouseUp, false);
 
         } else {
-//            console.log('The pointer lock status is now unlocked');  
+//            console.log('The pointer lock status is now unlocked');
             document.removeEventListener("mousemove", updatePosition, false);
             document.removeEventListener("mousedown", mouseDown, false);
             document.removeEventListener("mouseup", mouseUp, false);
@@ -2482,7 +2486,7 @@ function InitWrappers() {
         window.last_mouse_y=e.screenY;
         let border_speed=4;
         let border_pixel=2;
-    
+
         if(e.screenX<=border_pixel)
           movementX=-border_speed;
         if(e.screenX>=window.innerWidth-border_pixel)
@@ -2490,8 +2494,8 @@ function InitWrappers() {
         if(e.screenY<=border_pixel)
           movementY=-border_speed;
         if(e.screenY>=window.innerHeight-border_pixel)
-          movementY=border_speed;        
-        Module._wasm_mouse(mouse_port,movementX,movementY);  
+          movementY=border_speed;
+        Module._wasm_mouse(mouse_port,movementX,movementY);
     }
     function mouseDown(e) {
         Module._wasm_mouse_button(mouse_port,e.which, 1/* down */);
@@ -2510,7 +2514,7 @@ function InitWrappers() {
     {
         for (var i=0; i < e.changedTouches.length; i++) {
             let touch = e.changedTouches[i];
-        
+
             if(mouse_touchpad_pattern=='mouse touchpad')
             {
                 let mouse_touchpad_move_area= touch.clientX > window.innerWidth/10 &&
@@ -2522,13 +2526,13 @@ function InitWrappers() {
                     let left_button = touch.clientX < window.innerWidth/10;
                     if(left_button)
                     {
-                        mouse_touchpad_left_button_touch=touch; 
-                        Module._wasm_mouse_button(mouse_touchpad_port,1, 1/* down */);                
+                        mouse_touchpad_left_button_touch=touch;
+                        Module._wasm_mouse_button(mouse_touchpad_port,1, 1/* down */);
                     }
                     else
                     {
-                        mouse_touchpad_right_button_touch=touch; 
-                        Module._wasm_mouse_button(mouse_touchpad_port,3, 1/* down */);                
+                        mouse_touchpad_right_button_touch=touch;
+                        Module._wasm_mouse_button(mouse_touchpad_port,3, 1/* down */);
                     }
                 }
                 else
@@ -2546,13 +2550,13 @@ function InitWrappers() {
                     let left_button = touch.clientY >= window.innerHeight/2;
                     if(left_button)
                     {
-                        mouse_touchpad_left_button_touch=touch; 
-                        Module._wasm_mouse_button(mouse_touchpad_port,1, 1/* down */);                
+                        mouse_touchpad_left_button_touch=touch;
+                        Module._wasm_mouse_button(mouse_touchpad_port,1, 1/* down */);
                     }
                     else
                     {
-                        mouse_touchpad_right_button_touch=touch; 
-                        Module._wasm_mouse_button(mouse_touchpad_port,3, 1/* down */);                
+                        mouse_touchpad_right_button_touch=touch;
+                        Module._wasm_mouse_button(mouse_touchpad_port,3, 1/* down */);
                     }
                 }
                 else
@@ -2567,7 +2571,7 @@ function InitWrappers() {
     {
         for (var i=0; i < e.changedTouches.length; i++) {
             let touch = e.changedTouches[i];
-            if(mouse_touchpad_move_touch!=null && 
+            if(mouse_touchpad_move_touch!=null &&
                 mouse_touchpad_move_touch.identifier== touch.identifier)
             {
                 Module._wasm_mouse(mouse_touchpad_port,touch.clientX-mouse_touchpad_move_touch.clientX,
@@ -2580,18 +2584,18 @@ function InitWrappers() {
     {
         for (var i=0; i < e.changedTouches.length; i++) {
             let touch = e.changedTouches[i];
-            if(mouse_touchpad_move_touch!=null && 
+            if(mouse_touchpad_move_touch!=null &&
                 mouse_touchpad_move_touch.identifier== touch.identifier)
             {
                 mouse_touchpad_move_touch=null;
             }
-            else if(mouse_touchpad_left_button_touch != null && 
+            else if(mouse_touchpad_left_button_touch != null &&
                 mouse_touchpad_left_button_touch.identifier == touch.identifier)
             {
                 Module._wasm_mouse_button(mouse_touchpad_port,1, 0/* down */);
                 mouse_touchpad_left_button_touch=null;
             }
-            else if(mouse_touchpad_right_button_touch != null && 
+            else if(mouse_touchpad_right_button_touch != null &&
                 mouse_touchpad_right_button_touch.identifier == touch.identifier)
             {
                 Module._wasm_mouse_button(mouse_touchpad_port,3, 0/* down */);
@@ -2615,10 +2619,10 @@ function InitWrappers() {
             {
                 port2="none";
                 $('#port2').val(port2);
-            }    
+            }
         }
         else
-        { 
+        {
             port1="mouse";
             $('#port1').val(port1);
             canvas.addEventListener('click', request_pointerlock);
@@ -2640,13 +2644,13 @@ function InitWrappers() {
     window.addEventListener("resize", function() {
         setTimeout(()=>wasm_set_display(""), 0);
     });
-    
+
     $('#navbar').on('hide.bs.collapse', function () {
         //close all open tooltips on hiding navbar
         hide_all_tooltips();
     });
 
-    $('#navbar').on('shown.bs.collapse', function () { 
+    $('#navbar').on('shown.bs.collapse', function () {
     });
 
     burger_time_out_handle=null
@@ -2656,9 +2660,9 @@ function InitWrappers() {
         {
             burger_button = $("#button_show_menu");
         }
-        
+
         burger_button.fadeTo( "slow", 1.0 );
-        
+
         if(burger_time_out_handle != null)
         {
             clearTimeout(burger_time_out_handle);
@@ -2668,7 +2672,7 @@ function InitWrappers() {
             {
                 burger_button.fadeTo( "slow", 0.0 );
             }
-        },5000);    
+        },5000);
     };
 
     //make the menubutton not visible until a click or a touch
@@ -2696,11 +2700,11 @@ function InitWrappers() {
             {
                 $("#auto_select_on_help").hide();
                 $("#auto_select_off_help").show();
-            }    
+            }
     }
     auto_selecting_help();
-    
-    
+
+
     auto_selecting_app_title_switch.change( function() {
         auto_selecting_app_title=this.checked;
         save_setting('auto_selecting_app_title', auto_selecting_app_title);
@@ -2709,7 +2713,7 @@ function InitWrappers() {
     //----
     movable_action_buttons_in_settings_switch = $('#movable_action_buttons_in_settings_switch');
     movable_action_buttons=load_setting('movable_action_buttons', true);
- 
+
     movable_action_buttons_in_settings_switch.prop('checked', movable_action_buttons);
     movable_action_buttons_in_settings_switch.change( function() {
         movable_action_buttons=this.checked;
@@ -2723,20 +2727,20 @@ function InitWrappers() {
 
     let set_move_action_buttons_label=()=>{
         $('#move_action_buttons_label').html(
-            movable_action_buttons ? 
+            movable_action_buttons ?
             `Once created, you can <span>move any 'action button' by dragging</span>… A <span>long press will enter 'edit mode'</span>… While 'moveable action buttons' is switched on, <span>scripts can not detect release</span> state (to allow this, you must disable the long press gesture by turning 'moveable action buttons' off)`
             :
             `All <span>'action button' positions are now locked</span>… <span>scripts are able to trigger actions when the button is released</span>… <span>long press edit mode is disabled</span> (instead use the <span>+</span> from the top menu bar and choose any buttons from the list to edit)`
         );
         $('#move_action_buttons_label_settings').html(
-            movable_action_buttons ? 
+            movable_action_buttons ?
             `long press to enter edit mode. movable by dragging. action scripts are unable to detect buttons release state.`
             :
             `action button positions locked. action scripts can detect release state. Long press edit gesture disabled, use <span>+</span> from the top menu bar and choose any buttons from list to edit`
         );
     }
     set_move_action_buttons_label();
-    $('#move_action_buttons_switch').change( 
+    $('#move_action_buttons_switch').change(
         ()=>{
                 movable_action_buttons=!movable_action_buttons;
                 set_move_action_buttons_label();
@@ -2744,13 +2748,13 @@ function InitWrappers() {
                 movable_action_buttons_in_settings_switch.prop('checked', movable_action_buttons);
                 save_setting('movable_action_buttons', movable_action_buttons);
             }
-    ); 
+    );
 
     //----
 let set_game_controller_buttons_choice = function (choice) {
     $(`#button_game_controller_type_choice`).text('button count='+choice);
     joystick_button_count=choice;
-    save_setting("game_controller_buttons",choice);   
+    save_setting("game_controller_buttons",choice);
 
     for(el of document.querySelectorAll(".gc_choice_text"))
     {
@@ -2761,7 +2765,7 @@ let set_game_controller_buttons_choice = function (choice) {
 joystick_button_count=load_setting("game_controller_buttons", 1);
 set_game_controller_buttons_choice(joystick_button_count);
 
-$(`#choose_game_controller_type a`).click(function () 
+$(`#choose_game_controller_type a`).click(function ()
 {
     let choice=$(this).text();
     set_game_controller_buttons_choice(choice);
@@ -2772,7 +2776,7 @@ $(`#choose_game_controller_type a`).click(function ()
     let set_vbk_choice = function (choice) {
         $(`#button_vbk_touch`).text('keycap touch behaviour='+choice);
         current_vbk_touch=choice;
-        save_setting("vbk_touch",choice);   
+        save_setting("vbk_touch",choice);
 
         for(el of document.querySelectorAll(".vbk_choice_text"))
         {
@@ -2783,7 +2787,7 @@ $(`#choose_game_controller_type a`).click(function ()
     current_vbk_touch=load_setting("vbk_touch", "mix of both");
     set_vbk_choice(current_vbk_touch);
 
-    $(`#choose_vbk_touch a`).click(function () 
+    $(`#choose_vbk_touch a`).click(function ()
     {
         let choice=$(this).text();
         set_vbk_choice(choice);
@@ -2804,7 +2808,7 @@ let set_vjoy_choice = function (choice) {
 
     if(v_joystick != null)
     {
-        v_joystick._stationaryBase=false;    
+        v_joystick._stationaryBase=false;
     }
     if(choice == "base moves")
     {
@@ -2826,7 +2830,7 @@ let set_vjoy_choice = function (choice) {
         register_v_joystick()
     }
 
-    save_setting("vjoy_touch",choice);   
+    save_setting("vjoy_touch",choice);
 
     for(el of document.querySelectorAll(".vjoy_choice_text"))
     {
@@ -2841,7 +2845,7 @@ let set_vjoy_choice = function (choice) {
 current_vjoy_touch=load_setting("vjoy_touch", "base moves");
 set_vjoy_choice(current_vjoy_touch);
 
-$(`#choose_vjoy_touch a`).click(function () 
+$(`#choose_vjoy_touch a`).click(function ()
 {
     let choice=$(this).text();
     set_vjoy_choice(choice);
@@ -2853,7 +2857,7 @@ function set_vjoy_dead_zone(vjoy_dead_zone) {
     rest_zone=vjoy_dead_zone;
     $("#button_vjoy_dead_zone").text(`virtual joysticks dead zone=${vjoy_dead_zone}`);
 }
-$('#choose_vjoy_dead_zone a').click(function () 
+$('#choose_vjoy_dead_zone a').click(function ()
 {
     var vjoy_dead_zone=$(this).text();
     set_vjoy_dead_zone(vjoy_dead_zone);
@@ -2867,7 +2871,7 @@ function set_keycap_size(keycap_size) {
     document.querySelector(':root').style.setProperty('--keycap_zoom', keycap_size);
     $("#button_keycap_size").text(`keycap size=${keycap_size}`);
 }
-$('#choose_keycap_size a').click(function () 
+$('#choose_keycap_size a').click(function ()
 {
     var keycap_size=$(this).text();
     set_keycap_size(keycap_size);
@@ -2878,11 +2882,11 @@ $('#choose_keycap_size a').click(function ()
 set_keyboard_bottom_margin(load_setting('keyboard_bottom_margin_', 'auto'));
 function set_keyboard_bottom_margin(keyboard_bottom_margin) {
     document.querySelector(':root').style.
-        setProperty('--keyboard_bottom_margin', 
+        setProperty('--keyboard_bottom_margin',
             keyboard_bottom_margin==='auto' ? 'env(safe-area-inset-bottom)':keyboard_bottom_margin);
     $("#button_keyboard_bottom_margin").text(`keyboard bottom margin=${keyboard_bottom_margin}`);
 }
-$('#choose_keyboard_bottom_margin a').click(function () 
+$('#choose_keyboard_bottom_margin a').click(function ()
 {
     var keyboard_bottom_margin=$(this).text();
     set_keyboard_bottom_margin(keyboard_bottom_margin);
@@ -2895,7 +2899,7 @@ function set_keyboard_sound_volume(volume) {
     keyboard_sound_volume = 0.01 * volume;
     $("#button_keyboard_sound_volume").text(`key press sound volume=${volume}%`);
 }
-$('#choose_keyboard_sound_volume a').click(function () 
+$('#choose_keyboard_sound_volume a').click(function ()
 {
     var sound_volume=$(this).text();
     set_keyboard_sound_volume(sound_volume);
@@ -2908,7 +2912,7 @@ function set_keyboard_transparency(value) {
     document.querySelector(':root').style.setProperty('--keyboard_opacity', `${100-value}%`);
     $("#button_keyboard_transparency").text(`keyboard transparency=${value}%`);
 }
-$('#choose_keyboard_transparency a').click(function () 
+$('#choose_keyboard_transparency a').click(function ()
 {
     let val=$(this).text();
     set_keyboard_transparency(val);
@@ -2943,7 +2947,7 @@ key_haptic_feedback_switch.change( function() {
     current_renderer=load_setting("renderer", "gpu shader");
     set_renderer_choice(current_renderer);
 
-    $(`#choose_renderer a`).click(function () 
+    $(`#choose_renderer a`).click(function ()
     {
         let choice=$(this).text();
         set_renderer_choice(choice);
@@ -2967,7 +2971,7 @@ key_haptic_feedback_switch.change( function() {
     {
         create2d_context();
     }
-    //got_renderer=wasm_create_renderer(current_renderer); 
+    //got_renderer=wasm_create_renderer(current_renderer);
     if(!got_renderer && current_renderer!='software')
     {
         alert('MESSAGE: gpu shader can not be created on your system configuration... switching back to software renderer...');
@@ -2986,7 +2990,7 @@ set_display_choice = function (choice) {
 let current_display=load_setting("display", "standard");
 set_display_choice(current_display);
 
-$(`#choose_display a`).click(function () 
+$(`#choose_display a`).click(function ()
 {
     let choice=$(this).text();
     set_display_choice(choice);
@@ -3019,13 +3023,13 @@ set_activity_monitor = function(value){
     }
     else
     {
-        hide_activity(); 
+        hide_activity();
     }
     activity_monitor_switch.prop('checked', value);
-}    
+}
 set_activity_monitor(false /*load_setting('activity_monitor', false)*/);
 activity_monitor_switch.change( function() {
-    
+
     //save_setting('activity_monitor', this.checked);
     set_activity_monitor(this.checked);
 });
@@ -3041,7 +3045,7 @@ activity_monitor_switch.change( function() {
             $("#canvas").removeClass("pixel_art");
         }
         $('#pixel_art_switch').prop('checked', value);
-    }    
+    }
     set_pixel_art(load_setting('pixel_art', true));
     pixel_art_switch.change( function() {
         pixel_art=this.checked;
@@ -3100,7 +3104,7 @@ validate_hardware();
 function bind_config_choice(key, name, values, default_value, value2text=null, text2value=null, targetElement=null, updated_func=null){
     value2text = value2text == null ? (t)=>t: value2text;
     text2value = text2value == null ? (t)=>t: text2value;
-    
+
     $(targetElement==null?'#hardware_settings':targetElement).append(
     `
     <div class="dropdown mr-1 mt-3">
@@ -3124,7 +3128,7 @@ function bind_config_choice(key, name, values, default_value, value2text=null, t
     let set_choice = function (choice) {
         $(`#button_${key}`).html(`${name}${name.length>0?'=':''}${choice}`);
         save_setting(key, text2value(choice));
-        validate_hardware(); 
+        validate_hardware();
 
         let result=wasm_configure(key.substring(4),`${text2value(choice)}`);
         if(result.length>0)
@@ -3139,7 +3143,7 @@ function bind_config_choice(key, name, values, default_value, value2text=null, t
     }
     set_choice(value2text(load_setting(key, default_value)));
 
-    $(`#choose_${key} a`).click(function () 
+    $(`#choose_${key} a`).click(function ()
     {
         let choice=$(this).html();
         set_choice(choice);
@@ -3152,9 +3156,9 @@ bind_config_choice("OPT_BLITTER_ACCURACY", "blitter accuracy",['0','1','2'],'2')
 
 show_drive_config = (c)=>{
     $('#div_drives').html(`
-    ${wasm_get_config_item("DRIVE_CONNECT",0)==1?"<span>df0</span>":""} 
-    ${wasm_get_config_item("DRIVE_CONNECT",1)==1?"<span>df1</span>":""} 
-    ${wasm_get_config_item("DRIVE_CONNECT",2)==1?"<span>df2</span>":""} 
+    ${wasm_get_config_item("DRIVE_CONNECT",0)==1?"<span>df0</span>":""}
+    ${wasm_get_config_item("DRIVE_CONNECT",1)==1?"<span>df1</span>":""}
+    ${wasm_get_config_item("DRIVE_CONNECT",2)==1?"<span>df2</span>":""}
     ${wasm_get_config_item("DRIVE_CONNECT",3)==1?"<span>df3</span>":""}
     <div class="custom-control custom-switch" style="xxdisplay:inline">
         <input type="checkbox" class="custom-control-input" id="cb_df0_poll_sound" />
@@ -3184,8 +3188,8 @@ agnus_map = [
     {v: "OCS_OLD", t:`Early OCS (512KB) | A1000, A2000a (<span id="MOS8367">MOS8367</span><span id="MOS8361">MOS8361</span>)`},
     {v: "OCS", t:`OCS (512KB) | Early A500, A2000 (<span id="MOS8370">MOS8370</span><span id="MOS8371">MOS8371</span>)`},
     {v: "ECS_1MB", t:"ECS (1MB) | Later A500, A2000 (MOS8372A)"},
-    {v: "ECS_2MB", t:"ECS (2MB) | A500+, A600 (MOS8375)"}];    
- 
+    {v: "ECS_2MB", t:"ECS (2MB) | A500+, A600 (MOS8375)"}];
+
 bind_config_choice("OPT_AGNUS_REVISION", "agnus revision",['OCS_OLD','OCS','ECS_1MB','ECS_2MB'],'ECS_2MB',
     (v)=> {
         let found = agnus_map.filter(e=>e.v === v);
@@ -3226,7 +3230,7 @@ bind_config_choice("OPT_SLOW_RAM", "slow ram",['0', '256', '512'],'0', (v)=>`${v
 bind_config_choice("OPT_FAST_RAM", "fast ram",['0', '256', '512','1024', '2048', '8192'],'2048', (v)=>`${v} KB`, t=>parseInt(t));
 
 $('#hardware_settings').append("<div id='divCPU' style='display:flex;flex-direction:row'></div>");
-bind_config_choice("OPT_CPU_REVISION", "CPU",[0,1,2,4], 0, 
+bind_config_choice("OPT_CPU_REVISION", "CPU",[0,1,2,4], 0,
 (v)=>{ return  v==4 ?`fake 030 for Settlers map size 8`:(68000+v*10)},
 (t)=>{
     let val = t.toString().replace("fake 030 for Settlers map size 8","68030");
@@ -3234,7 +3238,7 @@ bind_config_choice("OPT_CPU_REVISION", "CPU",[0,1,2,4], 0,
     return val==3 ?4: val;
 }, "#divCPU");
 
-bind_config_choice("OPT_CPU_OVERCLOCKING", "",[0,2,3,4,5,6,8,12,14], 0, 
+bind_config_choice("OPT_CPU_OVERCLOCKING", "",[0,2,3,4,5,6,8,12,14], 0,
 (v)=>{ return Math.round((v==0?1:v)*7.09)+' MHz'},
 (t)=>{
     let val =t.replace(' MHz','');
@@ -3383,11 +3387,11 @@ if(document.fullscreenEnabled)
         );
     });
 
-    fullscreen_switch.click( ()=>{	
+    fullscreen_switch.click( ()=>{
         if(!document.fullscreenElement)
             document.documentElement.requestFullscreen({navigationUI: "hide"});
         else
-            document.exitFullscreen();            
+            document.exitFullscreen();
     });
 }
 else
@@ -3408,7 +3412,7 @@ $('.layer').change( function(event) {
         sprite6: 0x40,
         sprite7: 0x80,
         playfield1: 0x100,
-        playfield2: 0x200        
+        playfield2: 0x200
     };
 
     var layer_value = 0;
@@ -3430,7 +3434,7 @@ $('.layer').change( function(event) {
             transparency: 0.9,
             theme: load_setting('dark_switch', true) ? 'dark':'light'
         }
-        }) } 
+        }) }
     }
 
     live_debug_output=load_setting('live_debug_output', false);
@@ -3439,13 +3443,13 @@ $('.layer').change( function(event) {
     if(live_debug_output)
     {
         load_console();
-     //   $("#output_row").show(); 
-        $("#output_row").hide(); 
+     //   $("#output_row").show();
+        $("#output_row").hide();
     }
     else
     {
 //        eruda.destroy();
-        $("#output_row").hide(); 
+        $("#output_row").hide();
     }
 
     $("#cb_debug_output").change( function() {
@@ -3470,7 +3474,7 @@ $('.layer').change( function(event) {
     $('#modal_reset').keydown(event => {
             if(event.key === "Enter")
             {
-                $( "#button_reset_confirmed" ).click();                        
+                $( "#button_reset_confirmed" ).click();
             }
             return true;
         }
@@ -3495,7 +3499,7 @@ $('.layer').change( function(event) {
     $("#button_run").click(function() {
         hide_all_tooltips();
         if(running)
-        {        
+        {
             wasm_halt();
             try { audioContext.suspend(); } catch(e){ console.error(e);}
             running = false;
@@ -3511,16 +3515,16 @@ $('.layer').change( function(event) {
             <path d="M5.5 3.5A1.5 1.5 0 0 1 7 5v6a1.5 1.5 0 0 1-3 0V5a1.5 1.5 0 0 1 1.5-1.5zm5 0A1.5 1.5 0 0 1 12 5v6a1.5 1.5 0 0 1-3 0V5a1.5 1.5 0 0 1 1.5-1.5z"/>
           </svg>`).parent().attr("title", "pause").attr("data-original-title", "pause");
 
-            try{wasm_run();} catch(e) {}        
+            try{wasm_run();} catch(e) {}
             try {connect_audio_processor();} catch(e){ console.error(e);}
             running = true;
         }
-        check_wake_lock();        
+        check_wake_lock();
         //document.getElementById('canvas').focus();
     });
-    
+
     $("#button_ff").click(()=> {
-        action('toggle_warp'); 
+        action('toggle_warp');
         hide_all_tooltips();
     });
 
@@ -3532,15 +3536,15 @@ $('.layer').change( function(event) {
     $( "#modal_file_slot" ).keydown(event => {
             if(event.key === "Enter" && $("#button_insert_file").attr("disabled")!=true)
             {
-                $( "#button_insert_file" ).click();                        
+                $( "#button_insert_file" ).click();
             }
             return false;
         }
     );
 
     reset_before_load=false;
-    insert_file = function(drive=0) 
-    {   
+    insert_file = function(drive=0)
+    {
         $('#modal_file_slot').modal('hide');
 
         var execute_load = async function(drive){
@@ -3559,7 +3563,7 @@ $('.layer').change( function(event) {
                     global_apptitle = file_slot_file_name;
                 }
 
-                get_custom_buttons(global_apptitle, 
+                get_custom_buttons(global_apptitle,
                     function(the_buttons) {
                         custom_keys = the_buttons;
                         for(let param_button of call_param_buttons)
@@ -3572,7 +3576,7 @@ $('.layer').change( function(event) {
             }
             if(call_param_dialog_on_disk == false)
             {//loading is probably done by scripting
-            }            
+            }
         };
 
         if(!is_running())
@@ -3601,7 +3605,7 @@ $('.layer').change( function(event) {
     $("#button_insert_folder").click(()=>{
          prompt_for_drive(folder=true);
     });
-    
+
     $('#modal_take_snapshot').on('hidden.bs.modal', function () {
         if(is_running())
         {
@@ -3610,15 +3614,15 @@ $('.layer').change( function(event) {
     }).keydown(event => {
             if(event.key === "Enter")
             {
-                $( "#button_save_snapshot" ).click();                        
+                $( "#button_save_snapshot" ).click();
             }
             return true;
         }
     );
-   
 
-    $('#modal_settings').on('show.bs.modal', function() 
-    {    
+
+    $('#modal_settings').on('show.bs.modal', function()
+    {
         for(var dn=0; dn<4; dn++)
         {
             if(wasm_has_disk("df"+dn))
@@ -3629,7 +3633,7 @@ $('.layer').change( function(event) {
             {
                 $("#button_eject_df"+dn).hide();
             }
-            $('#button_eject_df'+dn).click(function() 
+            $('#button_eject_df'+dn).click(function()
             {
                 wasm_eject_disk("df"+this.id.at(-1));
                 $("#button_eject_df"+this.id.at(-1)).hide();
@@ -3642,7 +3646,7 @@ $('.layer').change( function(event) {
             {
                 $("#button_eject_hd"+dn).hide();
             }
-            $('#button_eject_hd'+dn).click(function() 
+            $('#button_eject_hd'+dn).click(function()
             {
                 wasm_eject_disk("dh"+this.id.at(-1));
                 $("#button_eject_hd"+this.id.at(-1)).hide();
@@ -3651,8 +3655,8 @@ $('.layer').change( function(event) {
         }
     });
 
-    document.getElementById('button_take_snapshot').onclick = function() 
-    {       
+    document.getElementById('button_take_snapshot').onclick = function()
+    {
         wasm_halt();
         $("#modal_take_snapshot").modal('show');
         $("#input_app_title").val(global_apptitle);
@@ -3683,7 +3687,7 @@ $('.layer').change( function(event) {
     }
     for(var dn=0; dn<4; dn++)
     {
-        $('#button_export_df'+dn).click(function() 
+        $('#button_export_df'+dn).click(function()
         {
             let d64_json = wasm_export_disk("df"+this.id.at(-1));
             let d64_obj = JSON.parse(d64_json);
@@ -3691,7 +3695,7 @@ $('.layer').change( function(event) {
             let filebuffer = d64_buffer.slice(0,d64_obj.size);
             let blob_data = new Blob([filebuffer], {type: 'application/octet-binary'});
             Module._wasm_delete_disk();
-            
+
             const url = window.URL.createObjectURL(blob_data);
             const a = document.createElement('a');
             a.style.display = 'none';
@@ -3708,10 +3712,10 @@ $('.layer').change( function(event) {
             a.click();
             window.URL.revokeObjectURL(url);
         });
-        $('#button_export_hd'+dn+"_folder").click(async function() 
+        $('#button_export_hd'+dn+"_folder").click(async function()
         {
             let drive = this.id.replace("_folder","");
-            let dn = drive.at(-1); 
+            let dn = drive.at(-1);
             let path = exported_hd_path+dn;
             await mount_folder(path);
             deleteAllFiles(path);
@@ -3719,8 +3723,8 @@ $('.layer').change( function(event) {
             zip_and_download_folder(name+".zip",path)
         });
 
-        $('#button_export_hd'+dn).click(function() 
-        {   
+        $('#button_export_hd'+dn).click(function()
+        {
             let d64_json = wasm_export_disk("dh"+this.id.at(-1));
             let d64_obj = JSON.parse(d64_json);
             let d64_buffer = new Uint8Array(Module.HEAPU8.buffer, d64_obj.address, d64_obj.size);
@@ -3749,10 +3753,10 @@ $('.layer').change( function(event) {
 
 
 
-    $('#button_save_workspace').click(async function() 
-    {       
+    $('#button_save_workspace').click(async function()
+    {
         let app_name = $("#input_app_title").val();
-        
+
         global_apptitle = app_name;
 
         await mount_folder(workspace_path);
@@ -3766,30 +3770,30 @@ $('.layer').change( function(event) {
         {
             FS.mkdir(workspace_path+"/"+app_name);
         } catch(e) {console.log(e)}
-    
+
         let thumbnail_json = wasm_save_workspace(workspace_path+"/"+app_name);
         var thumbnail = JSON.parse(thumbnail_json);
         var heap_buffer = new Uint8Array(Module.HEAPU8.buffer, thumbnail.address, thumbnail.size);
-            
+
         //thumbnail_buffer is only a typed array view therefore slice, which creates a new array with byteposition 0 ...
         let thumbnail_buffer = heap_buffer.slice(0,thumbnail.size);
 
         let preview_canvas = document.createElement('canvas');
-        preview_canvas.width = thumbnail.width;  
+        preview_canvas.width = thumbnail.width;
         preview_canvas.height = thumbnail.height;
 
-        var preview_ctx = preview_canvas.getContext('2d');  
+        var preview_ctx = preview_canvas.getContext('2d');
 
         image_data=preview_ctx.createImageData(thumbnail.width,thumbnail.height);
         image_data.data.set(thumbnail_buffer);
-    
+
         preview_ctx.putImageData(image_data,
-            0/*TPP*/,/*-yOff*/0, 
-            /*x,y*/ 
-            0/*TPP*/,/*yOff*/0 
-            /* width, height */, 
+            0/*TPP*/,/*-yOff*/0,
+            /*x,y*/
+            0/*TPP*/,/*yOff*/0
+            /* width, height */,
             thumbnail.width, thumbnail.height);
-    
+
         var dataURL = preview_canvas.toDataURL('image/png');
         var uint8Array = FromBase64(dataURL.split(',')[1]);
         FS.createDataFile(workspace_path+"/"+app_name+"/", 'preview.png', uint8Array, true, true);
@@ -3800,27 +3804,27 @@ $('.layer').change( function(event) {
         }
 
         FS.syncfs(false,(error)=>
-            {  
+            {
                 $("#modal_take_snapshot").modal('hide');
             }
         )
 
-        
+
         //document.getElementById('canvas').focus();
     });
 
-    $('#button_save_snapshot').click(async function() 
-    {       
+    $('#button_save_snapshot').click(async function()
+    {
         let app_name = $("#input_app_title").val();
 
         global_apptitle = app_name;
-        
+
         var snapshot_json= wasm_take_user_snapshot();
         var snap_obj = JSON.parse(snapshot_json);
 //        var ptr=wasm_pull_user_snapshot_file();
 //        var size = wasm_pull_user_snapshot_file_size();
         var snapshot_buffer = new Uint8Array(Module.HEAPU8.buffer, snap_obj.address, snap_obj.size);
-   
+
         //snapshot_buffer is only a typed array view therefore slice, which creates a new array with byteposition 0 ...
         await save_snapshot(app_name, snapshot_buffer.slice(0,snap_obj.size));
         wasm_delete_user_snapshot();
@@ -3833,7 +3837,7 @@ $('.layer').change( function(event) {
         $("#button_color_palette").text(color_palette.replace("_", " "));
         wasm_set_color_palette(color_palette);
     }
-    $('#choose_color_palette a').click(function () 
+    $('#choose_color_palette a').click(function ()
     {
         var color_palette=$(this).text();
         set_color_palette(color_palette);
@@ -3874,27 +3878,27 @@ $('.layer').change( function(event) {
             $('#button_speed_toggle').hide();
         else
             $('#button_speed_toggle').show();
- 
+
         current_speed=100;
         $('#button_speed_toggle').click();
-        
+
         save_setting('frame_sync', new_speed);
     }
-    $('#choose_speed a').click(function () 
+    $('#choose_speed a').click(function ()
     {
         selected_speed=$(this).text();
         set_speed(selected_speed);
         $("#modal_settings").focus();
     });
-    
-    $('#button_speed_toggle').click(function () 
+
+    $('#button_speed_toggle').click(function ()
     {
         hide_all_tooltips();
         if(current_speed==100)
-            current_speed=selected_speed;    
+            current_speed=selected_speed;
         else
             current_speed=100;
-     
+
         $('#button_speed_toggle').html(
             `
         <div>
@@ -3911,7 +3915,7 @@ $('.layer').change( function(event) {
           `
         );
 
-        wasm_configure("OPT_AMIGA_SPEED_BOOST", 
+        wasm_configure("OPT_AMIGA_SPEED_BOOST",
             current_speed.toString());
 //        $("#modal_settings").focus();
     });
@@ -3920,11 +3924,11 @@ $('.layer').change( function(event) {
 //--
     set_run_ahead = function (run_ahead) {
         $("#button_run_ahead").text("run ahead = "+run_ahead);
-        wasm_configure("OPT_EMU_RUN_AHEAD", 
+        wasm_configure("OPT_EMU_RUN_AHEAD",
             run_ahead.toString().replace("frames","").replace("frame",""));
     }
     set_run_ahead("0 frame");
-    $('#choose_run_ahead a').click(function () 
+    $('#choose_run_ahead a').click(function ()
     {
         var run_ahead=$(this).text();
         set_run_ahead(run_ahead);
@@ -3944,7 +3948,7 @@ $('.layer').change( function(event) {
             let response=await settings.match(key)
             if(response==undefined)
                 return null;
-            return await response.text();    
+            return await response.text();
         }
         catch(e){
             console.error(e);
@@ -3952,7 +3956,7 @@ $('.layer').change( function(event) {
         }
     }
 
-    execute_update = async function() 
+    execute_update = async function()
     {
         let current_version= await get_settings_cache_value('active_version');
         if(current_version == null)
@@ -3963,11 +3967,11 @@ $('.layer').change( function(event) {
         }
         if(typeof sw_version != 'undefined')
         {
-            set_settings_cache_value('active_version', sw_version.cache_name);        
+            set_settings_cache_value('active_version', sw_version.cache_name);
         }
         window.location.reload();
     }
-    
+
     $("#div_toast").hide();
     show_new_version_toast= ()=>{
         $("#div_toast").show();
@@ -3982,12 +3986,12 @@ $('.layer').change( function(event) {
         let cache_names=await caches.keys();
         for(c_name of cache_names)
             if(c_name == cache_name)
-                return true;        
+                return true;
         return false;
     }
     get_current_ui_version = async function (){
         current_version = await get_settings_cache_value("active_version");
-        
+
         current_ui='unkown';
         if(current_version != null)
         {
@@ -3995,7 +3999,7 @@ $('.layer').change( function(event) {
         }
     }
     try{
-        //when the serviceworker talks with us ...  
+        //when the serviceworker talks with us ...
         navigator.serviceWorker.addEventListener("message", async (evt) => {
             await get_current_ui_version();
             let cache_names=null;
@@ -4020,7 +4024,7 @@ $('.layer').change( function(event) {
                 let selected=c_name==current_version?"selected":"";
 
                 if(c_name.includes('@'))
-                {   
+                {
                     if(//uat version should not show regular versions and vice versa
                         location.pathname.startsWith("/uat") ?
                             ui_name.endsWith("uat")
@@ -4034,7 +4038,7 @@ $('.layer').change( function(event) {
             }
             version_selector+=
             `</select>
-            
+
             <button type="button" id="activate_version" disabled class="btn btn-primary btn-sm px-1 mx-1">activate</button>
             <button type="button" id="remove_version" class="btn btn-danger btn-sm px-1 mx-1"><svg style="width:1.5em;height:1.5em"><use xlink:href="img/sprites.svg#trash"/></svg>
             </button>
@@ -4057,12 +4061,12 @@ $('.layer').change( function(event) {
 
 
 
-                let upgrade_info = `    
+                let upgrade_info = `
                 currently active version (old):<br>
                 <div style="display:flex">
                 <span class="ml-2 px-1 py-1 outlined">core <i>${wasm_get_core_version()}</i></span> <span class="ml-2 px-1 py-1 outlined">ui <i>${current_ui}</i></span>
                 </div><br>
-                <span id="new_version_installed_or_not">${new_version_installed_or_not}</span>:<br> 
+                <span id="new_version_installed_or_not">${new_version_installed_or_not}</span>:<br>
                 <div style="display:flex">
                 <span class="ml-2 px-1 py-1 outlined">core <i>${sw_version.core}</i></span> <span class="ml-2 px-1 py-1 outlined">ui <i>${sw_version.ui}</i></span> ${activate_or_install}
                 </div>
@@ -4073,7 +4077,7 @@ $('.layer').change( function(event) {
                 $('#update_dialog').html(upgrade_info);
                 $('#activate_or_install').remove();
                 $('#install_warning').remove();
-                $('#version_display').html(`${upgrade_info} 
+                $('#version_display').html(`${upgrade_info}
                 <br>
                 ${version_selector}`);
                 if(!new_version_already_installed)
@@ -4115,26 +4119,26 @@ $('.layer').change( function(event) {
                     if(select.options.length>0)
                     {
                         select.selectedIndex=select.options.length-1;
-                        set_settings_cache_value("active_version",select.options[select.selectedIndex].value); 
+                        set_settings_cache_value("active_version",select.options[select.selectedIndex].value);
                     }
                     else
                     {
-                        set_settings_cache_value("active_version",sw_version.cache_name); 
-                    }   
+                        set_settings_cache_value("active_version",sw_version.cache_name);
+                    }
                 }
                 if(select.options.length==0)
                 {
-                    document.getElementById('remove_version').disabled=true;        
+                    document.getElementById('remove_version').disabled=true;
                     document.getElementById('activate_version').disabled=true;
                 }
-                else 
+                else
                 {
                     document.getElementById('activate_version').disabled=
                     (select.options[select.selectedIndex].value == current_version);
                 }
             }
             document.getElementById('activate_version').onclick = function() {
-                let cache_name = document.getElementById('version_selector').value; 
+                let cache_name = document.getElementById('version_selector').value;
                 set_settings_cache_value("active_version",cache_name);
                 window.location.reload();
             }
@@ -4143,7 +4147,7 @@ $('.layer').change( function(event) {
             {
                 activate_or_install_btn.onclick = () => {
                     (async ()=>{
-                        let new_version_already_installed=await has_installed_version(sw_version.cache_name); 
+                        let new_version_already_installed=await has_installed_version(sw_version.cache_name);
                         if(new_version_already_installed)
                         {
                             set_settings_cache_value("active_version",sw_version.cache_name);
@@ -4155,7 +4159,7 @@ $('.layer').change( function(event) {
                         }
                     })();
                 }
-            }        
+            }
         });
 
 
@@ -4188,8 +4192,8 @@ $('.layer').change( function(event) {
     setup_browser_interface();
 
     document.getElementById('port1').onchange = function() {
-        port1 = document.getElementById('port1').value; 
-        if(port1 == port2 || 
+        port1 = document.getElementById('port1').value;
+        if(port1 == port2 ||
            port1.indexOf("touch")>=0 && port2.indexOf("touch")>=0)
         {
             port2 = 'none';
@@ -4207,8 +4211,8 @@ $('.layer').change( function(event) {
             unregister_v_joystick();
         }
         if(port1 == 'mouse')
-        {                
-            mouse_port=1;    
+        {
+            mouse_port=1;
             canvas.addEventListener('click', request_pointerlock);
             request_pointerlock();
         }
@@ -4235,7 +4239,7 @@ $('.layer').change( function(event) {
     }
     document.getElementById('port2').onchange = function() {
         port2 = document.getElementById('port2').value;
-        if(port1 == port2 || 
+        if(port1 == port2 ||
            port1.indexOf("touch")>=0 && port2.indexOf("touch")>=0)
         {
             port1 = 'none';
@@ -4253,7 +4257,7 @@ $('.layer').change( function(event) {
             unregister_v_joystick();
         }
         if(port2 == 'mouse')
-        {                
+        {
             mouse_port=2;
             canvas.addEventListener('click', request_pointerlock);
             request_pointerlock();
@@ -4310,7 +4314,7 @@ $('.layer').change( function(event) {
           handleFileInput();
     }, false);
 
-    $("html").on('dragover', function(e) {dragover_handler(e.originalEvent); return false;}) 
+    $("html").on('dragover', function(e) {dragover_handler(e.originalEvent); return false;})
     .on('drop', function (e) {
         drop_handler( e.originalEvent );
         return false;
@@ -4340,7 +4344,7 @@ $('.layer').change( function(event) {
         $(`#${select_id}`).html(html_rom_list);
 
         document.getElementById(select_id).onchange = function() {
-            let selected_rom = document.getElementById(select_id).value; 
+            let selected_rom = document.getElementById(select_id).value;
             save_setting(rom_type, selected_rom);
             rom_restored_from_snapshot=false;
             load_roms(true);
@@ -4356,22 +4360,22 @@ $('.layer').change( function(event) {
 
 
 
-   $(`#button_fetch_open_roms > div`).click(function (event) 
+   $(`#button_fetch_open_roms > div`).click(function (event)
    {
        let choice=$(this).html();
        if(choice.includes("AROS"))
        {
         fetchOpenROMS("aros");
        }
-       else if(choice.includes("emutos"))       
+       else if(choice.includes("emutos"))
        {
         fetchOpenROMS("emutos");
        }
    });
 
 
-   
-   var bindROMUI = function (id_dropzone, id_delete, id_local_storage) 
+
+   var bindROMUI = function (id_dropzone, id_delete, id_local_storage)
    {
         document.getElementById(id_dropzone).addEventListener("click", function(e) {
             document.getElementById('theFileInput').elements['theFileDialog'].click();
@@ -4409,33 +4413,33 @@ $('.layer').change( function(event) {
         var sel1 = document.getElementById('port1');
         var opt1 = document.createElement('option');
         opt1.appendChild( document.createTextNode(gp.id) );
-        opt1.value = e.gamepad.index; 
-        sel1.appendChild(opt1); 
+        opt1.value = e.gamepad.index;
+        sel1.appendChild(opt1);
 
         var sel2 = document.getElementById('port2');
         var opt2 = document.createElement('option');
         opt2.appendChild( document.createTextNode(gp.id) );
-        opt2.value = e.gamepad.index; 
-        sel2.appendChild(opt2); 
+        opt2.value = e.gamepad.index;
+        sel2.appendChild(opt2);
     });
     window.addEventListener("gamepaddisconnected", (event) => {
         console.log("A gamepad disconnected:");
         console.log(event.gamepad);
-        var sel1 = document.getElementById('port1');       
+        var sel1 = document.getElementById('port1');
         for(var i=0; i<sel1.length; i++)
         {
             if(sel1.options[i].value == event.gamepad.index)
             {
-                sel1.removeChild( sel1.options[i] ); 
+                sel1.removeChild( sel1.options[i] );
                 break;
             }
         }
-        var sel2 = document.getElementById('port2');       
+        var sel2 = document.getElementById('port2');
         for(var i=0; i<sel2.length; i++)
         {
             if(sel2.options[i].value == event.gamepad.index)
             {
-                sel2.removeChild( sel2.options[i] ); 
+                sel2.removeChild( sel2.options[i] );
                 break;
             }
         }
@@ -4453,12 +4457,12 @@ $('.layer').change( function(event) {
     {
         create_new_custom_key = false;
         $("#button_custom_key").click(
-            function(e) 
-            {  
+            function(e)
+            {
                 create_new_custom_key = true;
                 $('#input_button_text').val('');
                 $('#input_action_script').val('');
- 
+
                 $('#modal_custom_key').modal('show');
             }
         );
@@ -4472,7 +4476,7 @@ $('.layer').change( function(event) {
                     editor.setOption("gutters", ["CodeMirror-lint-markers"]);
                     editor.setOption("lint", { esversion: 10});
                     $('#check_autocomplete').show();
-                    $('#check_livecomplete').prop('checked', true);                 
+                    $('#check_livecomplete').prop('checked', true);
                     editor.setOption('placeholder', "add example code with the menu button 'add'->'javascript'");
                 }
                 else
@@ -4485,11 +4489,11 @@ $('.layer').change( function(event) {
             }
         }
         set_complete_label = function(){
-          $('#check_livecomplete_label').text(  
+          $('#check_livecomplete_label').text(
               $('#check_livecomplete').prop('checked') ?
               "live complete":"autocomplete on ctrl+space");
         }
-        $('#check_livecomplete').change( function(){ 
+        $('#check_livecomplete').change( function(){
             set_complete_label();
             editor.focus();
         });
@@ -4522,30 +4526,30 @@ $('.layer').change( function(event) {
             }
         );
         button_delete_shortcut.click(()=>{
-            
+
             short_cut_input.value='';
             button_delete_shortcut.prop('disabled', true);
             validate_custom_key();
         });
 
         $('#modal_custom_key').on('show.bs.modal', function () {
-            bind_custom_key();    
+            bind_custom_key();
         });
 
         bind_custom_key = async function () {
-            $('#choose_padding a').click(function () 
+            $('#choose_padding a').click(function ()
             {
-                 $('#button_padding').text('btn size = '+ $(this).text() ); 
+                 $('#button_padding').text('btn size = '+ $(this).text() );
             });
-            $('#choose_opacity a').click(function () 
+            $('#choose_opacity a').click(function ()
             {
-                 $('#button_opacity').text('btn opacity = '+ $(this).text() ); 
+                 $('#button_opacity').text('btn opacity = '+ $(this).text() );
             });
 
             function set_script_language(script_language) {
                 $("#button_script_language").text(script_language);;
             }
-            $('#choose_script_language a').click(function () 
+            $('#choose_script_language a').click(function ()
             {
                 let new_lang = $(this).text();
                 set_script_language(new_lang);
@@ -4569,13 +4573,13 @@ $('.layer').change( function(event) {
                 otherButtons+=`<a class="dropdown-item ${!create_new_custom_key &&haptic_touch_selected.id == 'ck'+otherBtn.id ? 'active':''}" href="#" id="choose_${otherBtn.id}">
                 <div style="display:flex;justify-content:space-between">
                     <div>${html_encode(otherBtn.title)}</div>
-                    <div style="display:flex;margin-left:0.3em;" 
+                    <div style="display:flex;margin-left:0.3em;"
                         ${otherBtn.key==''?'hidden':''}>
                         ${key_display}
                     </div>
                 </div></a>`;
             }
-            
+
             group_list = await stored_groups();
             group_list = group_list.filter((g)=> g !== '__global_scope__');
             if(!group_list.includes(global_apptitle))
@@ -4584,7 +4588,7 @@ $('.layer').change( function(event) {
             }
             other_groups=``;
             for(group_name of group_list)
-            {   
+            {
                 other_groups+=`
             <option ${group_name === global_apptitle?"selected":""} value="${group_name}">${group_name}</option>
             `;
@@ -4600,9 +4604,9 @@ $('.layer').change( function(event) {
                     list (${custom_keys.length})
                     </button>
                     <div id="choose_action" style="min-width:250px" class="dropdown-menu dropdown-menu-right" aria-labelledby="dropdownMenuButton">
-                    
+
                     <div style="width:100%;display:flex;justify-content:center">
-                        <select onclick="event.stopPropagation();" id="select_other_group" 
+                        <select onclick="event.stopPropagation();" id="select_other_group"
                             style="width:95%"
                             class="custom-select" data-placement="left" data-toggle="tooltip" title="action button group">
                         ${other_groups}
@@ -4626,13 +4630,13 @@ $('.layer').change( function(event) {
                         if(confirm(`delete all actions specific to group ${global_apptitle}?`))
                         {
                             delete_button_group(global_apptitle);
-                            switch_to_other_group(default_app_title);                       
-                        }    
+                            switch_to_other_group(default_app_title);
+                        }
                     }, false
                 );
                 document.getElementById("button_new_group").addEventListener("click",
                     (e)=>{
-                        e.stopPropagation();    
+                        e.stopPropagation();
                         let new_group_name = prompt(`group name`);
                         if(new_group_name!==null)
                         {
@@ -4642,7 +4646,7 @@ $('.layer').change( function(event) {
                     }, false
                 );
                 document.getElementById('select_other_group').onchange = function() {
-                    let title=document.getElementById('select_other_group').value; 
+                    let title=document.getElementById('select_other_group').value;
                     switch_to_other_group(title)
                 }
             }
@@ -4660,7 +4664,7 @@ $('.layer').change( function(event) {
                 $("#button_delete_group").show();
 
 
-            $('#choose_action a').click(function () 
+            $('#choose_action a').click(function ()
             {
                 let btn_id = this.id.replace("choose_","");
                 if(btn_id == "new"){
@@ -4672,7 +4676,7 @@ $('.layer').change( function(event) {
                 {
                     create_new_custom_key=false;
                     var btn_def = custom_keys.find(el=>el.id == btn_id);
-                   
+
                     haptic_touch_selected= {id: 'ck'+btn_def.id};
                 }
                 bind_custom_key();
@@ -4682,9 +4686,9 @@ $('.layer').change( function(event) {
 
             switch_to_other_group=(title)=>
             {
-                global_apptitle = title; 
-             
-                get_custom_buttons(global_apptitle, 
+                global_apptitle = title;
+
+                get_custom_buttons(global_apptitle,
                     function(the_buttons) {
                         custom_keys = the_buttons;
                         for(let param_button of call_param_buttons)
@@ -4693,7 +4697,7 @@ $('.layer').change( function(event) {
                         }
 
                         create_new_custom_key=true;
-                        
+
                         install_custom_keys();
                         bind_custom_key();
                     }
@@ -4714,31 +4718,31 @@ $('.layer').change( function(event) {
                 button_delete_shortcut.prop('disabled', true);
                 $('#button_padding').prop('disabled', true);
                 $('#button_opacity').prop('disabled', true);
-     
+
             }
             else
             {
                 var btn_def = custom_keys.find(el=> ('ck'+el.id) == haptic_touch_selected.id);
 
-                $('#button_reset_position').prop('disabled', 
+                $('#button_reset_position').prop('disabled',
                     btn_def.currentX !== undefined &&
                     btn_def.currentX==0 && btn_def.currentY==0);
-     
+
                 set_script_language(btn_def.lang);
                 $('#input_button_text').val(btn_def.title);
                 $('#input_button_shortcut').val(btn_def.key);
-                
+
                 let padding = btn_def.padding == undefined ? 'default':btn_def.padding ;
                 $('#button_padding').text('btn size = '+ padding );
                 let opacity = btn_def.opacity == undefined ? 'default':btn_def.opacity ;
                 $('#button_opacity').text('btn opacity = '+ opacity);
-                
+
                 $('#check_app_scope').prop('checked',btn_def.app_scope);
                 $('#input_action_script').val(btn_def.script);
                 if(typeof(editor) !== 'undefined') editor.getDoc().setValue(btn_def.script);
 
                 $('#button_delete_custom_button').show();
-                
+
                 button_delete_shortcut.prop('disabled',btn_def.key == "");
                 $('#button_padding').prop('disabled', btn_def.title=='');
                 $('#button_opacity').prop('disabled', btn_def.title=='');
@@ -4758,13 +4762,13 @@ $('.layer').change( function(event) {
                 $('#check_app_scope').prop("disabled",false);
                 set_scope_label = function (){
                     $('#check_app_scope_label').html(
-                        $('#check_app_scope').prop('checked') ? 
+                        $('#check_app_scope').prop('checked') ?
                         '[ currently visible only for '+global_apptitle+' ]' :
                         '[ currently globally visible ]'
                     );
                 }
                 set_scope_label();
-                $('#check_app_scope').change( set_scope_label ); 
+                $('#check_app_scope').change( set_scope_label );
             }
 
             if(is_running())
@@ -4821,7 +4825,7 @@ $('.layer').change( function(event) {
             });
             $('#add_timer_action').html(html_action_list);
             $('#add_timer_action a').click(on_add_action);
-            
+
             //system action
             var list_actions=['toggle_run','toggle_warp','take_snapshot', 'restore_last_snapshot', 'swap_joystick', 'keyboard', 'fullscreen', 'menubar', 'pause', 'run', 'clipboard_paste', 'warp_always', 'warp_never', 'warp_auto', 'activity_monitor', 'toggle_action_buttons','toggle_speed'];
             html_action_list='';
@@ -4845,8 +4849,8 @@ $('.layer').change( function(event) {
                     var action_script_val = $('#input_action_script').val();
                     if(action_script_val.trim().length==0)
                     {
-                        if(txt=='simple while')                
-                            action_script_val = 
+                        if(txt=='simple while')
+                            action_script_val =
 `
 //do as longs as the actionbutton is not pressed again
 while(not_stopped(this_id))
@@ -4892,11 +4896,11 @@ release_key('ControlLeft');`;
                 });
                 require(["codemirror", "codemirror/mode/javascript/javascript",
                             "codemirror/addon/hint/show-hint", "codemirror/addon/hint/javascript-hint",
-                            "codemirror/addon/edit/closebrackets","codemirror/addon/edit/matchbrackets", 
+                            "codemirror/addon/edit/closebrackets","codemirror/addon/edit/matchbrackets",
                             "codemirror/addon/selection/active-line", "codemirror/addon/display/placeholder",
                             "codemirror/addon/lint/lint", "codemirror/addon/lint/javascript-lint",
       //                      "codemirror/lib/jshint", not working with require.js
-                            ], function(CodeMirror) 
+                            ], function(CodeMirror)
                 {
                     editor = CodeMirror.fromTextArea(document.getElementById("input_action_script"), {
                         lineNumbers: true,
@@ -4911,7 +4915,7 @@ release_key('ControlLeft');`;
                         extraKeys: {"Ctrl-Space": "autocomplete"}
                     });
 
-                    let check_livecomplete=$('#check_livecomplete'); 
+                    let check_livecomplete=$('#check_livecomplete');
                     editor.on("keydown",function( cm, event ) {
                         if(event.key === "Escape")
                         {//prevent that ESC closes the complete modal when in editor
@@ -4922,12 +4926,12 @@ release_key('ControlLeft');`;
                             event.key !== undefined &&
                             event.key.length == 1  &&
                             event.metaKey == false && event.ctrlKey == false &&
-                            event.key != ';' && event.key != ' ' && event.key != '(' 
-                            && event.key != ')' && 
+                            event.key != ';' && event.key != ' ' && event.key != '('
+                            && event.key != ')' &&
                             event.key != '{' && event.key != '}'
-                            ) 
+                            )
                         {
-                            if(check_livecomplete.is(":visible") && 
+                            if(check_livecomplete.is(":visible") &&
                                check_livecomplete.prop('checked'))
                             {
                                 cm.showHint({completeSingle: false});
@@ -4958,14 +4962,14 @@ release_key('ControlLeft');`;
 
 
 
-        $('#modal_custom_key').on('shown.bs.modal', async function () 
+        $('#modal_custom_key').on('shown.bs.modal', async function ()
         {
             if(typeof jshint_loaded != 'undefined')
             {
                 turn_on_full_editor();
             }
             else
-            {   
+            {
                 $("#button_script_add, #button_script_language").each(function(){
                     $(this).prop('disabled', true).
                     removeClass( "btn-primary" ).
@@ -4985,7 +4989,7 @@ release_key('ControlLeft');`;
 
                 //lazy load full editor now
                 await load_script("js/cm/lib/jshint.js");
-                jshint_loaded=true;  
+                jshint_loaded=true;
                 await load_script("js/cm/lib/require.js");
                 turn_on_full_editor();
             }
@@ -4999,7 +5003,7 @@ release_key('ControlLeft');`;
                 editor.toTextArea();
             }
             create_new_custom_key=false;
-        
+
             if(is_running())
             {
                 wasm_run();
@@ -5009,7 +5013,7 @@ release_key('ControlLeft');`;
 
 
         $('#input_button_text').keyup( function () {
-            validate_custom_key(); 
+            validate_custom_key();
             let empty=document.getElementById('input_button_text').value =='';
             $('#button_padding').prop('disabled', empty);
             $('#button_opacity').prop('disabled', empty);
@@ -5018,7 +5022,7 @@ release_key('ControlLeft');`;
         $('#input_action_script').keyup( function () {validate_action_script(); return true;} );
 
 
-        $('#button_reset_position').click(function(e) 
+        $('#button_reset_position').click(function(e)
         {
             var btn_def = custom_keys.find(el=> ('ck'+el.id) == haptic_touch_selected.id);
             if(btn_def != null)
@@ -5032,7 +5036,7 @@ release_key('ControlLeft');`;
             }
         });
 
-        $('#button_save_custom_button').click(async function(e) 
+        $('#button_save_custom_button').click(async function(e)
         {
             editor.save();
             if( (await validate_custom_key_form()) == false)
@@ -5042,7 +5046,7 @@ release_key('ControlLeft');`;
             let opacity = $('#button_opacity').text().split("=")[1].trim();
             if(create_new_custom_key)
             {
-                //create a new custom key buttom  
+                //create a new custom key buttom
                 let new_button={  id: custom_keys.length
                       ,title: $('#input_button_text').val()
                       ,key: $('#input_button_shortcut').val()
@@ -5080,12 +5084,12 @@ release_key('ControlLeft');`;
                 btn_def.padding=padding;
                 if(padding == 'default')
                 {
-                    delete btn_def.padding;    
+                    delete btn_def.padding;
                 }
                 btn_def.opacity=opacity;
                 if(opacity == 'default')
                 {
-                    delete btn_def.opacity;    
+                    delete btn_def.opacity;
                 }
                 install_custom_keys();
             }
@@ -5093,13 +5097,13 @@ release_key('ControlLeft');`;
             save_custom_buttons(global_apptitle, custom_keys);
         });
 
-        $('#button_delete_custom_button').click(function(e) 
+        $('#button_delete_custom_button').click(function(e)
         {
             let id_to_delete =haptic_touch_selected.id.substring(2);
 
             get_running_script(id_to_delete).stop_request=true;
 
-            custom_keys =custom_keys.filter(el=> +el.id != id_to_delete);            
+            custom_keys =custom_keys.filter(el=> +el.id != id_to_delete);
             install_custom_keys();
             $('#modal_custom_key').modal('hide');
             save_custom_buttons(global_apptitle, custom_keys);
@@ -5108,9 +5112,9 @@ release_key('ControlLeft');`;
         custom_keys = [];
         action_scripts= {};
 
-        get_custom_buttons(global_apptitle, 
+        get_custom_buttons(global_apptitle,
             function(the_buttons) {
-                custom_keys = the_buttons;                
+                custom_keys = the_buttons;
                 for(let param_button of call_param_buttons)
                 {
                     custom_keys.push(param_button);
@@ -5133,7 +5137,7 @@ release_key('ControlLeft');`;
 
         //remove all existing custom key buttons
         $(".custom_key").remove();
-        
+
         //insert the new buttons
         custom_keys.forEach(function (element, i) {
             element.id = element.transient !== undefined && element.transient ? element.id : i;
@@ -5148,7 +5152,7 @@ release_key('ControlLeft');`;
             if(element.currentX)
             {
                 btn_html += 'transform:translate3d(' + element.currentX + 'px,' + element.currentY + 'px,0);';
-            } 
+            }
             if(element.transient)
             {
                 btn_html += 'border-width:3px;border-color: rgb(100, 133, 188);'; //cornflowerblue=#6495ED
@@ -5179,13 +5183,13 @@ release_key('ControlLeft');`;
             if(!movable_action_buttons)
             {//when action buttons locked
              //process the mouse/touch events immediatly, there is no need to guess the gesture
-                let action_function = function(e) 
+                let action_function = function(e)
                 {
                     e.stopImmediatePropagation();
                     e.preventDefault();
                     var action_script = action_scripts['ck'+element.id];
 
-                    let running_script=get_running_script(element.id);                    
+                    let running_script=get_running_script(element.id);
                     if(running_script.running == false)
                     {
                       running_script.action_button_released = false;
@@ -5193,7 +5197,7 @@ release_key('ControlLeft');`;
                     execute_script(element.id, element.lang, action_script);
 
                 };
-                let mark_as_released = function(e) 
+                let mark_as_released = function(e)
                 {
                     e.stopImmediatePropagation();
                     e.preventDefault();
@@ -5219,7 +5223,7 @@ release_key('ControlLeft');`;
                     //at the end of a drag ignore the click
                     if(just_dragged)
                         return;
-    
+
                     var action_script = action_scripts['ck'+element.id];
                     get_running_script(element.id).action_button_released = true;
                     execute_script(element.id, element.lang, action_script);
@@ -5244,7 +5248,7 @@ release_key('ControlLeft');`;
                 }
 
                 if(get_running_script(b.id).running)
-                {//if it still runs  
+                {//if it still runs
                     $('#ck'+b.id).css("background-color", "var(--red)");
                 }
             }
@@ -5262,7 +5266,7 @@ release_key('ControlLeft');`;
         currentY=0;
         initialX=0;
         initialY=0;
-    
+
         xOffset = { };
         yOffset = { };
 
@@ -5279,12 +5283,12 @@ release_key('ControlLeft');`;
 
 
     function dragStart(e) {
-      if (dragItems.includes(e.target)) {  
-        //console.log('drag start:' +e.target.id);  
+      if (dragItems.includes(e.target)) {
+        //console.log('drag start:' +e.target.id);
         dragItem = e.target;
         active = true;
         haptic_active=false;
-        timeStart = Date.now(); 
+        timeStart = Date.now();
 
         if(xOffset[e.target.id] === undefined)
         {
@@ -5294,13 +5298,13 @@ release_key('ControlLeft');`;
         currentX = xOffset[e.target.id];
         currentY = yOffset[e.target.id];
         startX = currentX;
-        startY = currentY;        
+        startY = currentY;
 
-        
+
         setTimeout(() => {
             checkForHapticTouch(e);
         }, 600);
-        
+
 
         if (e.type === "touchstart") {
             initialX = e.touches[0].clientX - xOffset[e.target.id];
@@ -5333,8 +5337,8 @@ release_key('ControlLeft');`;
 
     function dragEnd(e) {
       if (active) {
-        //console.log('drag end:' +e.target.id);  
- 
+        //console.log('drag end:' +e.target.id);
+
         if(!haptic_active)
         {
             checkForHapticTouch(e);
@@ -5342,8 +5346,8 @@ release_key('ControlLeft');`;
         initialX = currentX;
         initialY = currentY;
 
-        var ckdef = custom_keys.find(el => ('ck'+el.id) == dragItem.id); 
-        
+        var ckdef = custom_keys.find(el => ('ck'+el.id) == dragItem.id);
+
         if(ckdef.currentX === undefined)
         {
             ckdef.currentX = 0;
@@ -5354,11 +5358,11 @@ release_key('ControlLeft');`;
         {
             ckdef.currentX = currentX;
             ckdef.currentY = currentY;
-         
+
             //save new position
             save_custom_buttons(global_apptitle, custom_keys);
         }
-        
+
         dragItem = null;
         active = false;
       }
@@ -5370,8 +5374,8 @@ release_key('ControlLeft');`;
 
         if(dragItems.includes(e.target) && e.target != dragItem)
           return; // custom key is dragged onto other custom key, don't allow that
- 
-       // console.log('drag:' +e.target.id);  
+
+       // console.log('drag:' +e.target.id);
 
         if (e.type === "touchmove") {
           currentX = e.touches[0].clientX - initialX;
@@ -5387,7 +5391,7 @@ release_key('ControlLeft');`;
             just_dragged = Math.abs(xOffset[e.target.id]-currentX)>magnetic_force || Math.abs(yOffset[e.target.id]-currentY)>magnetic_force;
         }
         if(just_dragged)
-        { 
+        {
             xOffset[e.target.id] = currentX;
             yOffset[e.target.id] = currentY;
 
@@ -5397,7 +5401,7 @@ release_key('ControlLeft');`;
     }
 
     function setTranslate(xPos, yPos, el) {
-     //   console.log('translate: x'+xPos+' y'+yPos+ 'el=' +el.id);  
+     //   console.log('translate: x'+xPos+' y'+yPos+ 'el=' +el.id);
       el.style.transform = "translate3d(" + xPos + "px, " + yPos + "px, 0)";
     }
 
@@ -5424,7 +5428,7 @@ function setTheme() {
     save_setting('dark_switch', false);
   }
 }
-  
+
 
 
 
@@ -5448,10 +5452,10 @@ function setTheme() {
             if(touches !== undefined)
                 touch= touches[0];
             else
-                touch = event;//mouse emulation    
-            return touch.pageX < window.innerWidth/2;  
+                touch = event;//mouse emulation
+            return touch.pageX < window.innerWidth/2;
         });
-       
+
         // one on the right of the screen
         v_fire	= new VirtualJoystick({
             container	: document.getElementById('div_canvas'),
@@ -5466,13 +5470,13 @@ function setTheme() {
             if(touches !== undefined)
                 touch= touches[0];
             else
-                touch = event;//mouse emulation    
+                touch = event;//mouse emulation
             return touch.pageX >= window.innerWidth/2;
         });
     }
 
     function unregister_v_joystick()
-    {   
+    {
         if(v_joystick != null)
         {
             v_joystick.destroy();
@@ -5491,11 +5495,11 @@ function setTheme() {
         return running;
         //return $('#button_run').attr('disabled')=='disabled';
     }
-        
-    
+
+
 
 async function emit_string_autotype(keys_to_emit_array, type_first_key_time=0, release_delay_in_ms=100)
-{  
+{
     var delay = type_first_key_time;
     var release_delay = release_delay_in_ms;
     if(release_delay<50)
@@ -5518,7 +5522,7 @@ async function emit_string_autotype(keys_to_emit_array, type_first_key_time=0, r
 }
 
 async function emit_string(keys_to_emit_array, type_first_key_time=0, release_delay_in_ms=100)
-{  
+{
     if(type_first_key_time>0) await sleep(type_first_key_time);
     for(the_key of keys_to_emit_array)
     {
@@ -5529,13 +5533,13 @@ async function emit_string(keys_to_emit_array, type_first_key_time=0, release_de
             {
                 wasm_key(key_code.modifier[0], 1);
             }
-            wasm_key(key_code.raw_key[0], 1);    
-            await sleep(release_delay_in_ms);     
+            wasm_key(key_code.raw_key[0], 1);
+            await sleep(release_delay_in_ms);
             if(key_code.modifier != null)
             {
                 wasm_key(key_code.modifier[0], 0);
             }
-            wasm_key(key_code.raw_key[0],0);                
+            wasm_key(key_code.raw_key[0],0);
         }
     }
 }
@@ -5545,7 +5549,7 @@ function hide_all_tooltips()
     //close all open tooltips
     $('[data-toggle="tooltip"]').tooltip('hide');
 }
-    
+
 add_pencil_support = (element) => {
     let isPointerDown = false;
     let pointerId = null;
@@ -5568,7 +5572,7 @@ add_pencil_support = (element) => {
             });
 
             element.focus();
-            element.dispatchEvent(clickEvent);      
+            element.dispatchEvent(clickEvent);
         }
     });
 
@@ -5583,7 +5587,7 @@ function add_pencil_support_to_childs(element) {
     element.childNodes.forEach(child => {
         if (child.nodeType === Node.ELEMENT_NODE)
           add_pencil_support(child);
-    });  
+    });
 }
 function add_pencil_support_for_elements_which_need_it()
 {
@@ -5630,21 +5634,21 @@ function add_monitor(id, label, splitted=false)
     color.CPU={start: '50,50,50', end:'255,255,255'}
 
 
-    document.querySelector(`#monitor_${id}`).addEventListener('click', 
+    document.querySelector(`#monitor_${id}`).addEventListener('click',
         (e)=>{
             let id=e.currentTarget.id.replace('monitor_','');
             if(id.includes("Ram") || id.includes("Rom"))
                 id="CPU";
-            
+
             if(dma_channels[id] !==true )
             {
                 e.currentTarget.style.setProperty("--color_start",color[id].start);
-                e.currentTarget.style.setProperty("--color_end",color[id].end);   
+                e.currentTarget.style.setProperty("--color_end",color[id].end);
             }
             else
             {
                 e.currentTarget.style.setProperty("--color_start",'50,50,50');
-                e.currentTarget.style.setProperty("--color_end",'200,200,200');   
+                e.currentTarget.style.setProperty("--color_end",'200,200,200');
             }
             dma_debug(id);
         }
@@ -5656,7 +5660,7 @@ function add_monitor(id, label, splitted=false)
         if(splitted==false)
         {
             $(`#monitor_${id}`).append(
-                `<div id="${id}_bar_${i}" class="bar" 
+                `<div id="${id}_bar_${i}" class="bar"
                   style="--barval:0;grid-column:${i+1};"></div>`
             );
             dma_channel_history[id].push(document.querySelector(`#${id}_bar_${i}`));
@@ -5665,11 +5669,11 @@ function add_monitor(id, label, splitted=false)
         else
         {
             $(`#monitor_${id}`).append(
-                `<div id="${id}_bar_${i}_upper" class="bar_splitted_upper" 
+                `<div id="${id}_bar_${i}_upper" class="bar_splitted_upper"
                   style="--barval:0;grid-column:${i+1};"></div>`
             );
             $(`#monitor_${id}`).append(
-                `<div id="${id}_bar_${i}_lower" class="bar_splitted_lower" 
+                `<div id="${id}_bar_${i}_lower" class="bar_splitted_lower"
                   style="--barval:0;grid-column:${i+1};"></div>`
             );
             dma_channel_history[id].push(
@@ -5680,7 +5684,7 @@ function add_monitor(id, label, splitted=false)
             );
             dma_channel_history_values[id].push([0,0]);
         }
-        
+
     }
 
     const activity_id = {
@@ -5701,7 +5705,7 @@ function add_monitor(id, label, splitted=false)
     {
         activity_intervall = setInterval(()=>{
             if(!running) return;
-            
+
             for(id in dma_channels){
                 if(dma_channel_history[id]===undefined)
                     continue;
@@ -5729,17 +5733,17 @@ function add_monitor(id, label, splitted=false)
                     }
 
                     if(value !== dma_channel_history_values[id][20-1][0])
-                    {    
-                        dma_channel_history_values[id][20-1][0]= value;           
+                    {
+                        dma_channel_history_values[id][20-1][0]= value;
                         dma_channel_history[id][20-1][0].style.setProperty("--barval", value);
                     }
 
                     value=_wasm_activity(activity_id[id],1);
                     value = (Math.log(1+19*value) / Math.log(20)) * 100;
-                    value = value>100 ? 100: Math.round(value);    
+                    value = value>100 ? 100: Math.round(value);
                     if(value !== dma_channel_history_values[id][20-1][1])
-                    {         
-                        dma_channel_history_values[id][20-1][1]= value;  
+                    {
+                        dma_channel_history_values[id][20-1][1]= value;
                         dma_channel_history[id][20-1][1].style.setProperty("--barval", value);
                     }
                 }
@@ -5828,11 +5832,11 @@ function hide_activity()
 function dma_debug(channel)
 {
 /**
- * activity monitor on => all aktivity monitorings are enabled 
+ * activity monitor on => all aktivity monitorings are enabled
  * they will be rendered black and white
  * on touch werden they become colored and the dma bus activity will be visualized (dma debugger)
  * again touch and they become black white  and dma channel visualisation on that particular channel will be disabled
- 
+
 Settings
  (x) activity monitor
  (x?) tap on monitor to visualise dma channel
@@ -5847,6 +5851,6 @@ Settings
     }
 
     dma_channels[channel]=!dma_channels[channel];
-   
+
     wasm_configure_key(`DEBUG_CHANNEL${Math.min(6,Object.keys(dma_channels).indexOf(channel)) }`,dma_channels[channel] ? "1" : "0");
 }
