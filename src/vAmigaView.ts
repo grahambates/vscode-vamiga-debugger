@@ -5,8 +5,12 @@ import { join } from "path";
 export class VAmigaView {
   public static readonly viewType = "vamiga-debugger.webview";
   private _panel?: vscode.WebviewPanel;
+  private _pendingRpcs = new Map<
+    string,
+    { resolve: Function; reject: Function; timeout: NodeJS.Timeout }
+  >();
 
-  constructor(private readonly _extensionUri: vscode.Uri) { }
+  constructor(private readonly _extensionUri: vscode.Uri) {}
 
   public openFile(filePath: string): void {
     if (!existsSync(filePath)) {
@@ -26,8 +30,9 @@ export class VAmigaView {
         retainContextWhenHidden: true, // Keep webview alive when hidden
         localResourceRoots: [
           this._extensionUri,
-          ...(vscode.workspace.workspaceFolders?.map(folder => folder.uri) || [])
-        ]
+          ...(vscode.workspace.workspaceFolders?.map((folder) => folder.uri) ||
+            []),
+        ],
       },
     );
 
@@ -39,6 +44,21 @@ export class VAmigaView {
       this._panel = undefined;
     });
 
+    // Set up RPC response handler
+    this._panel.webview.onDidReceiveMessage((message) => {
+      if (message.type === "rpcResponse") {
+        const pending = this._pendingRpcs.get(message.id);
+        if (pending) {
+          clearTimeout(pending.timeout);
+          this._pendingRpcs.delete(message.id);
+          if (message.error) {
+            pending.reject(new Error(message.error));
+          } else {
+            pending.resolve(message.result);
+          }
+        }
+      }
+    });
   }
 
   public reveal(): void {
@@ -61,23 +81,63 @@ export class VAmigaView {
     }
   }
 
+  public async sendRpcCommand<T = any>(
+    command: string,
+    args?: any,
+    timeoutMs = 5000,
+  ): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+      if (!this._panel) {
+        reject(new Error("Emulator panel is not open"));
+        return;
+      }
+
+      const id = Math.random().toString(36).substring(2, 15);
+      const timeout = setTimeout(() => {
+        this._pendingRpcs.delete(id);
+        reject(new Error(`RPC timeout after ${timeoutMs}ms: ${command}`));
+      }, timeoutMs);
+
+      this._pendingRpcs.set(id, { resolve, reject, timeout });
+      this._panel.webview.postMessage({
+        command,
+        args: { ...args, _rpcId: id },
+      });
+    });
+  }
+
   public dispose(): void {
+    // Clean up any pending RPCs
+    for (const [_, pending] of this._pendingRpcs) {
+      clearTimeout(pending.timeout);
+      pending.reject(new Error("Webview disposed"));
+    }
+    this._pendingRpcs.clear();
+
     this._panel?.dispose();
   }
 
   // Helper methods:
 
   private getConfiguredViewColumn(): vscode.ViewColumn {
-    const config = vscode.workspace.getConfiguration('vamiga-debugger');
-    const setting = config.get<string>('defaultViewColumn', 'beside');
-    
+    const config = vscode.workspace.getConfiguration("vamiga-debugger");
+    const setting = config.get<string>("defaultViewColumn", "beside");
+
     switch (setting) {
-      case 'one': return vscode.ViewColumn.One;
-      case 'two': return vscode.ViewColumn.Two;
-      case 'three': return vscode.ViewColumn.Three;
-      case 'beside': return vscode.ViewColumn.Beside;
-      case 'active': return vscode.window.activeTextEditor?.viewColumn || vscode.ViewColumn.One;
-      default: return vscode.ViewColumn.Beside;
+      case "one":
+        return vscode.ViewColumn.One;
+      case "two":
+        return vscode.ViewColumn.Two;
+      case "three":
+        return vscode.ViewColumn.Three;
+      case "beside":
+        return vscode.ViewColumn.Beside;
+      case "active":
+        return (
+          vscode.window.activeTextEditor?.viewColumn || vscode.ViewColumn.One
+        );
+      default:
+        return vscode.ViewColumn.Beside;
     }
   }
 
@@ -94,16 +154,26 @@ export class VAmigaView {
       throw new Error("Panel not initialized");
     }
 
-    const vamigaUri = this._panel.webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, "vamiga"));
+    const vamigaUri = this._panel.webview.asWebviewUri(
+      vscode.Uri.joinPath(this._extensionUri, "vamiga"),
+    );
 
     // Read the HTML template from the vamiga directory
-    const templatePath = join(this._extensionUri.fsPath, "vamiga", "vAmiga.html");
-    let htmlContent = readFileSync(templatePath, 'utf8');
+    const templatePath = join(
+      this._extensionUri.fsPath,
+      "vamiga",
+      "vAmiga.html",
+    );
+    let htmlContent = readFileSync(templatePath, "utf8");
 
     // Replace template variables
     htmlContent = htmlContent.replace(/\$\{vamigaUri\}/g, vamigaUri.toString());
-    htmlContent = htmlContent.replace(/\$\{programUri\}/g, programUri.toString());
+    htmlContent = htmlContent.replace(
+      /\$\{programUri\}/g,
+      programUri.toString(),
+    );
 
     return htmlContent;
   }
 }
+

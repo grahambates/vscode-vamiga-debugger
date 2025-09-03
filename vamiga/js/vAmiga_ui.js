@@ -2008,6 +2008,14 @@ function InitWrappers() {
     wasm_load_workspace = Module.cwrap('wasm_load_workspace', 'undefined', ['string']);
     wasm_retro_shell = Module.cwrap('wasm_retro_shell', 'undefined', ['string']);
 
+    // Debugging functions
+    wasm_set_breakpoint = Module.cwrap('wasm_set_breakpoint', 'undefined', ['number']);
+    wasn_remove_breakpoint = Module.cwrap('wasm_remove_breakpoint', 'undefined', ['number']);
+    wasm_step_over = Module.cwrap('wasm_step_over', 'undefined');
+    wasm_step_into = Module.cwrap('wasm_step_into', 'undefined');
+    wasm_read_register = Module.cwrap('wasm_read_register', 'number', ['number']);
+    wasm_write_register = Module.cwrap('wasm_read_register', 'number', ['number', 'number']);
+
     const volumeSlider = document.getElementById('volume-slider');
     set_volume = (new_volume)=>{
         const volume = parseFloat(new_volume);

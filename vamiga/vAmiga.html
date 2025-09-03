@@ -1516,12 +1516,6 @@
 					case 'reset':
 						wasm_reset();
 						break;
-					// case 'halt':
-					// 	wasm_halt();
-					// 	break;
-					// case 'run':
-					// 	wasm_run();
-					// 	break;
 					case 'loadFile':
 						fetch(message.args.uri).then(response => {
 							if (!response.ok) {
@@ -1545,6 +1539,31 @@
 						break;
 					case 'powerOn':
 						wasm_power_on();
+						break;
+
+					// Example RPC command - replace with your actual commands
+					case 'getMemory':
+						try {
+							// Example: get memory from WASM (replace with actual function)
+							const memory = new Uint8Array(message.args.length || 256);
+							// For demo: wasm_get_memory(message.args.address, message.args.length);
+
+							if (message.args._rpcId) {
+								vscode.postMessage({
+									type: 'rpcResponse',
+									id: message.args._rpcId,
+									result: Array.from(memory) // Convert to JSON-serializable array
+								});
+							}
+						} catch (error) {
+							if (message.args._rpcId) {
+								vscode.postMessage({
+									type: 'rpcResponse',
+									id: message.args._rpcId,
+									error: error.message
+								});
+							}
+						}
 						break;
 				}
 			});
