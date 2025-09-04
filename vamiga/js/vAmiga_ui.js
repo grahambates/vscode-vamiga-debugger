@@ -2017,11 +2017,13 @@ function InitWrappers() {
     wasm_step_into = Module.cwrap('wasm_step_into', 'undefined');
     wasm_read_register = Module.cwrap('wasm_read_register', 'number', ['number']);
     wasm_write_register = Module.cwrap('wasm_read_register', 'number', ['number', 'number']);
-    wasm_read_memory = Module.cwrap('wasm_read_memory', 'number', ['number']);
-    wasm_read_memory_word = Module.cwrap('wasm_read_memory_word', 'number', ['number']);
+    wasm_peek8 = Module.cwrap('wasm_peek8', 'number', ['number']);
+    wasm_peek16 = Module.cwrap('wasm_peek16', 'number', ['number']);
+    wasm_peek_custom = Module.cwrap('wasm_peek_custom', 'number', ['number']);
     wasm_list_processes = Module.cwrap('wasm_list_processes', 'string');
-    wasm_read_seglist = Module.cwrap('wasm_read_seglist', 'string', ['string']);
+    wasm_read_seglist = Module.cwrap('wasm_read_seglist', 'string', ['number']);
     wasm_get_call_stack = Module.cwrap('wasm_get_call_stack', 'string');
+    wasm_first_bpl_info = Module.cwrap('wasm_first_bpl_info', 'string', ['number']);
 
     const volumeSlider = document.getElementById('volume-slider');
     set_volume = (new_volume)=>{
