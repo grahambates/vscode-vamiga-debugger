@@ -14,8 +14,7 @@ export class VAmigaView {
 
   public openFile(filePath: string): void {
     if (!existsSync(filePath)) {
-      vscode.window.showErrorMessage(`File not found: ${filePath}`);
-      return;
+      throw new Error(`File not found: ${filePath}`);
     }
 
     const column = this.getConfiguredViewColumn();

@@ -1541,30 +1541,36 @@
 						wasm_power_on();
 						break;
 
-					// Example RPC command - replace with your actual commands
-					case 'getMemory':
-						try {
-							// Example: get memory from WASM (replace with actual function)
-							const memory = new Uint8Array(message.args.length || 256);
-							// For demo: wasm_get_memory(message.args.address, message.args.length);
-
-							if (message.args._rpcId) {
-								vscode.postMessage({
-									type: 'rpcResponse',
-									id: message.args._rpcId,
-									result: Array.from(memory) // Convert to JSON-serializable array
-								});
-							}
-						} catch (error) {
-							if (message.args._rpcId) {
-								vscode.postMessage({
-									type: 'rpcResponse',
-									id: message.args._rpcId,
-									error: error.message
-								});
-							}
+					case 'listProccesses': {
+						const res = {
+							type: 'rpcResponse',
+							id: message.args._rpcId,
 						}
+						try {
+							res.result = JSON.parse(wasm_list_processes());
+						} catch (error) {
+							res.error = error.message;
+						}
+						vscode.postMessage(res);
 						break;
+					}
+					case 'readSeglist': {
+						const res = {
+							type: 'rpcResponse',
+							id: message.args._rpcId,
+						}
+						try {
+							res.result = JSON.parse(wasm_read_seglist(args.processName));
+						} catch (error) {
+							res.error = error.message;
+						}
+						vscode.postMessage(res);
+						break;
+					}
+					default:
+						if (message.command) {
+							vscode.postMessage({ type: 'error', text: `Unknown command: ${message.command}` });
+						}
 				}
 			});
 		</script>

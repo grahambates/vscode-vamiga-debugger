@@ -1896,6 +1896,7 @@ function InitWrappers() {
     wasm_halt=function () {
         Module._wasm_halt();
         stop_request_animation_frame=true;
+        vscode.postMessage({ type: 'emulator-state', state: 'paused' });
     }
     wasm_draw_one_frame= Module.cwrap('wasm_draw_one_frame', 'undefined');
 
@@ -1963,6 +1964,7 @@ function InitWrappers() {
             stop_request_animation_frame=false;
             requestAnimationFrame(do_animation_frame);
         }
+        vscode.postMessage({ type: 'emulator-state', state: 'running' });
     }
 
     wasm_take_user_snapshot = Module.cwrap('wasm_take_user_snapshot', 'string');
@@ -2015,6 +2017,11 @@ function InitWrappers() {
     wasm_step_into = Module.cwrap('wasm_step_into', 'undefined');
     wasm_read_register = Module.cwrap('wasm_read_register', 'number', ['number']);
     wasm_write_register = Module.cwrap('wasm_read_register', 'number', ['number', 'number']);
+    wasm_read_memory = Module.cwrap('wasm_read_memory', 'number', ['number']);
+    wasm_read_memory_word = Module.cwrap('wasm_read_memory_word', 'number', ['number']);
+    wasm_list_processes = Module.cwrap('wasm_list_processes', 'string');
+    wasm_read_seglist = Module.cwrap('wasm_read_seglist', 'string', ['string']);
+    wasm_get_call_stack = Module.cwrap('wasm_get_call_stack', 'string');
 
     const volumeSlider = document.getElementById('volume-slider');
     set_volume = (new_volume)=>{

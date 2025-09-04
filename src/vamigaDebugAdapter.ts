@@ -59,6 +59,7 @@ export class VamigaDebugAdapter extends DebugSession {
                 id: 1001,
                 format: 'program not specified',
             });
+            this.sendEvent(new TerminatedEvent());
             return;
         }
 
@@ -80,11 +81,19 @@ export class VamigaDebugAdapter extends DebugSession {
                 id: 1002,
                 format: `Failed to start emulator: ${error}`,
             });
+            this.sendEvent(new TerminatedEvent());
         }
     }
 
     private async startEmulator(programPath: string): Promise<void> {
-        this.vAmiga.openFile(programPath);
+        try {
+            await this.vAmiga.openFile(programPath);
+        } catch (error) {
+            if (error instanceof Error) {
+                vscode.window.showErrorMessage(`Failed to open file in VAmiga view: ${error.message}`);
+            }
+            this.sendEvent(new TerminatedEvent());
+        }
 
         // Stop debugging when the webview is closed
         this.vAmiga.onDidDispose(() => {
@@ -111,23 +120,26 @@ export class VamigaDebugAdapter extends DebugSession {
     }
 
     protected continueRequest(response: DebugProtocol.ContinueResponse, args: DebugProtocol.ContinueArguments): void {
-        this._isRunning = true;
         this.vAmiga.sendCommand("run");
         this.vAmiga.reveal();
-        this.sendEvent(new ContinuedEvent(args.threadId));
         response.body = { allThreadsContinued: false };
         this.sendResponse(response);
     }
 
     protected pauseRequest(response: DebugProtocol.PauseResponse, args: DebugProtocol.PauseArguments): void {
-        this._isRunning = false;
         this.vAmiga.sendCommand("pause");
-        this.sendEvent(new StoppedEvent('pause', VamigaDebugAdapter.THREAD_ID));
         this.sendResponse(response);
+
+        // example of sending an RPC command to the emulator
+        this.vAmiga.sendRpcCommand("listProccesses").then((processes) => {
+            console.log("Processes:", processes);
+        }).catch((error) => {
+            console.error("RPC Error:", error);
+        });
     }
 
     protected disconnectRequest(response: DebugProtocol.DisconnectResponse, args: DebugProtocol.DisconnectArguments): void {
-       this.vAmiga.dispose();
+        this.vAmiga.dispose();
         this.sendEvent(new TerminatedEvent());
         this.sendResponse(response);
     }
