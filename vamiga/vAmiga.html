@@ -1511,7 +1511,10 @@
 						action('pause');
 						break;
 					case 'run':
-						action('run');
+						action('run'); // this updates ui etc when emulator actually thinks it's paused
+						break;
+					case 'continue':
+						wasm_run(); // just resume execution
 						break;
 					case 'reset':
 						wasm_reset();
@@ -1532,41 +1535,15 @@
 						wasm_mem_patch(message.args.offset, message.args.value);
 						break;
 					case 'setWarp':
-						wasm_set_warp(message.warp);
+						wasm_set_warp(message.args);
 						break;
-					case 'retroShell':
-						wasm_retro_shell();
+					case 'setBreakpoint':
+						console.log('Setting breakpoint:', message.args);
+						wasm_set_breakpoint(message.args);
 						break;
-					case 'powerOn':
-						wasm_power_on();
+					case 'removeBreakpoint':
+						wasm_remove_breakpoint(message.args);
 						break;
-
-					case 'listProccesses': {
-						const res = {
-							type: 'rpcResponse',
-							id: message.args._rpcId,
-						}
-						try {
-							res.result = JSON.parse(wasm_list_processes());
-						} catch (error) {
-							res.error = error.message;
-						}
-						vscode.postMessage(res);
-						break;
-					}
-					case 'readSeglist': {
-						const res = {
-							type: 'rpcResponse',
-							id: message.args._rpcId,
-						}
-						try {
-							res.result = JSON.parse(wasm_read_seglist(args.processName));
-						} catch (error) {
-							res.error = error.message;
-						}
-						vscode.postMessage(res);
-						break;
-					}
 					default:
 						if (message.command) {
 							vscode.postMessage({ type: 'error', text: `Unknown command: ${message.command}` });

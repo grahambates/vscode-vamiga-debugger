@@ -17,6 +17,11 @@ import * as vscode from 'vscode';
 import { VAmigaView } from './vAmigaView';
 import * as path from 'path';
 
+interface Segment {
+    start: number;
+    size: number;
+}
+
 interface LaunchRequestArguments extends DebugProtocol.LaunchRequestArguments {
     program: string;
     stopOnEntry?: boolean;
@@ -27,13 +32,19 @@ export class VamigaDebugAdapter extends DebugSession {
     private static THREAD_ID = 1;
     private _variableHandles = new Handles<string>();
     private _isRunning = false;
+    private _stopOnEntry = false;
     private _programPath = '';
     private vAmiga: VAmigaView;
+    private _attached = false;
+    private _segements: Segment[] = [];
+
+    private pendingCommands: {command: string, args?: any[]}[] = [];
 
     public constructor() {
         super();
         this.setDebuggerLinesStartAt1(false);
         this.setDebuggerColumnsStartAt1(false);
+
         this.vAmiga = new VAmigaView(vscode.Uri.file(path.dirname(__dirname)));
     }
 
@@ -51,6 +62,68 @@ export class VamigaDebugAdapter extends DebugSession {
         this.sendEvent(new InitializedEvent());
     }
 
+    private async startEmulator(programPath: string): Promise<void> {
+        try {
+            await this.vAmiga.openFile(programPath);        // Stop debugging when the webview is closed
+            this.vAmiga.onDidDispose(() => this.sendEvent(new TerminatedEvent()));
+            // Listen for messages from the webview
+            this.vAmiga.onDidReceiveMessage((message) => this.handleMessageFromEmulator(message));
+        } catch (error) {
+            if (error instanceof Error) {
+                vscode.window.showErrorMessage(`Failed to open file in VAmiga view: ${error.message}`);
+            }
+            this.sendEvent(new TerminatedEvent());
+        }
+    }
+
+    private handleMessageFromEmulator(message: any) {
+        switch (message.type) {
+            case 'attached':
+                this.sendEvent(new OutputEvent('attached\n'));
+                this._segements = message.segments;
+                if (this._stopOnEntry) {
+                    // Set a breakpoint at entry point
+                    this.vAmiga.sendCommand("setBreakpoint", this._segements[0].start);
+                }
+                // Send any pending commands
+                this.pendingCommands.forEach(cmd => {
+                    this.vAmiga.sendCommand(cmd.command, cmd.args);
+                });
+                this.pendingCommands = [];
+                this._attached = true;
+                // Resume execution now attached
+                this.vAmiga.sendCommand("setWarp", false);
+                this.vAmiga.sendCommand("continue");
+                break;
+            case 'emulator-state':
+                if (message.state === 'paused') {
+                    this._isRunning = false;
+                    this.sendEvent(new StoppedEvent('pause', VamigaDebugAdapter.THREAD_ID));
+                } else if (message.state === 'running') {
+                    this._isRunning = true;
+                    this.sendEvent(new ContinuedEvent(VamigaDebugAdapter.THREAD_ID));
+                } else if (message.state === 'stopped') {
+                    this.sendEvent(new OutputEvent('hit breakpoint\n'));
+                    this._isRunning = false;
+                    this.sendEvent(new StoppedEvent('breakpoint', VamigaDebugAdapter.THREAD_ID));
+                }
+                break;
+            case 'emulator-output':
+                this.sendEvent(new OutputEvent(message.data + '\n'));
+                break;
+        }
+    }
+
+      public sendCommand(command: string, args?: any): void {
+        if (this._attached) {
+            this.vAmiga.sendCommand(command, args);
+        } else {
+            this.pendingCommands.push({command, args});
+        }
+      }
+
+    // Request handlers:
+
     protected async launchRequest(response: DebugProtocol.LaunchResponse, args: LaunchRequestArguments) {
         // Validate the program path
         this._programPath = args.program;
@@ -63,18 +136,13 @@ export class VamigaDebugAdapter extends DebugSession {
             return;
         }
 
-        // Start the emulator with the specified ADF
+        // Start the emulator with the specified file
         try {
-            await this.startEmulator(this._programPath);
-            this._isRunning = true;
-
             // Send output to debug console
             this.sendEvent(new OutputEvent(`Starting Vamiga with: ${this._programPath}\n`));
-
-            if (args.stopOnEntry) {
-                // todo
-            }
-
+            await this.startEmulator(this._programPath);
+            this._isRunning = true;
+            this._stopOnEntry = args.stopOnEntry ?? false;
             this.sendResponse(response);
         } catch (error) {
             this.sendErrorResponse(response, {
@@ -83,40 +151,6 @@ export class VamigaDebugAdapter extends DebugSession {
             });
             this.sendEvent(new TerminatedEvent());
         }
-    }
-
-    private async startEmulator(programPath: string): Promise<void> {
-        try {
-            await this.vAmiga.openFile(programPath);
-        } catch (error) {
-            if (error instanceof Error) {
-                vscode.window.showErrorMessage(`Failed to open file in VAmiga view: ${error.message}`);
-            }
-            this.sendEvent(new TerminatedEvent());
-        }
-
-        // Stop debugging when the webview is closed
-        this.vAmiga.onDidDispose(() => {
-            this.sendEvent(new TerminatedEvent());
-        });
-
-        // Listen for messages from the webview
-        this.vAmiga.onDidReceiveMessage((message: any) => {
-            switch (message.type) {
-                case 'emulator-state':
-                    if (message.state === 'paused') {
-                        this._isRunning = false;
-                        this.sendEvent(new StoppedEvent('pause', VamigaDebugAdapter.THREAD_ID));
-                    } else if (message.state === 'running') {
-                        this._isRunning = true;
-                        this.sendEvent(new ContinuedEvent(VamigaDebugAdapter.THREAD_ID));
-                    }
-                    break;
-                case 'emulator-output':
-                    this.sendEvent(new OutputEvent(message.data + '\n'));
-                    break;
-            }
-        });
     }
 
     protected continueRequest(response: DebugProtocol.ContinueResponse, args: DebugProtocol.ContinueArguments): void {
@@ -129,13 +163,6 @@ export class VamigaDebugAdapter extends DebugSession {
     protected pauseRequest(response: DebugProtocol.PauseResponse, args: DebugProtocol.PauseArguments): void {
         this.vAmiga.sendCommand("pause");
         this.sendResponse(response);
-
-        // example of sending an RPC command to the emulator
-        this.vAmiga.sendRpcCommand("listProccesses").then((processes) => {
-            console.log("Processes:", processes);
-        }).catch((error) => {
-            console.error("RPC Error:", error);
-        });
     }
 
     protected disconnectRequest(response: DebugProtocol.DisconnectResponse, args: DebugProtocol.DisconnectArguments): void {

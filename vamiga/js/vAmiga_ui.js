@@ -1903,6 +1903,8 @@ function InitWrappers() {
     do_animation_frame=null;
     queued_executes=0;
 
+    attached = false;
+
     wasm_run = function () {
         Module._wasm_run();
         if(do_animation_frame == null)
@@ -1950,7 +1952,30 @@ function InitWrappers() {
             }
 
             do_animation_frame = function(now) {
-                calculate_and_render(now);
+                try {
+                    calculate_and_render(now);
+                } catch(e) {
+                    console.log("Execution stopped (breakpoint or exception):", e);
+                    // Stop the emulator - don't call wasm_halt as that would post another 'paused' event
+                    Module._wasm_halt();
+                    stop_request_animation_frame=true;
+
+                    // Check if we are already attached to running process:
+                    if (!attached) {
+                        // Get current process info and see if it's our file
+                        // 'file' is the program name given when vAmiga converts an exe to adf
+                        const currentProcess = JSON.parse(wasm_get_current_process());
+                        if (currentProcess.command === "file") {
+                            attached = true;
+                            wasm_unwatch_dos_dispatcher();
+                            vscode.postMessage({ type: 'attached', segments: currentProcess.segments });
+                        }
+                    } else {
+                        // Assume it's a breakpoint
+                        // TODO: include more info e.g. PC?
+                        vscode.postMessage({ type: 'emulator-state', state: 'stopped' });
+                    }
+                }
 
                 // request another animation frame
                 if(!stop_request_animation_frame)
@@ -2024,6 +2049,9 @@ function InitWrappers() {
     wasm_read_seglist = Module.cwrap('wasm_read_seglist', 'string', ['number']);
     wasm_get_call_stack = Module.cwrap('wasm_get_call_stack', 'string');
     wasm_first_bpl_info = Module.cwrap('wasm_first_bpl_info', 'string', ['number']);
+    wasm_watch_dos_dispatcher = Module.cwrap('wasm_watch_dos_dispatcher', 'boolean');
+    wasm_unwatch_dos_dispatcher = Module.cwrap('wasm_unwatch_dos_dispatcher', 'undefined');
+    wasm_get_current_process = Module.cwrap('wasm_get_current_process', 'string');
 
     const volumeSlider = document.getElementById('volume-slider');
     set_volume = (new_volume)=>{
@@ -5141,6 +5169,15 @@ release_key('ControlLeft');`;
         );
         //install_custom_keys();
     }
+
+    // warp until program started
+    wasm_set_warp(true);
+    let watchInt = setInterval(()=>{
+        if (wasm_watch_dos_dispatcher()) {
+            clearInterval(watchInt);
+            console.log("Watching DOS dispatcher calls");
+        }
+    }, 50);
 
     $("#navbar").collapse('show')
     return;
