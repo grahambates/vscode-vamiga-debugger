@@ -50,13 +50,8 @@ export class VamigaDebugAdapter extends DebugSession {
 
     protected initializeRequest(response: DebugProtocol.InitializeResponse, args: DebugProtocol.InitializeRequestArguments): void {
         response.body = response.body || {};
-
-        // The adapter implements the configurationDoneRequest.
         response.body.supportsConfigurationDoneRequest = true;
-        // Make VS Code to use 'evaluate' when hovering over source
-        response.body.supportsEvaluateForHovers = true;
-        // Make VS Code to show a 'step into' button in the toolbar
-        response.body.supportsStepInTargetsRequest = true;
+        response.body.supportsSetVariable = true;
 
         this.sendResponse(response);
         this.sendEvent(new InitializedEvent());
@@ -202,39 +197,93 @@ export class VamigaDebugAdapter extends DebugSession {
     protected scopesRequest(response: DebugProtocol.ScopesResponse, args: DebugProtocol.ScopesArguments): void {
         response.body = {
             scopes: [
-                new Scope("Local", this._variableHandles.create("local"), false),
-                new Scope("Global", this._variableHandles.create("global"), true)
+                new Scope("CPU Registers", this._variableHandles.create("registers"), false),
+                new Scope("Custom Registers", this._variableHandles.create("custom"), false)
             ]
         };
         this.sendResponse(response);
     }
 
-    protected variablesRequest(response: DebugProtocol.VariablesResponse, args: DebugProtocol.VariablesArguments): void {
+    protected async variablesRequest(response: DebugProtocol.VariablesResponse, args: DebugProtocol.VariablesArguments): Promise<void> {
         const id = this._variableHandles.get(args.variablesReference);
-
         let variables: DebugProtocol.Variable[] = [];
-
-        if (id === "local") {
-            variables = [
-                {
-                    name: "emulator_state",
-                    value: this._isRunning ? "running" : "paused",
+        try {
+            if (id === "registers") {
+                const info = await this.vAmiga.sendRpcCommand('getCpuInfo');
+                const formatFlags = (flags: any) => {
+                    // XNZVC
+                    let out = '';
+                    // bool carry = (info.sr & 0x0001) != 0;      // C flag (bit 0)
+                    // bool overflow = (info.sr & 0x0002) != 0;   // V flag (bit 1)
+                    // bool zero = (info.sr & 0x0004) != 0;       // Z flag (bit 2)
+                    // bool negative = (info.sr & 0x0008) != 0;   // N flag (bit 3)
+                    // bool extend = (info.sr & 0x0010) != 0;     // X flag (bit 4)
+                    // bool trace1 = (info.sr & 0x8000) != 0;     // T1 flag (bit 15)
+                    // bool trace0 = (info.sr & 0x4000) != 0;     // T0 flag (bit 14) - 68020+
+                    // bool supervisor = (info.sr & 0x2000) != 0; // S flag (bit 13)
+                    // bool master = (info.sr & 0x1000) != 0;     // M flag (bit 12) - 68020+
+                    // int interrupt_mask = (info.sr >> 8) & 0x07; // IPL (bits 8-10)
+                    out += flags.interrupt_mask;
+                    out += ' ';
+                    out += flags.master ? 'M' : '_';
+                    out += ' ';
+                    out += flags.supervisor ? 'S' : '_';
+                    out += ' ';
+                    out += flags.trace0 ? 'T0' : '_';
+                    out += ' ';
+                    out += flags.trace1 ? 'T1' : '_';
+                    out += ' ';
+                    out += flags.extend ? 'X' : '_';
+                    out += flags.negative ? 'N' : '_';
+                    out += flags.zero ? 'Z' : '_';
+                    out += flags.overflow ? 'V' : '_';
+                    out += flags.carry ? 'C' : '_';
+                    return out;
+                };
+                variables = Object.keys(info).map(name => ({
+                    name,
+                    value: name === 'flags' ? formatFlags(info[name]) : String(info[name]),
                     variablesReference: 0
-                }
-            ];
-        } else if (id === "global") {
-            variables = [
-                {
-                    name: "program",
-                    value: this._programPath,
+                }));
+            } else if (id === "custom") {
+                const info = await this.vAmiga.sendRpcCommand('getAllCustomRegisters');
+                variables = Object.keys(info).map(  name => ({
+                    name,
+                    value: String(info[name].value),
                     variablesReference: 0
-                }
-            ];
+                }));
+            }
+            response.body = {
+                variables: variables
+            };
+            this.sendResponse(response);
+        } catch (err) {
+            this.sendErrorResponse(response, {
+                id: 1002,
+                format: `Error fetching variables ${id}`,
+            });
         }
+    }
 
-        response.body = {
-            variables: variables
-        };
-        this.sendResponse(response);
+    protected async setVariableRequest(response: DebugProtocol.SetVariableResponse, args: DebugProtocol.SetVariableArguments, request?: DebugProtocol.Request): Promise<void> {
+        const id = this._variableHandles.get(args.variablesReference);
+        const name = args.name;
+        const value = Number(args.value);
+        try {
+            if (id === "registers") {
+                // TODO:
+            } else if (id === "custom") {
+                await this.vAmiga.sendRpcCommand('setCustomRegister', { name, value });
+            }
+            response.body = {
+                value: args.value,
+            };
+            this.sendResponse(response);
+        } catch (err) {
+            this.sendErrorResponse(response, {
+                id: 1002,
+                format: `Error updating variable ${id}:${name}: ${(err as Error).message}`,
+            });
+        }
     }
 }

@@ -1969,6 +1969,8 @@ function InitWrappers() {
                             attached = true;
                             wasm_unwatch_dos_dispatcher();
                             vscode.postMessage({ type: 'attached', segments: currentProcess.segments });
+                        } else {
+                            console.log("Not attaching, current process is:", currentProcess);
                         }
                     } else {
                         // Assume it's a breakpoint
@@ -2036,22 +2038,65 @@ function InitWrappers() {
     wasm_retro_shell = Module.cwrap('wasm_retro_shell', 'undefined', ['string']);
 
     // Debugging functions
-    wasm_set_breakpoint = Module.cwrap('wasm_set_breakpoint', 'undefined', ['number']);
-    wasn_remove_breakpoint = Module.cwrap('wasm_remove_breakpoint', 'undefined', ['number']);
     wasm_step_over = Module.cwrap('wasm_step_over', 'undefined');
     wasm_step_into = Module.cwrap('wasm_step_into', 'undefined');
+    wasm_list_breakpoints = Module.cwrap('wasm_list_breakpoints', 'string');
+    wasm_set_breakpoint = Module.cwrap('wasm_set_breakpoint', 'boolean', ['number','number']);
+    wasm_remove_breakpoint = Module.cwrap('wasm_remove_breakpoint', 'boolean', ['number']);
+    wasm_list_watchpoints = Module.cwrap('wasm_list_watchpoints', 'string');
+    wasm_set_watchpoint = Module.cwrap('wasm_set_watchpoint', 'boolean', ['number','number']);
+    wasm_remove_watchpoint = Module.cwrap('wasm_remove_watchpoint', 'boolean', ['number']);
+    wasm_set_catchpoint = Module.cwrap('wasm_set_catchpoint', 'boolean', ['number','number']);
+    wasm_list_catchpoints = Module.cwrap('wasm_list_catchpoints', 'string');
+    wasm_remove_catchpoint = Module.cwrap('wasm_remove_catchpoint', 'boolean', ['number']);
+
+    // data read/write
     wasm_read_register = Module.cwrap('wasm_read_register', 'number', ['number']);
-    wasm_write_register = Module.cwrap('wasm_read_register', 'number', ['number', 'number']);
+    wasm_write_register = Module.cwrap('wasm_write_register', 'number', ['number', 'number']);
     wasm_peek8 = Module.cwrap('wasm_peek8', 'number', ['number']);
     wasm_peek16 = Module.cwrap('wasm_peek16', 'number', ['number']);
+    wasm_peek32 = Module.cwrap('wasm_peek32', 'number', ['number']);
     wasm_peek_custom = Module.cwrap('wasm_peek_custom', 'number', ['number']);
-    wasm_list_processes = Module.cwrap('wasm_list_processes', 'string');
-    wasm_read_seglist = Module.cwrap('wasm_read_seglist', 'string', ['number']);
-    wasm_get_call_stack = Module.cwrap('wasm_get_call_stack', 'string');
-    wasm_first_bpl_info = Module.cwrap('wasm_first_bpl_info', 'string', ['number']);
-    wasm_watch_dos_dispatcher = Module.cwrap('wasm_watch_dos_dispatcher', 'boolean');
-    wasm_unwatch_dos_dispatcher = Module.cwrap('wasm_unwatch_dos_dispatcher', 'undefined');
+    wasm_poke8 = Module.cwrap('wasm_poke8', 'undefined', ['number']);
+    wasm_poke16 = Module.cwrap('wasm_poke16', 'undefined', ['number']);
+    wasm_poke_custom = Module.cwrap('wasm_poke_custom', 'undefined', ['number']);
+    wasm_enable_cpu_logging = Module.cwrap('wasm_enable_cpu_logging', 'boolean', ['boolean']);
+    wasm_clear_cpu_trace = Module.cwrap('wasm_clear_cpu_trace', 'undefined');
+    wasm_get_cpu_trace = Module.cwrap('wasm_get_cpu_trace', 'string');
+
+    // Memory debugging:
+    // const char *wasm_disassemble(u32 addr, u32 count)
+    wasm_disassemble = Module.cwrap('wasm_disassemble', 'string', ['number', 'number']);
+    // const char *wasm_hex_dump(u32 addr, u32 bytes)
+    wasm_hex_dump = Module.cwrap('wasm_hex_dump', 'string', ['number', 'number']);
+    // const char *wasm_mem_dump(u32 addr, u32 bytes)
+    wasm_mem_dump = Module.cwrap('wasm_mem_dump', 'string', ['number', 'number']);
+    // const char *wasm_asc_dump(u32 addr, u32 bytes)
+    wasm_asc_dump = Module.cwrap('wasm_asc_dump', 'string', ['number', 'number']);
+
+    // info
+    wasm_get_amiga_info = Module.cwrap('wasm_get_amiga_info', 'string');
+    wasm_get_cpu_info = Module.cwrap('wasm_get_cpu_info', 'string');
+    wasm_get_agnus_info = Module.cwrap('wasm_get_agnus_info', 'string');
+    wasm_get_paula_info = Module.cwrap('wasm_get_paula_info', 'string');
+    wasm_get_denise_info = Module.cwrap('wasm_get_denise_info', 'string');
+    wasm_get_memory_info = Module.cwrap('wasm_get_memory_info', 'string');
+    wasm_get_audio_channel_info = Module.cwrap('wasm_get_audio_channel_info', 'string', ['number']);
+    wasm_get_audio_port_info = Module.cwrap('wasm_get_audio_port_info', 'string');
+    wasm_get_cia_info = Module.cwrap('wasm_get_cia_info', 'string', ['number']);
+    wasm_get_floppy_info = Module.cwrap('wasm_get_floppy_info', 'string', ['number']);
+    wasm_get_harddrive_info = Module.cwrap('wasm_get_harddrive_info', 'string', ['number']);
+    wasm_get_copper_info = Module.cwrap('wasm_get_copper_info', 'string');
+    wasm_get_serial_port_info = Module.cwrap('wasm_get_serial_port_info', 'string');
+    wasm_get_keyboard_info = Module.cwrap('wasm_get_keyboard_info', 'string');
+    wasm_get_control_port_info = Module.cwrap('wasm_get_control_port_info', 'string', ['number']);
+    wasm_get_disk_controller_info = Module.cwrap('wasm_get_disk_controller_info', 'string');
+
+    // custom
+    wasm_get_all_custom_registers = Module.cwrap('wasm_get_all_custom_registers', 'string');
+    wasm_set_custom_register = Module.cwrap('wasm_set_custom_register', 'string', ['string', 'number']);
     wasm_get_current_process = Module.cwrap('wasm_get_current_process', 'string');
+    wasm_get_call_stack = Module.cwrap('wasm_get_call_stack', 'string');
 
     const volumeSlider = document.getElementById('volume-slider');
     set_volume = (new_volume)=>{
@@ -5170,14 +5215,14 @@ release_key('ControlLeft');`;
         //install_custom_keys();
     }
 
-    // warp until program started
-    wasm_set_warp(true);
-    let watchInt = setInterval(()=>{
-        if (wasm_watch_dos_dispatcher()) {
-            clearInterval(watchInt);
-            console.log("Watching DOS dispatcher calls");
-        }
-    }, 50);
+    // // warp until program started
+    // wasm_set_warp(true);
+    // let watchInt = setInterval(()=>{
+    //     if (wasm_watch_dos_dispatcher()) {
+    //         clearInterval(watchInt);
+    //         console.log("Watching DOS dispatcher calls");
+    //     } else
+    // }, 50);
 
     $("#navbar").collapse('show')
     return;

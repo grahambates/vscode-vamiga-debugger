@@ -1506,6 +1506,20 @@
 			// Listen for messages from the extension
 			window.addEventListener('message', event => {
 				const message = event.data;
+
+				const rpcRequest = (resultCb) => {
+					const res = {
+						type: 'rpcResponse',
+						id: message.args._rpcId,
+					}
+					try {
+						res.result = resultCb();
+					} catch (error) {
+						res.error = error.message;
+					}
+					vscode.postMessage(res);
+				}
+
 				switch (message.command) {
 					case 'pause':
 						action('pause');
@@ -1538,12 +1552,28 @@
 						wasm_set_warp(message.args);
 						break;
 					case 'setBreakpoint':
-						console.log('Setting breakpoint:', message.args);
 						wasm_set_breakpoint(message.args);
 						break;
 					case 'removeBreakpoint':
 						wasm_remove_breakpoint(message.args);
 						break;
+					case 'setWatchpoint':
+						wasm_set_watchpoint(message.args);
+						break;
+					case 'removeWatchpoint':
+						wasm_remove_watchpoint(message.args);
+						break;
+					case 'getCpuInfo':
+						rpcRequest(() => JSON.parse(wasm_get_cpu_info()));
+						break;
+					case 'getAllCustomRegisters':
+						rpcRequest(() => JSON.parse(wasm_get_all_custom_registers()));
+						break;
+					case 'setCustomRegister':
+						rpcRequest(() => JSON.parse(wasm_set_custom_register(message.args.name, message.args.value)));
+						break;
+					case 'setRegister':
+						rpcRequest(() => JSON.parse(wasm_write_register(message.args.name, message.args.value)));
 					default:
 						if (message.command) {
 							vscode.postMessage({ type: 'error', text: `Unknown command: ${message.command}` });
