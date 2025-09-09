@@ -131,6 +131,7 @@
 		<div class=collapse id=navbar>
 			<div id=navgrid>
 				<div class=left><span style=width:40px;display:inline-block></span> <button
+					 	style="display:none"
 						class="btn btn-sm icon" type=button id=button_reset data-toggle=tooltip
 						data-placement=top title=reset><svg style=margin-top:1px
 							class="bi bi-skip-start-fill" fill=currentColor height=auto
@@ -140,7 +141,7 @@
 								fill-rule=evenodd />
 							<path
 								d="M4.903 8.697l6.364 3.692c.54.313 1.232-.066 1.232-.697V4.308c0-.63-.692-1.01-1.232-.696L4.903 7.304a.802.802 0 0 0 0 1.393z" />
-						</svg></button> <span data-toggle=tooltip data-placement=top
+						</svg></button> <span style="display:none" data-toggle=tooltip data-placement=top
 						title=pause><button class="btn btn-sm icon" type=button
 							id=button_run><svg class="bi bi-pause-fill" fill=currentColor
 								height=auto viewBox="0 0 16 16" width=1.6em
@@ -1522,13 +1523,10 @@
 
 				switch (message.command) {
 					case 'pause':
-						action('pause');
+						wasm_halt();
 						break;
 					case 'run':
-						action('run'); // this updates ui etc when emulator actually thinks it's paused
-						break;
-					case 'continue':
-						wasm_run(); // just resume execution
+						wasm_run();
 						break;
 					case 'reset':
 						wasm_reset();
@@ -1569,11 +1567,12 @@
 					case 'getAllCustomRegisters':
 						rpcRequest(() => JSON.parse(wasm_get_all_custom_registers()));
 						break;
+					case 'setRegister':
+						rpcRequest(() => JSON.parse(wasm_set_register(message.args.name, message.args.value)));
+						break;
 					case 'setCustomRegister':
 						rpcRequest(() => JSON.parse(wasm_set_custom_register(message.args.name, message.args.value)));
 						break;
-					case 'setRegister':
-						rpcRequest(() => JSON.parse(wasm_write_register(message.args.name, message.args.value)));
 					default:
 						if (message.command) {
 							vscode.postMessage({ type: 'error', text: `Unknown command: ${message.command}` });

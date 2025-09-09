@@ -10,17 +10,10 @@
     "Debuggers"
   ],
   "activationEvents": [
-    "onCommand:vamiga-debugger.openPanel",
     "onDebugResolve:vamiga"
   ],
   "main": "./out/extension.js",
   "contributes": {
-    "commands": [
-      {
-        "command": "vamiga-debugger.openPanel",
-        "title": "Open Vamiga Debugger Panel"
-      }
-    ],
     "configuration": {
       "title": "Vamiga Debugger",
       "properties": {
@@ -29,7 +22,7 @@
           "enum": ["one", "two", "three", "beside", "active"],
           "enumDescriptions": [
             "First editor column",
-            "Second editor column", 
+            "Second editor column",
             "Third editor column",
             "Next to the active editor",
             "Same column as active editor"
@@ -42,8 +35,8 @@
     "debuggers": [
       {
         "type": "vamiga",
-        "languages": ["c", "cpp", "assembly"],
-        "label": "Vamiga Debug",
+        "languages": ["m68k"],
+        "label": "vAmiga Debug",
         "program": "./out/debugAdapter.js",
         "runtime": "node",
         "configurationAttributes": {
@@ -52,8 +45,13 @@
             "properties": {
               "program": {
                 "type": "string",
-                "description": "Path to the ADF disk image to debug",
-                "default": "${workspaceFolder}/build/program.adf"
+                "description": "Path to the Amiga program to run",
+                "default": "${workspaceFolder}/out/a.exe"
+              },
+              "debugProgram": {
+                "type": "string",
+                "description": "Optional alternate path to program file containing debug symbols. Defaults to same as 'program'. Making a separate build allows for a smaller exe loaded by the Amiga, which uses less RAM and loads faster.",
+                "default": null
               },
               "stopOnEntry": {
                 "type": "boolean",
@@ -72,20 +70,20 @@
           {
             "type": "vamiga",
             "request": "launch",
-            "name": "Launch Vamiga",
-            "program": "${workspaceFolder}/build/program.adf",
+            "name": "vAmiga: Launch",
+            "program": "${workspaceFolder}/out/a.exe",
             "stopOnEntry": true
           }
         ],
         "configurationSnippets": [
           {
-            "label": "Vamiga: Launch",
-            "description": "A new configuration for debugging with Vamiga",
+            "label": "vAmiga: Launch",
+            "description": "A new configuration for debugging with vAmiga",
             "body": {
               "type": "vamiga",
               "request": "launch",
-              "name": "Launch Vamiga",
-              "program": "${workspaceFolder}/build/program.adf",
+              "name": "vAmiga: Launch",
+              "program": "^\"\\${workspaceFolder\\}/out/a.exe\"",
               "stopOnEntry": true
             }
           }

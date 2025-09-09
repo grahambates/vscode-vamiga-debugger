@@ -1903,15 +1903,66 @@ function InitWrappers() {
     do_animation_frame=null;
     queued_executes=0;
 
-    attached = false;
+
+    let attached = false;
+    let execBase;
+
+
+    // Install breakpoint at AllocMem
+    // We need to hook into something that happens right before our program starts.
+    // We need to ignore a bunch of them first though, until our process is found.
+    // Execbase is not immediately available after power on / reset, so need a short delay.
+    let int = setInterval(() => {
+        execBase = wasm_peek32(4);
+        const allocMem = execBase-198;
+        if (allocMem > 0 && wasm_peek16(allocMem) === 0x4ef9) {
+            clearInterval(int);
+            console.log('Installing AllocMem breakpoint at ' + allocMem);
+            wasm_set_breakpoint(allocMem, 0);
+        }
+    }, 10);
+
+    // Check whether our process is ready to attach.
+    const checkProc = function () {
+        const proc = JSON.parse(wasm_get_current_process());
+        // Command has a standard name of 'file' when vAmiga converts an exe to an ADF
+        // We need the segment list ready in order to set breakpoints.
+        if (proc.command === 'file' && proc.segments) {
+            console.log('attached');
+            console.log(proc);
+            // Can remove the AllocMem breakpoint now
+            wasm_remove_breakpoint(execBase-198);
+            attached = true;
+            // Turn off warp mode
+            wasm_configure('WARP_MODE', 'NEVER');
+            Module._wasm_halt();
+            stop_request_animation_frame=true;
+            vscode.postMessage({ type: 'attached', segments: proc.segments });
+        } else {
+            console.log('not ready');
+        }
+    };
 
     wasm_run = function () {
         Module._wasm_run();
         if(do_animation_frame == null)
         {
             execute_amiga_frame=()=>{
-                Module._wasm_execute();
-                queued_executes--;
+                try {
+                    Module._wasm_execute();
+                } catch (err) {
+                    if (!attached) {
+                        checkProc();
+                    } else {
+                        console.log("Execution stopped (breakpoint or exception):", e);
+                        // Stop the emulator - don't call wasm_halt as that would post another 'paused' event
+                        Module._wasm_halt();
+                        // Assume it's a breakpoint
+                        vscode.postMessage({ type: 'emulator-state', state: 'stopped' });
+                    }
+                } finally {
+                    queued_executes--;
+                }
             };
 
             render_frame= (now)=>{
@@ -1955,26 +2006,14 @@ function InitWrappers() {
                 try {
                     calculate_and_render(now);
                 } catch(e) {
-                    console.log("Execution stopped (breakpoint or exception):", e);
-                    // Stop the emulator - don't call wasm_halt as that would post another 'paused' event
-                    Module._wasm_halt();
-                    stop_request_animation_frame=true;
-
-                    // Check if we are already attached to running process:
                     if (!attached) {
-                        // Get current process info and see if it's our file
-                        // 'file' is the program name given when vAmiga converts an exe to adf
-                        const currentProcess = JSON.parse(wasm_get_current_process());
-                        if (currentProcess.command === "file") {
-                            attached = true;
-                            wasm_unwatch_dos_dispatcher();
-                            vscode.postMessage({ type: 'attached', segments: currentProcess.segments });
-                        } else {
-                            console.log("Not attaching, current process is:", currentProcess);
-                        }
+                        checkProc();
                     } else {
+                        console.log("Execution stopped (breakpoint or exception):", e);
+                        // Stop the emulator - don't call wasm_halt as that would post another 'paused' event
+                        Module._wasm_halt();
+                        stop_request_animation_frame=true;
                         // Assume it's a breakpoint
-                        // TODO: include more info e.g. PC?
                         vscode.postMessage({ type: 'emulator-state', state: 'stopped' });
                     }
                 }
@@ -2037,6 +2076,8 @@ function InitWrappers() {
     wasm_load_workspace = Module.cwrap('wasm_load_workspace', 'undefined', ['string']);
     wasm_retro_shell = Module.cwrap('wasm_retro_shell', 'undefined', ['string']);
 
+    // GB Additions:
+
     // Debugging functions
     wasm_step_over = Module.cwrap('wasm_step_over', 'undefined');
     wasm_step_into = Module.cwrap('wasm_step_into', 'undefined');
@@ -2051,8 +2092,7 @@ function InitWrappers() {
     wasm_remove_catchpoint = Module.cwrap('wasm_remove_catchpoint', 'boolean', ['number']);
 
     // data read/write
-    wasm_read_register = Module.cwrap('wasm_read_register', 'number', ['number']);
-    wasm_write_register = Module.cwrap('wasm_write_register', 'number', ['number', 'number']);
+    wasm_set_register = Module.cwrap('wasm_set_register', 'string', ['string', 'number']);
     wasm_peek8 = Module.cwrap('wasm_peek8', 'number', ['number']);
     wasm_peek16 = Module.cwrap('wasm_peek16', 'number', ['number']);
     wasm_peek32 = Module.cwrap('wasm_peek32', 'number', ['number']);
@@ -2062,7 +2102,7 @@ function InitWrappers() {
     wasm_poke_custom = Module.cwrap('wasm_poke_custom', 'undefined', ['number']);
     wasm_enable_cpu_logging = Module.cwrap('wasm_enable_cpu_logging', 'boolean', ['boolean']);
     wasm_clear_cpu_trace = Module.cwrap('wasm_clear_cpu_trace', 'undefined');
-    wasm_get_cpu_trace = Module.cwrap('wasm_get_cpu_trace', 'string');
+    wasm_get_cpu_trace = Module.cwrap('wasm_get_cpu_trace', 'string', ['number']);
 
     // Memory debugging:
     // const char *wasm_disassemble(u32 addr, u32 count)
@@ -3100,6 +3140,11 @@ $(`#choose_display a`).click(function ()
         wasm_set_warp(this.checked ? 1:0);
         save_setting('use_warp', this.checked);
     });
+
+
+    // GB: start in warp mode
+    wasm_configure('WARP_MODE', 'ALWAYS');
+
 
 //----------
 
