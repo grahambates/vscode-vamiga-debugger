@@ -380,8 +380,9 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
         // Remove existing
         const existing = this.sourceBreakpoints.get(path);
         if (existing) {
-            for (const { instructionReference } of existing) {
+            for (const { id, line, instructionReference } of existing) {
                 if (instructionReference) {
+                    logger.log(`Removing existing breakpoint #${id} at ${path}:${line} at ${instructionReference}`);
                     this.sendCommand('removeBreakpoint', { address: Number(instructionReference) });
                 }
             }
@@ -401,23 +402,22 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
             const bp: Breakpoint = {
                 id: this.bpId++,
                 ignores,
-                verified: true,
+                verified: false, // Start as unverified
                 source: args.source,
                 ...reqBp,
             };
-            response.body.breakpoints.push(bp);
             newBps.push(bp);
 
             if (this.sourceMap) {
                 // Look up address from source and set breakpoint now
                 const address = this.sourceMap.lookupSourceLine(path, reqBp.line).address;
                 bp.instructionReference = formatHex(address);
+                bp.verified = true;
                 this.sendCommand('setBreakpoint', { address, ignores: bp.ignores });
                 logger.log(`Breakpoint #${bp.id} at ${path}:${line} set immediately at ${bp.instructionReference}`);
             } else {
                 // Set pending status and process on attach
                 logger.log(`Breakpoint #${bp.id} at ${path}:${line} pending`);
-                bp.verified = false;
                 bp.reason = 'pending';
             }
             response.body.breakpoints.push(bp);
@@ -442,7 +442,7 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
     private attach(segments: Segment[]) {
         const offsets = segments.map(s => s.start);
         if (this.stopOnEntry) {
-            logger.log(`Setting entry breakpoint at ${offsets[0]}`);
+            logger.log(`Setting entry breakpoint at ${formatHex(offsets[0])}`);
             // Set a breakpoint at entry point
             this.sendCommand("setBreakpoint", { address: offsets[0], ignores: 0 });
         }
@@ -461,9 +461,10 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
                 for (const bp of bps) {
                     const address = this.sourceMap!.lookupSourceLine(path, bp.line!).address;
                     bp.instructionReference = formatHex(address);
+                    bp.verified = true;
                     this.sendCommand('setBreakpoint', { address, ignores: bp.ignores });
-                    logger.log(`Breakpoint #${bp.id} at ${path}:${bp.line} set at ${address}`);
-                    this.sendEvent(new BreakpointEvent('updated', bp));
+                    logger.log(`Breakpoint #${bp.id} at ${path}:${bp.line} set at ${bp.instructionReference}`);
+                    this.sendEvent(new BreakpointEvent('changed', bp));
                 }
             }
         } catch (error) {
