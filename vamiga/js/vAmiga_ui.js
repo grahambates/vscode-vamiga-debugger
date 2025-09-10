@@ -2140,6 +2140,8 @@ function InitWrappers() {
     wasm_get_current_process = Module.cwrap('wasm_get_current_process', 'string');
     wasm_get_call_stack = Module.cwrap('wasm_get_call_stack', 'string');
     wasm_debug_emulator_state =  Module.cwrap('wasm_debug_emulator_state', 'string');
+    wasm_read_memory =  Module.cwrap('wasm_read_memory', 'string', ['number', 'number']); // address, count
+    wasm_write_memory =  Module.cwrap('wasm_write_memory', 'string', ['number', 'string']); // address, data
 
     const volumeSlider = document.getElementById('volume-slider');
     set_volume = (new_volume)=>{

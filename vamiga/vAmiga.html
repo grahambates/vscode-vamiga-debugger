@@ -1516,7 +1516,7 @@
 					try {
 						res.result = resultCb();
 					} catch (error) {
-						res.error = error.message;
+						res.result = { error: error.message };
 					}
 					vscode.postMessage(res);
 				}
@@ -1581,19 +1581,19 @@
 						rpcRequest(() => {
 							wasm_step_into();
 							wasm_run();
-							// try {
-							// 	Module._wasm_execute();
-							// } catch (_) {}
 						});
 						break;
 					case 'stepOver':
 						rpcRequest(() => {
 							wasm_step_over();
 							wasm_run();
-							// try {
-							// 	Module._wasm_execute();
-							// } catch (_) {}
 						});
+						break;
+					case 'readMemory':
+						rpcRequest(() => JSON.parse(wasm_read_memory(message.args.address, message.args.count)));
+						break;
+					case 'writeMemory':
+						rpcRequest(() => JSON.parse(wasm_write_memory(message.args.address, message.args.data)));
 						break;
 					default:
 						if (message.command) {

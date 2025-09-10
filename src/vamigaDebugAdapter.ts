@@ -1,3 +1,17 @@
+// TODO:
+// - Label variables
+// - Step out
+// - Fix Step over
+// - Focus issue
+// - Exception breakpoints
+// - Disassembly source
+// - Disassembly view panel
+// - Watchpoints
+// - Read/Write memory
+// - Copper thread
+// - Stack frames
+// - Console
+
 import {
     logger,
     LoggingDebugSession,
@@ -36,6 +50,11 @@ const ERROR_IDS = {
     RPC_TIMEOUT: 3001,
     VARIABLE_UPDATE_ERROR: 3002,
     STEP_ERROR: 3003,
+
+    // Memory errors (4000-4099)
+    MEMORY_READ_ERROR: 4001,
+    MEMORY_WRITE_ERROR: 4002,
+
     // Stack trace errors (5000-5099)
     STACK_TRACE_ERROR: 5001,
 } as const;
@@ -66,7 +85,7 @@ function isNumeric(value: string): boolean {
 
 export class VamigaDebugAdapter extends LoggingDebugSession {
     private static THREAD_ID = 1;
-    private _variableHandles = new Handles<string>();
+    private variableHandles = new Handles<string>();
     private isRunning = false;
     private stopOnEntry = false;
     private programPath = '';
@@ -125,6 +144,8 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
         response.body = response.body || {};
         response.body.supportsConfigurationDoneRequest = true;
         response.body.supportsSetVariable = true;
+        response.body.supportsReadMemoryRequest = true;
+        response.body.supportsWriteMemoryRequest = true;
 
         this.sendResponse(response);
         this.sendEvent(new InitializedEvent());
@@ -238,11 +259,14 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
             if (this.sourceMap) {
                 const cpuInfo = await this.sendRpcCommand('getCpuInfo');
                 const pc = Number(cpuInfo.pc);
-                const loc = this.sourceMap.lookupAddress(pc);
+                const stk = [];
+                try {
+                    const loc = this.sourceMap.lookupAddress(pc);
+                    stk.push(new StackFrame(0, "Main", new Source(path.basename(loc.path), loc.path), loc.line));
+                } catch (err) {
+                    // TODO: disassembly source
+                }
 
-                const stk = [
-                    new StackFrame(0, "Main", new Source(path.basename(loc.path), loc.path), loc.line)
-                ];
                 response.body = {
                     stackFrames: stk.slice(startFrame, endFrame),
                     totalFrames: stk.length
@@ -260,17 +284,19 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
     }
 
     protected scopesRequest(response: DebugProtocol.ScopesResponse, args: DebugProtocol.ScopesArguments): void {
-        response.body = {
-            scopes: [
-                new Scope("CPU Registers", this._variableHandles.create("registers"), false),
-                new Scope("Custom Registers", this._variableHandles.create("custom"), false)
-            ]
-        };
+        const scopes = [
+            new Scope("CPU Registers", this.variableHandles.create("registers"), false),
+            new Scope("Custom Registers", this.variableHandles.create("custom"), false)
+        ];
+        if (this.sourceMap) {
+            scopes.push(new Scope("Symbols", this.variableHandles.create("symbols"), false))
+        }
+        response.body = { scopes };
         this.sendResponse(response);
     }
 
     protected async variablesRequest(response: DebugProtocol.VariablesResponse, args: DebugProtocol.VariablesArguments): Promise<void> {
-        const id = this._variableHandles.get(args.variablesReference);
+        const id = this.variableHandles.get(args.variablesReference);
         let variables: DebugProtocol.Variable[] = [];
         try {
             if (id === "registers") {
@@ -278,30 +304,47 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
                 variables = Object.keys(info).filter(k => k !== 'flags').map(name => ({
                     name,
                     value: String(info[name]),
-                    variablesReference: name === 'sr' ? this._variableHandles.create(`sr_flags`) : 0
+                    variablesReference: name === 'sr' ? this.variableHandles.create(`sr_flags`) : 0
                 }));
             } else if (id === "custom") {
                 const info = await this.sendRpcCommand('getAllCustomRegisters');
                 variables = Object.keys(info).map(name => ({
                     name,
-                    value: String(info[name].value),
+                    value: info[name].value,
                     variablesReference: 0
                 }));
             } else if (id === "sr_flags") {
                 const info = await this.sendRpcCommand('getCpuInfo');
                 const flags = info.flags;
+                const presentationHint = {
+                    attributes: ['readOnly'],
+                };
                 variables = [
-                    { name: 'carry', value: flags.carry ? 'true' : 'false', variablesReference: 0 },
-                    { name: 'overflow', value: flags.overflow ? 'true' : 'false', variablesReference: 0 },
-                    { name: 'zero', value: flags.zero ? 'true' : 'false', variablesReference: 0 },
-                    { name: 'negative', value: flags.negative ? 'true' : 'false', variablesReference: 0 },
-                    { name: 'extend', value: flags.extend ? 'true' : 'false', variablesReference: 0 },
-                    { name: 'trace1', value: flags.trace1 ? 'true' : 'false', variablesReference: 0 },
-                    { name: 'trace0', value: flags.trace0 ? 'true' : 'false', variablesReference: 0 },
-                    { name: 'supervisor', value: flags.supervisor ? 'true' : 'false', variablesReference: 0 },
-                    { name: 'master', value: flags.master ? 'true' : 'false', variablesReference: 0 },
-                    { name: 'interrupt_mask', value: String(flags.interrupt_mask), variablesReference: 0 }
+                    { name: 'carry', value: flags.carry ? 'true' : 'false', variablesReference: 0, presentationHint },
+                    { name: 'overflow', value: flags.overflow ? 'true' : 'false', variablesReference: 0, presentationHint },
+                    { name: 'zero', value: flags.zero ? 'true' : 'false', variablesReference: 0, presentationHint },
+                    { name: 'negative', value: flags.negative ? 'true' : 'false', variablesReference: 0, presentationHint },
+                    { name: 'extend', value: flags.extend ? 'true' : 'false', variablesReference: 0, presentationHint },
+                    { name: 'trace1', value: flags.trace1 ? 'true' : 'false', variablesReference: 0, presentationHint },
+                    { name: 'trace0', value: flags.trace0 ? 'true' : 'false', variablesReference: 0, presentationHint },
+                    { name: 'supervisor', value: flags.supervisor ? 'true' : 'false', variablesReference: 0, presentationHint },
+                    { name: 'master', value: flags.master ? 'true' : 'false', variablesReference: 0, presentationHint },
+                    { name: 'interrupt_mask', value: String(flags.interrupt_mask), variablesReference: 0, presentationHint }
                 ];
+            } else if (id === 'symbols'  && this.sourceMap) {
+                const symbols = this.sourceMap.getSymbols();
+                variables = Object.keys(symbols).map(name => {
+                    const value = formatHex(symbols[name]);
+                    return {
+                        name,
+                        value,
+                        memoryReference: value,
+                        presentationHint: {
+                            attributes: ['readOnly'],
+                        },
+                        variablesReference: 0
+                    };
+                });
             }
             response.body = {
                 variables: variables
@@ -316,7 +359,7 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
     }
 
     protected async setVariableRequest(response: DebugProtocol.SetVariableResponse, args: DebugProtocol.SetVariableArguments, request?: DebugProtocol.Request): Promise<void> {
-        const id = this._variableHandles.get(args.variablesReference);
+        const id = this.variableHandles.get(args.variablesReference);
         const name = args.name;
         const value = Number(args.value);
         try {
@@ -325,18 +368,13 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
                 res = await this.sendRpcCommand('setRegister', { name, value });
             } else if (id === "custom") {
                 res = await this.sendRpcCommand('setCustomRegister', { name, value });
-            }
-            if (res.error) {
-                this.sendErrorResponse(response, {
-                    id: 1002,
-                    format: res.message,
-                });
             } else {
-                response.body = {
-                    value: res.value,
-                };
-                this.sendResponse(response);
+                throw new Error('Not writeable');
             }
+            response.body = {
+                value: res.value,
+            };
+            this.sendResponse(response);
         } catch (err) {
             this.sendErrorResponse(response, {
                 id: 1003,
@@ -423,6 +461,59 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
             response.body.breakpoints.push(bp);
         }
         this.sendResponse(response);
+    }
+
+    protected async readMemoryRequest(response: DebugProtocol.ReadMemoryResponse, args: DebugProtocol.ReadMemoryArguments): Promise<void> {
+        logger.log(`Read memory request: ${args.memoryReference}, offset: ${args.offset}, count: ${args.count}`);
+        try {
+            const address = Number(args.memoryReference) + (args.offset || 0);
+            const count = Math.min(4096, args.count);
+            if (count) {
+                const result = await this.sendRpcCommand('readMemory', { address, count });
+                if (result.success) {
+                    response.body = {
+                        address: result.address,
+                        data: result.data, // Already base64 encoded
+                        unreadableBytes: 0
+                    };
+                } else {
+                    throw new Error(result.error || 'Memory read failed');
+                }
+            }
+            this.sendResponse(response);
+        } catch (err) {
+            this.sendErrorResponse(response, {
+                id: ERROR_IDS.MEMORY_READ_ERROR,
+                format: `Failed to read memory: ${this.errorString(err)}`
+            });
+        }
+    }
+
+    protected async writeMemoryRequest(response: DebugProtocol.WriteMemoryResponse, args: DebugProtocol.WriteMemoryArguments): Promise<void> {
+        logger.log(`Write memory request: ${args.memoryReference}, offset: ${args.offset}`);
+        try {
+            const address = Number(args.memoryReference) + (args.offset || 0);
+
+            const result = await this.sendRpcCommand('writeMemory', {
+                address,
+                data: args.data // Pass base64 data directly
+            });
+
+            if (result.success) {
+                response.body = {
+                    offset: args.offset,
+                    bytesWritten: result.bytesWritten || Buffer.from(args.data, 'base64').length
+                };
+            } else {
+                throw new Error(result.error || 'Memory write failed');
+            }
+            this.sendResponse(response);
+        } catch (err) {
+            this.sendErrorResponse(response, {
+                id: ERROR_IDS.MEMORY_WRITE_ERROR,
+                format: `Failed to write memory: ${this.errorString(err)}`
+            });
+        }
     }
 
     // Helpers:
