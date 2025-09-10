@@ -1521,6 +1521,10 @@
 					vscode.postMessage(res);
 				}
 
+				if (message.command) {
+					console.log('Command recieved', message)
+				}
+
 				switch (message.command) {
 					case 'pause':
 						wasm_halt();
@@ -1550,10 +1554,10 @@
 						wasm_set_warp(message.args);
 						break;
 					case 'setBreakpoint':
-						wasm_set_breakpoint(message.args);
+						wasm_set_breakpoint(message.args.address, message.args.ignores);
 						break;
 					case 'removeBreakpoint':
-						wasm_remove_breakpoint(message.args);
+						wasm_remove_breakpoint(message.args.address);
 						break;
 					case 'setWatchpoint':
 						wasm_set_watchpoint(message.args);
@@ -1572,6 +1576,24 @@
 						break;
 					case 'setCustomRegister':
 						rpcRequest(() => JSON.parse(wasm_set_custom_register(message.args.name, message.args.value)));
+						break;
+					case 'stepInto':
+						rpcRequest(() => {
+							wasm_step_into();
+							wasm_run();
+							// try {
+							// 	Module._wasm_execute();
+							// } catch (_) {}
+						});
+						break;
+					case 'stepOver':
+						rpcRequest(() => {
+							wasm_step_over();
+							wasm_run();
+							// try {
+							// 	Module._wasm_execute();
+							// } catch (_) {}
+						});
 						break;
 					default:
 						if (message.command) {

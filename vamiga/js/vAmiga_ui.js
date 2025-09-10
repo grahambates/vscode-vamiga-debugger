@@ -1910,11 +1910,12 @@ function InitWrappers() {
 
     // Install breakpoint at AllocMem
     // We need to hook into something that happens right before our program starts.
-    // We need to ignore a bunch of them first though, until our process is found.
-    // Execbase is not immediately available after power on / reset, so need a short delay.
+    // Execbase is not immediately available after power on / reset, so need a short delay
+    // and keep trying until the offset actually points to a jmp
     let int = setInterval(() => {
         execBase = wasm_peek32(4);
         const allocMem = execBase-198;
+        // execBase could be zero or some nonsense value. Check what's at the offset.
         if (allocMem > 0 && wasm_peek16(allocMem) === 0x4ef9) {
             clearInterval(int);
             console.log('Installing AllocMem breakpoint at ' + allocMem);
@@ -1923,6 +1924,7 @@ function InitWrappers() {
     }, 10);
 
     // Check whether our process is ready to attach.
+    // We need to ignore a bunch of AllocMems, until our process is found.
     const checkProc = function () {
         const proc = JSON.parse(wasm_get_current_process());
         // Command has a standard name of 'file' when vAmiga converts an exe to an ADF
@@ -2137,6 +2139,7 @@ function InitWrappers() {
     wasm_set_custom_register = Module.cwrap('wasm_set_custom_register', 'string', ['string', 'number']);
     wasm_get_current_process = Module.cwrap('wasm_get_current_process', 'string');
     wasm_get_call_stack = Module.cwrap('wasm_get_call_stack', 'string');
+    wasm_debug_emulator_state =  Module.cwrap('wasm_debug_emulator_state', 'string');
 
     const volumeSlider = document.getElementById('volume-slider');
     set_volume = (new_volume)=>{

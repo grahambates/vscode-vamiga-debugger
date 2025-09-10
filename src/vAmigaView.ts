@@ -64,12 +64,12 @@ export class VAmigaView {
     this._panel?.reveal();
   }
 
-  public onDidReceiveMessage(callback: (data: any) => void): void {
-    this._panel?.webview.onDidReceiveMessage(callback);
+  public onDidReceiveMessage(callback: (data: any) => void): vscode.Disposable | undefined {
+    return this._panel?.webview.onDidReceiveMessage(callback);
   }
 
-  public onDidDispose(callback: () => void): void {
-    this._panel?.onDidDispose(callback);
+  public onDidDispose(callback: () => void): vscode.Disposable | undefined {
+    return this._panel?.onDidDispose(callback);
   }
 
   public sendCommand(command: string, args?: any): void {
