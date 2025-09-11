@@ -1,16 +1,16 @@
 // TODO:
-// - Label variables
 // - Step out
 // - Fix Step over
 // - Focus issue
 // - Exception breakpoints
-// - Disassembly source
 // - Disassembly view panel
 // - Watchpoints
 // - Read/Write memory
 // - Copper thread
 // - Stack frames
 // - Console
+// BUGS:
+// - disassembly current line
 
 import {
     logger,
@@ -25,7 +25,6 @@ import {
     Scope,
     Source,
     Handles,
-    BreakpointEvent,
 } from '@vscode/debugadapter';
 import { LogLevel } from "@vscode/debugadapter/lib/logger";
 import { DebugProtocol } from '@vscode/debugprotocol';
@@ -54,6 +53,7 @@ const ERROR_IDS = {
     // Memory errors (4000-4099)
     MEMORY_READ_ERROR: 4001,
     MEMORY_WRITE_ERROR: 4002,
+    DISASSEMBLE_ERROR: 4003,
 
     // Stack trace errors (5000-5099)
     STACK_TRACE_ERROR: 5001,
@@ -66,13 +66,14 @@ interface LaunchRequestArguments extends DebugProtocol.LaunchRequestArguments {
     trace?: boolean;
 }
 
-type Breakpoint = DebugProtocol.Breakpoint & {
-    ignores: number;
-};
-
 interface Segment {
     start: number;
     size: number;
+}
+
+interface BreakpointRef {
+    id: number;
+    address: number;
 }
 
 function formatHex(value: number, length = 8): string {
@@ -96,7 +97,8 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
     private trace = false;
     private stepping = true;
     private disposables: vscode.Disposable[] = [];
-    private sourceBreakpoints: Map<string,Breakpoint[]> = new Map();
+    private sourceBreakpoints: Map<string,BreakpointRef[]> = new Map();
+    private instructionBreakpoints: BreakpointRef[] = [];
     private bpId = 0;
 
     public constructor() {
@@ -146,9 +148,12 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
         response.body.supportsSetVariable = true;
         response.body.supportsReadMemoryRequest = true;
         response.body.supportsWriteMemoryRequest = true;
+        response.body.supportsDisassembleRequest = true;
+        response.body.supportsInstructionBreakpoints = true;
+        response.body.supportsConfigurationDoneRequest = true;
+        response.body.supportsHitConditionalBreakpoints = true;
 
         this.sendResponse(response);
-        this.sendEvent(new InitializedEvent());
     }
 
     protected async launchRequest(response: DebugProtocol.LaunchResponse, args: LaunchRequestArguments) {
@@ -218,11 +223,17 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
         }
     }
 
+    protected configurationDoneRequest(response: DebugProtocol.ConfigurationDoneResponse, args: DebugProtocol.ConfigurationDoneArguments, request?: DebugProtocol.Request): void {
+        logger.log('Configuration done');
+        this.sendCommand("run");
+        this.sendResponse(response);
+    }
+
     protected continueRequest(response: DebugProtocol.ContinueResponse, args: DebugProtocol.ContinueArguments): void {
         logger.log('Continue request');
         this.sendCommand("run");
         this.vAmiga.reveal();
-        response.body = { allThreadsContinued: false };
+        response.body = { allThreadsContinued: true };
         this.sendResponse(response);
     }
 
@@ -256,24 +267,34 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
             const maxLevels = typeof args.levels === 'number' ? args.levels : 1000;
             const endFrame = startFrame + maxLevels;
 
+            const stk = [];
+            const cpuInfo = await this.sendRpcCommand('getCpuInfo');
+            const pc = Number(cpuInfo.pc);
+
             if (this.sourceMap) {
-                const cpuInfo = await this.sendRpcCommand('getCpuInfo');
-                const pc = Number(cpuInfo.pc);
-                const stk = [];
                 try {
                     const loc = this.sourceMap.lookupAddress(pc);
-                    stk.push(new StackFrame(0, "Main", new Source(path.basename(loc.path), loc.path), loc.line));
+                    const frame = new StackFrame(0, "Main", new Source(path.basename(loc.path), loc.path), loc.line);
+                    frame.instructionPointerReference = cpuInfo.pc;
+                    stk.push(frame);
                 } catch (err) {
-                    // TODO: disassembly source
+                    // Fallback to disassembly view - no source file
+                    const frame = new StackFrame(0, `Assembly: ${formatHex(pc)}`);
+                    frame.instructionPointerReference = formatHex(pc);
+                    frame.presentationHint = 'subtle';
+                    stk.push(frame);
                 }
-
-                response.body = {
-                    stackFrames: stk.slice(startFrame, endFrame),
-                    totalFrames: stk.length
-                };
             } else {
-                vscode.window.showErrorMessage('No debug information loaded');
+                // No source map available - create disassembly frame
+                const frame = new StackFrame(0, `Assembly: ${formatHex(pc)}`);
+                frame.instructionPointerReference = formatHex(pc);
+                frame.presentationHint = 'subtle';
+                stk.push(frame);
             }
+            response.body = {
+                stackFrames: stk.slice(startFrame, endFrame),
+                totalFrames: stk.length
+            };
             this.sendResponse(response);
         } catch (err) {
             this.sendErrorResponse(response, {
@@ -289,7 +310,7 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
             new Scope("Custom Registers", this.variableHandles.create("custom"), false)
         ];
         if (this.sourceMap) {
-            scopes.push(new Scope("Symbols", this.variableHandles.create("symbols"), false))
+            scopes.push(new Scope("Symbols", this.variableHandles.create("symbols"), false));
         }
         response.body = { scopes };
         this.sendResponse(response);
@@ -301,11 +322,17 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
         try {
             if (id === "registers") {
                 const info = await this.sendRpcCommand('getCpuInfo');
-                variables = Object.keys(info).filter(k => k !== 'flags').map(name => ({
-                    name,
-                    value: String(info[name]),
-                    variablesReference: name === 'sr' ? this.variableHandles.create(`sr_flags`) : 0
-                }));
+                variables = Object.keys(info).filter(k => k !== 'flags').map(name => {
+                    const v: DebugProtocol.Variable = {
+                        name,
+                        value: String(info[name]),
+                        variablesReference: name === 'sr' ? this.variableHandles.create(`sr_flags`) : 0,
+                    };
+                    if (name.match(/(a[0-9]|pc|usp|msp|vbr)/)) {
+                        v.memoryReference = info[name];
+                    }
+                    return v;
+                });
             } else if (id === "custom") {
                 const info = await this.sendRpcCommand('getAllCustomRegisters');
                 variables = Object.keys(info).map(name => ({
@@ -415,50 +442,73 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
         const path = args.source.path!;
         logger.log(`Set breakpoints request: ${path}`);
 
-        // Remove existing
+        // Remove existing breakpoints for source
         const existing = this.sourceBreakpoints.get(path);
         if (existing) {
-            for (const { id, line, instructionReference } of existing) {
-                if (instructionReference) {
-                    logger.log(`Removing existing breakpoint #${id} at ${path}:${line} at ${instructionReference}`);
-                    this.sendCommand('removeBreakpoint', { address: Number(instructionReference) });
-                }
+            for (const ref of existing) {
+                logger.log(`Breakpoint #${ref.id} removed at ${formatHex(ref.address)}`);
+                this.sendCommand('removeBreakpoint', { address: ref.address });
             }
         }
 
-        const newBps: Breakpoint[] = [];
-        this.sourceBreakpoints.set(path, newBps);
+        const refs: BreakpointRef[] = [];
+        this.sourceBreakpoints.set(path, refs);
 
-        response.body = {
-            breakpoints: [],
-        };
+        response.body = { breakpoints: [] };
 
-        for (let reqBp of args.breakpoints ?? []) {
-            const { line, hitCondition } = reqBp;
-            let ignores = (hitCondition && isNumeric(hitCondition)) ? Number(hitCondition) : 0;
+        if (!this.sourceMap) {
+            return this.sendErrorResponse(response, {
+                id: ERROR_IDS.DEBUG_SYMBOLS_READ_ERROR,
+                format: 'Debug symbols not loaded',
+            });
+        }
 
-            const bp: Breakpoint = {
-                id: this.bpId++,
-                ignores,
-                verified: false, // Start as unverified
-                source: args.source,
-                ...reqBp,
-            };
-            newBps.push(bp);
+        // Add new breakpoints
+        for (let bp of args.breakpoints ?? []) {
+            const address = this.sourceMap.lookupSourceLine(path, bp.line).address;
+            const instructionReference = formatHex(address);
+            const { line, hitCondition } = bp;
+            const id = this.bpId++;
+            const ignores = (hitCondition && isNumeric(hitCondition)) ? Number(hitCondition) : 0;
+            refs.push({ id, address });
 
-            if (this.sourceMap) {
-                // Look up address from source and set breakpoint now
-                const address = this.sourceMap.lookupSourceLine(path, reqBp.line).address;
-                bp.instructionReference = formatHex(address);
-                bp.verified = true;
-                this.sendCommand('setBreakpoint', { address, ignores: bp.ignores });
-                logger.log(`Breakpoint #${bp.id} at ${path}:${line} set immediately at ${bp.instructionReference}`);
-            } else {
-                // Set pending status and process on attach
-                logger.log(`Breakpoint #${bp.id} at ${path}:${line} pending`);
-                bp.reason = 'pending';
-            }
-            response.body.breakpoints.push(bp);
+            this.sendCommand('setBreakpoint', { address, ignores });
+            logger.log(`Breakpoint #${id} at ${path}:${line} set at ${instructionReference}`);
+            response.body.breakpoints.push({
+                id,
+                instructionReference,
+                verified: true,
+                ...bp,
+            });
+        }
+        this.sendResponse(response);
+    }
+
+    protected setInstructionBreakpointsRequest(response: DebugProtocol.SetInstructionBreakpointsResponse, args: DebugProtocol.SetInstructionBreakpointsArguments, request?: DebugProtocol.Request): void {
+        logger.log(`Set instruction breakpoints request`);
+        // Remove existing
+        for (const ref of this.instructionBreakpoints) {
+            logger.log(`Instruction breakpoint #${ref.id} removed at ${formatHex(ref.address)}`);
+            this.sendCommand('removeBreakpoint', { address: ref.address });
+        }
+        this.instructionBreakpoints = [];
+
+        response.body = { breakpoints: [] };
+
+        // Add new breakpoints
+        for (let bp of args.breakpoints ?? []) {
+            const address = Number(bp.instructionReference) + (bp.offset ?? 0);
+            const id = this.bpId++;
+            const ignores = (bp.hitCondition && isNumeric(bp.hitCondition)) ? Number(bp.hitCondition) : 0;
+            this.instructionBreakpoints.push({ id, address });
+
+            this.sendCommand('setBreakpoint', { address, ignores });
+            logger.log(`Instruction breakpoint #${id} set at ${bp.instructionReference}`);
+            response.body.breakpoints.push({
+                id,
+                verified: true,
+                ...bp,
+            });
         }
         this.sendResponse(response);
     }
@@ -516,6 +566,53 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
         }
     }
 
+    protected async disassembleRequest(response: DebugProtocol.DisassembleResponse, args: DebugProtocol.DisassembleArguments): Promise<void> {
+        logger.log(`Disassemble request: ${args.memoryReference}, offset: ${args.offset}, count: ${args.instructionCount}`);
+        try {
+            const address = Number(args.memoryReference) + (args.instructionOffset ?? 0);
+            const count = args.instructionCount;
+
+            const result = await this.sendRpcCommand('disassemble', { address, count });
+
+            if (result.instructions) {
+                const instructions: DebugProtocol.DisassembledInstruction[] = result.instructions.map((instr: any) => {
+                    const disasm: DebugProtocol.DisassembledInstruction = {
+                        address: '0x' + instr.addr,
+                        instruction: instr.instruction,
+                        instructionBytes: instr.hex,
+                    };
+                    if (instr.hex === '0000 0000' || instr.instruction.startsWith('dc.')) {
+                        disasm.presentationHint = 'invalid';
+                    }
+
+                    // Add symbol lookup if we have source map
+                    if (this.sourceMap) {
+                        try {
+                            const addr = parseInt(instr.addr, 16);
+                            const loc = this.sourceMap.lookupAddress(addr);
+                            disasm.symbol = path.basename(loc.path) + ':' + loc.line;
+                            disasm.location = new Source(path.basename(loc.path), loc.path);
+                            disasm.line = loc.line;
+                        } catch (err) {
+                            // No source mapping for this address
+                        }
+                    }
+                    return disasm;
+                });
+
+                response.body = { instructions };
+            } else {
+                throw new Error('No instructions returned from disassembler');
+            }
+            this.sendResponse(response);
+        } catch (err) {
+            this.sendErrorResponse(response, {
+                id: ERROR_IDS.DISASSEMBLE_ERROR,
+                format: `Failed to disassemble: ${this.errorString(err)}`
+            });
+        }
+    }
+
     // Helpers:
 
     private handleMessageFromEmulator(message: any) {
@@ -546,24 +643,11 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
             } else if (this.hunks) {
                 this.sourceMap = sourceMapFromHunks(this.hunks, offsets);
             }
-
-            // Send pending breakpoints now we can calculate addresses
-            for (const [path, bps] of this.sourceBreakpoints) {
-                for (const bp of bps) {
-                    const address = this.sourceMap!.lookupSourceLine(path, bp.line!).address;
-                    bp.instructionReference = formatHex(address);
-                    bp.verified = true;
-                    this.sendCommand('setBreakpoint', { address, ignores: bp.ignores });
-                    logger.log(`Breakpoint #${bp.id} at ${path}:${bp.line} set at ${bp.instructionReference}`);
-                    this.sendEvent(new BreakpointEvent('changed', bp));
-                }
-            }
+            this.sendEvent(new InitializedEvent());
         } catch (error) {
             vscode.window.showErrorMessage(this.errorString(error));
+            this.sendEvent(new TerminatedEvent());
         }
-
-        // Resume execution now attached
-        this.sendCommand("run");
     }
 
     private updateState(state: string) {

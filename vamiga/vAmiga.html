@@ -1595,6 +1595,9 @@
 					case 'writeMemory':
 						rpcRequest(() => JSON.parse(wasm_write_memory(message.args.address, message.args.data)));
 						break;
+					case 'disassemble':
+						rpcRequest(() => JSON.parse(wasm_disassemble(message.args.address, message.args.count)));
+						break;
 					default:
 						if (message.command) {
 							vscode.postMessage({ type: 'error', text: `Unknown command: ${message.command}` });
