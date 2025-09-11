@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import * as vscode from "vscode";
 import { existsSync, readFileSync } from "fs";
 import { join } from "path";
@@ -73,7 +72,7 @@ export class VAmigaView {
     return this._panel?.onDidDispose(callback);
   }
 
-  public sendCommand(command: string, args?: any): void {
+  public sendCommand<A = any>(command: string, args?: A): void {
     if (this._panel) {
       this._panel.webview.postMessage({ command, args });
     } else {
@@ -81,9 +80,9 @@ export class VAmigaView {
     }
   }
 
-  public async sendRpcCommand<T = any>(
+  public async sendRpcCommand<T = any, A = any>(
     command: string,
-    args?: any,
+    args?: A,
     timeoutMs = 5000,
   ): Promise<T> {
     return new Promise<T>((resolve, reject) => {

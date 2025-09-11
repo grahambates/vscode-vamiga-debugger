@@ -837,14 +837,14 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
 
   // Wrap commands for logging:
 
-  private sendCommand(command: string, args?: any) {
+  private sendCommand<A = any>(command: string, args?: A) {
     logger.verbose(`Send command: ${command}(${JSON.stringify(args)})`);
     this.vAmiga.sendCommand(command, args);
   }
 
-  private async sendRpcCommand<T = any>(
+  private async sendRpcCommand<T = any, A = any>(
     command: string,
-    args?: any,
+    args?: A,
   ): Promise<T> {
     logger.verbose(`RPC Request: ${command}(${JSON.stringify(args)})`);
     const res = await this.vAmiga.sendRpcCommand<T>(command, args);
