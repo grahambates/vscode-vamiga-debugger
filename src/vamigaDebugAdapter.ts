@@ -802,7 +802,7 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
     }
   }
 
-  private updateState(state: string) {
+  private async updateState(state: string) {
     logger.log(`State: ${state}`);
     if (state === "paused") {
       if (this.isRunning) {
@@ -820,10 +820,27 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
         this.stepping = false;
         this.sendEvent(new StoppedEvent("step", VamigaDebugAdapter.THREAD_ID));
       } else {
+        const evt: DebugProtocol.StoppedEvent = new StoppedEvent("breakpoint", VamigaDebugAdapter.THREAD_ID);
         this.isRunning = false;
-        this.sendEvent(
-          new StoppedEvent("breakpoint", VamigaDebugAdapter.THREAD_ID),
-        );
+
+        // Look for matching breakpoint:
+        const cpuInfo = await this.sendRpcCommand('getCpuInfo');
+        const pc = Number(cpuInfo.pc);
+        let bpMatch: BreakpointRef | undefined;
+        // First check source breakpoints
+        for (const bps of this.sourceBreakpoints.values()) {
+          bpMatch = bps.find(bp => bp.address === pc);
+          if (bpMatch) break;
+        }
+        // fall back to instruction breakpoints
+        if (!bpMatch) {
+            bpMatch = this.instructionBreakpoints.find(bp => bp.address === pc);
+        }
+        if (bpMatch) {
+          evt.body.hitBreakpointIds = [bpMatch.id];
+        }
+
+        this.sendEvent(evt);
       }
     }
   }

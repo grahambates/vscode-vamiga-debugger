@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import * as vscode from "vscode";
 import { existsSync, readFileSync } from "fs";
 import { join } from "path";
