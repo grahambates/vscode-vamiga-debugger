@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import * as vscode from "vscode";
 import { existsSync, readFileSync } from "fs";
 import { join } from "path";
@@ -7,7 +8,7 @@ export class VAmigaView {
   private _panel?: vscode.WebviewPanel;
   private _pendingRpcs = new Map<
     string,
-    { resolve: Function; reject: Function; timeout: NodeJS.Timeout }
+    { resolve: (result: any) => void; reject: (err: Error) => void; timeout: NodeJS.Timeout }
   >();
 
   constructor(private readonly _extensionUri: vscode.Uri) {}

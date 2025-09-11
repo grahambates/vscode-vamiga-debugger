@@ -4,7 +4,8 @@
       "Read(/tmp/**)",
       "Bash(npm install)",
       "Bash(npm run compile:*)",
-      "Bash(npm run lint)"
+      "Bash(npm run lint)",
+      "mcp__ide__getDiagnostics"
     ],
     "deny": [],
     "ask": []

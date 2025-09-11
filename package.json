@@ -19,7 +19,13 @@
       "properties": {
         "vamiga-debugger.defaultViewColumn": {
           "type": "string",
-          "enum": ["one", "two", "three", "beside", "active"],
+          "enum": [
+            "one",
+            "two",
+            "three",
+            "beside",
+            "active"
+          ],
           "enumDescriptions": [
             "First editor column",
             "Second editor column",
@@ -35,13 +41,17 @@
     "debuggers": [
       {
         "type": "vamiga",
-        "languages": ["m68k"],
+        "languages": [
+          "m68k"
+        ],
         "label": "vAmiga Debug",
         "program": "./out/debugAdapter.js",
         "runtime": "node",
         "configurationAttributes": {
           "launch": {
-            "required": ["program"],
+            "required": [
+              "program"
+            ],
             "properties": {
               "program": {
                 "type": "string",
@@ -97,21 +107,26 @@
     "watch": "tsc -watch -p ./",
     "pretest": "npm run compile && npm run lint",
     "lint": "eslint src --ext ts",
-    "test": "vscode-test"
+    "test": "vscode-test",
+    "format": "prettier --write src/**/*.ts",
+    "format:check": "prettier --check src/**/*.ts"
   },
   "dependencies": {
     "@vscode/debugadapter": "^1.64.0"
   },
   "devDependencies": {
-    "@types/vscode": "^1.74.0",
+    "@eslint/js": "^9.35.0",
     "@types/mocha": "^10.0.6",
-    "@types/node": "18.x",
-    "@typescript-eslint/eslint-plugin": "^6.13.0",
-    "@typescript-eslint/parser": "^6.13.0",
-    "@vscode/test-cli": "^0.0.4",
+    "@types/node": "24.3.1",
+    "@types/vscode": "^1.74.0",
+    "@typescript-eslint/eslint-plugin": "8.43.0",
+    "@typescript-eslint/parser": "8.43.0",
+    "@vscode/test-cli": "0.0.11",
     "@vscode/test-electron": "^2.3.8",
-    "eslint": "^8.54.0",
-    "typescript": "^5.3.0"
+    "eslint": "9.35.0",
+    "prettier": "^3.6.2",
+    "typescript": "^5.9.2",
+    "typescript-eslint": "^8.43.0"
   },
   "author": "",
   "license": "ISC"
