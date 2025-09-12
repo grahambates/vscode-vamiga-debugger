@@ -31,7 +31,7 @@ import * as vscode from "vscode";
 import * as path from "path";
 import { readFile } from "fs/promises";
 
-import { VAmigaView } from "./vAmigaView";
+import { VAmigaView, CpuInfo } from "./vAmigaView";
 import { Hunk, parseHunks } from "./amigaHunkParser";
 import { DWARFData, parseDwarf } from "./dwarfParser";
 import { sourceMapFromDwarf } from "./dwarfSourceMap";
@@ -88,6 +88,57 @@ const exceptionBreakpointFilters: DebugProtocol.ExceptionBreakpointsFilter[] = [
   // { filter: '0x18', label: 'CHK' },
   // { filter: '0x1C', label: 'TRAPV' },
   { filter: "0x20", label: "Privilege violation", default: true },
+];
+
+export const vectors = [
+  "Reset:SSP",
+  "EXECBASE",
+  "BUS ERROR",
+  "ADR ERROR",
+  "ILLEG OPC",
+  "DIV BY 0",
+  "CHK",
+  "TRAPV",
+  "PRIVIL VIO",
+  "TRACE",
+  "LINEA EMU",
+  "LINEF EMU",
+  null,
+  null,
+  null,
+  "INT Uninit",
+  null,
+  null,
+  null,
+  null,
+  null,
+  null,
+  null,
+  null,
+  "INT Unjust",
+  "Lvl 1 Int",
+  "Lvl 2 Int",
+  "Lvl 3 Int",
+  "Lvl 4 Int",
+  "Lvl 5 Int",
+  "Lvl 6 Int",
+  "NMI",
+  "TRAP 00",
+  "TRAP 01",
+  "TRAP 02",
+  "TRAP 03",
+  "TRAP 04",
+  "TRAP 05",
+  "TRAP 06",
+  "TRAP 07",
+  "TRAP 08",
+  "TRAP 09",
+  "TRAP 10",
+  "TRAP 11",
+  "TRAP 12",
+  "TRAP 13",
+  "TRAP 14",
+  "TRAP 15",
 ];
 
 function formatHex(value: number, length = 8): string {
@@ -362,10 +413,12 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
         this.variableHandles.create("custom"),
         false,
       ),
+      new Scope("Vectors", this.variableHandles.create("vectors"), false),
     ];
     if (this.sourceMap) {
       scopes.push(
         new Scope("Symbols", this.variableHandles.create("symbols"), false),
+        new Scope("Segments", this.variableHandles.create("segments"), false),
       );
     }
     response.body = { scopes };
@@ -384,14 +437,17 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
         variables = Object.keys(info)
           .filter((k) => k !== "flags")
           .map((name) => {
+            const value = String(info[name as keyof CpuInfo]);
             const v: DebugProtocol.Variable = {
               name,
-              value: String(info[name]),
+              value,
               variablesReference:
                 name === "sr" ? this.variableHandles.create(`sr_flags`) : 0,
             };
+            // Limit to useful regs
             if (name.match(/(a[0-9]|pc|usp|msp|vbr)/)) {
-              v.memoryReference = info[name];
+              v.memoryReference = value;
+              v.value = this.formatAddress(Number(value));
             }
             return v;
           });
@@ -470,6 +526,24 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
             presentationHint,
           },
         ];
+      } else if (id === "vectors") {
+        const cpuInfo = await this.vAmiga.getCpuInfo();
+        const memStr = (
+          await this.vAmiga.readMemory(Number(cpuInfo.vbr), vectors.length * 4)
+        ).data;
+        const mem = Buffer.from(memStr, "base64");
+        for (let i = 0; i < vectors.length; i++) {
+          const name = vectors[i];
+          if (name) {
+            const value = mem.readInt32BE(i * 4);
+            variables.push({
+              name: `${formatHex(i * 4, 2).replace("0x", "")}: ${name}`,
+              value: this.formatAddress(value),
+              memoryReference: formatHex(value),
+              variablesReference: 0,
+            });
+          }
+        }
       } else if (id === "symbols" && this.sourceMap) {
         const symbols = this.sourceMap.getSymbols();
         variables = Object.keys(symbols).map((name): DebugProtocol.Variable => {
@@ -493,9 +567,23 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
           }
           return variable;
         });
+      } else if (id === "segments" && this.sourceMap) {
+        const segments = this.sourceMap.getSegmentsInfo();
+        variables = segments.map((seg) => {
+          const value = formatHex(seg.address);
+          return {
+            name: seg.name,
+            value,
+            memoryReference: value,
+            variablesReference: 0,
+            presentationHint: {
+              attributes: ["readOnly"],
+            },
+          };
+        });
       }
       response.body = {
-        variables: variables,
+        variables,
       };
       this.sendResponse(response);
     } catch (err) {
@@ -938,6 +1026,48 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
         this.sendEvent(evt);
       }
     }
+  }
+
+  private labelOffset(
+    address: number,
+  ): { label: string; offset: number } | undefined {
+    if (!this.sourceMap) {
+      return;
+    }
+
+    // Find which segment (if any) address is in
+    const segments = this.sourceMap.getSegmentsInfo();
+    const findSeg = (addr: number) =>
+      segments.find((s) => s.address <= addr && s.address + s.size > addr);
+    const segId = findSeg(address);
+    // Only care about addresses in our source map
+    if (segId === undefined) {
+      return;
+    }
+
+    let ret: { label: string; offset: number } | undefined;
+    const symbols = this.sourceMap.getSymbols();
+    for (const label in symbols) {
+      const symAddr = symbols[label];
+      const offset = address - symAddr;
+      // Address is after label and in same segment
+      if (offset >= 0 && segId === findSeg(symAddr)) {
+        ret = { label, offset };
+      }
+    }
+    return ret;
+  }
+
+  private formatAddress(address: number): string {
+    let out = formatHex(address);
+    const labelOffset = this.labelOffset(address);
+    if (labelOffset) {
+      out += " " + labelOffset.label;
+      if (labelOffset.offset) {
+        out += "+" + labelOffset.offset;
+      }
+    }
+    return out;
   }
 
   private errorString(err: unknown): string {

@@ -3,7 +3,7 @@ import * as vscode from "vscode";
 import { existsSync, readFileSync } from "fs";
 import { join } from "path";
 
-interface CpuInfo {
+export interface CpuInfo {
   pc: string;
   flags: {
     carry: boolean;
@@ -17,29 +17,58 @@ interface CpuInfo {
     master: boolean;
     interrupt_mask: number;
   };
-  [key: string]: any;
+  // data regs
+  d0: string;
+  d1: string;
+  d2: string;
+  d3: string;
+  d4: string;
+  d5: string;
+  d6: string;
+  d7: string;
+  // address regs
+  a0: string;
+  a1: string;
+  a2: string;
+  a3: string;
+  a4: string;
+  a5: string;
+  a6: string;
+  a7: string;
+  sr: string;
+  // stack pointers
+  usp: string;
+  isp: string;
+  msp: string;
+  vbr: string;
+  irc: string;
+  sfc: string;
+  dfc: string;
+  // cache
+  cacr: string;
+  caar: string;
 }
 
-interface CustomRegisters {
+export interface CustomRegisters {
   [name: string]: {
     value: string;
   };
 }
 
-interface RegisterSetStatus {
+export interface RegisterSetStatus {
   value: string;
 }
 
-interface MemResult {
+export interface MemResult {
   address: string;
   data: string;
 }
 
-interface WriteMemResult {
+export interface WriteMemResult {
   bytesWritten: number;
 }
 
-interface Disassembly {
+export interface Disassembly {
   instructions: Array<{
     addr: string;
     instruction: string;
@@ -61,6 +90,11 @@ export class VAmigaView {
 
   constructor(private readonly _extensionUri: vscode.Uri) {}
 
+  /**
+   * Opens a file in the VAmiga emulator webview panel
+   * @param filePath Absolute path to the file to open
+   * @throws Error if file does not exist
+   */
   public openFile(filePath: string): void {
     if (!existsSync(filePath)) {
       throw new Error(`File not found: ${filePath}`);
@@ -109,6 +143,9 @@ export class VAmigaView {
     });
   }
 
+  /**
+   * Brings the VAmiga webview panel to the foreground
+   */
   public reveal(): void {
     this._panel?.reveal();
   }
@@ -123,6 +160,11 @@ export class VAmigaView {
     return this._panel?.onDidDispose(callback);
   }
 
+  /**
+   * Sends a one-way command to the VAmiga emulator (no response expected)
+   * @param command Command name to send
+   * @param args Optional command arguments
+   */
   public sendCommand<A = any>(command: string, args?: A): void {
     if (this._panel) {
       this._panel.webview.postMessage({ command, args });
@@ -131,6 +173,14 @@ export class VAmigaView {
     }
   }
 
+  /**
+   * Sends an RPC command to the VAmiga emulator and waits for a response
+   * @param command RPC command name
+   * @param args Optional command arguments
+   * @param timeoutMs Timeout in milliseconds (default: 5000)
+   * @returns Promise that resolves with the command response
+   * @throws Error on timeout or if webview is not open
+   */
   public async sendRpcCommand<T = any, A = any>(
     command: string,
     args?: A,
@@ -167,52 +217,102 @@ export class VAmigaView {
     this._panel?.dispose();
   }
 
+  // Wasm commands:
+
+  /**
+   * Pause the emulator
+   */
   public pause(): void {
     this.sendCommand("pause");
   }
 
+  /**
+   * Resume running the emulator
+   */
   public run(): void {
     this.sendCommand("run");
   }
 
-  // Wasm commands:
-
+  /**
+   * Sets a breakpoint at the specified memory address
+   * @param address Memory address for the breakpoint
+   * @param ignores Number of times to ignore the breakpoint before stopping
+   */
   public setBreakpoint(address: number, ignores = 0): void {
     this.sendCommand("setBreakpoint", { address, ignores });
   }
 
+  /**
+   * Removes a breakpoint at the specified memory address
+   * @param address Memory address of the breakpoint to remove
+   */
   public removeBreakpoint(address: number): void {
     this.sendCommand("removeBreakpoint", { address });
   }
 
+  /**
+   * Sets a watchpoint at the specified memory address
+   * @param address Memory address for the watchpoint
+   * @param ignores Number of times to ignore the watchpoint before stopping
+   */
   public setWatchpoint(address: number, ignores = 0): void {
     this.sendCommand("setWatchpoint", { address, ignores });
   }
 
+  /**
+   * Removes a watchpoint at the specified memory address
+   * @param address Memory address of the watchpoint to remove
+   */
   public removeWatchpoint(address: number): void {
     this.sendCommand("removeWatchpoint", { address });
   }
 
+  /**
+   * Sets a catchpoint for the specified exception vector
+   * @param vector Exception vector number (e.g. 0x8 for bus error)
+   * @param ignores Number of times to ignore the exception before stopping
+   */
   public setCatchpoint(vector: number, ignores = 0): void {
     this.sendCommand("setCatchpoint", { vector, ignores });
   }
 
+  /**
+   * Removes a catchpoint for the specified exception vector
+   * @param vector Exception vector number to remove
+   */
   public removeCatchpoint(vector: number): void {
     this.sendCommand("removeCatchpoint", { vector });
   }
 
+  /**
+   * Stop on next executed instruction
+   */
   public stepInto(): void {
     this.sendCommand("stepInto");
   }
 
+  /**
+   * Gets the current CPU state including registers and flags
+   * @returns Promise resolving to CPU information
+   */
   public async getCpuInfo(): Promise<CpuInfo> {
     return this.sendRpcCommand("getCpuInfo");
   }
 
+  /**
+   * Gets all custom chip registers (e.g. DMACON, INTENA, etc.)
+   * @returns Promise resolving to custom register values
+   */
   public async getAllCustomRegisters(): Promise<CustomRegisters> {
     return this.sendRpcCommand("getAllCustomRegisters");
   }
 
+  /**
+   * Sets a CPU register to the specified value
+   * @param name Register name (e.g. 'pc', 'd0', 'a7')
+   * @param value New register value
+   * @returns Promise resolving to set status
+   */
   public async setRegister(
     name: string,
     value: number,
@@ -220,6 +320,12 @@ export class VAmigaView {
     return this.sendRpcCommand("setRegister", { name, value });
   }
 
+  /**
+   * Sets a custom chip register to the specified value
+   * @param name Register name (e.g. 'DMACON', 'INTENA')
+   * @param value New register value
+   * @returns Promise resolving to set status
+   */
   public async setCustomRegister(
     name: string,
     value: number,
@@ -227,10 +333,22 @@ export class VAmigaView {
     return this.sendRpcCommand("setCustomRegister", { name, value });
   }
 
+  /**
+   * Reads memory from the specified address
+   * @param address Starting memory address
+   * @param count Number of bytes to read
+   * @returns Promise resolving to memory data (base64 encoded)
+   */
   public async readMemory(address: number, count: number): Promise<MemResult> {
     return this.sendRpcCommand("readMemory", { address, count });
   }
 
+  /**
+   * Writes memory at the specified address
+   * @param address Starting memory address
+   * @param data Base64 encoded data to write
+   * @returns Promise resolving to write result
+   */
   public async writeMemory(
     address: number,
     data: string,
@@ -238,6 +356,12 @@ export class VAmigaView {
     return this.sendRpcCommand("writeMemory", { address, data });
   }
 
+  /**
+   * Disassembles instructions starting at the specified address
+   * @param address Starting memory address
+   * @param count Number of instructions to disassemble
+   * @returns Promise resolving to disassembly result
+   */
   public async disassemble(
     address: number,
     count: number,
