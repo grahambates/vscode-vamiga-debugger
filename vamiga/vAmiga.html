@@ -1532,27 +1532,6 @@
 					case 'run':
 						wasm_run();
 						break;
-					case 'reset':
-						wasm_reset();
-						break;
-					case 'loadFile':
-						fetch(message.args.uri).then(response => {
-							if (!response.ok) {
-								throw new Error(`HTTP error! status: ${response.status}`);
-							}
-							return response.arrayBuffer();
-						}).then(data => {
-							wasm_loadfile(message.args.fileName, new Uint8Array(data), message.args.slot);
-						}).catch(error => {
-							console.error('Error fetching file:', error);
-						});
-						break;
-					case 'memPatch':
-						wasm_mem_patch(message.args.offset, message.args.value);
-						break;
-					case 'setWarp':
-						wasm_set_warp(message.args);
-						break;
 					case 'setBreakpoint':
 						wasm_set_breakpoint(message.args.address, message.args.ignores);
 						break;
@@ -1565,6 +1544,16 @@
 					case 'removeWatchpoint':
 						wasm_remove_watchpoint(message.args);
 						break;
+					case 'setCatchpoint':
+						wasm_set_catchpoint(message.args.vector);
+						break;
+					case 'removeCatchpoint':
+						wasm_remove_catchpoint(message.args.vector);
+						break;
+					case 'stepInto':
+						wasm_step_into();
+						wasm_run();
+						break;
 					case 'getCpuInfo':
 						rpcRequest(() => JSON.parse(wasm_get_cpu_info()));
 						break;
@@ -1576,18 +1565,6 @@
 						break;
 					case 'setCustomRegister':
 						rpcRequest(() => JSON.parse(wasm_set_custom_register(message.args.name, message.args.value)));
-						break;
-					case 'stepInto':
-						rpcRequest(() => {
-							wasm_step_into();
-							wasm_run();
-						});
-						break;
-					case 'stepOver':
-						rpcRequest(() => {
-							wasm_step_over();
-							wasm_run();
-						});
 						break;
 					case 'readMemory':
 						rpcRequest(() => JSON.parse(wasm_read_memory(message.args.address, message.args.count)));

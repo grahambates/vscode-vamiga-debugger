@@ -2,12 +2,9 @@
 
 // TODO:
 // - Step out
-// - Fix Step over
 // - Focus issue
-// - Exception breakpoints
 // - Disassembly view panel
 // - Watchpoints
-// - Read/Write memory
 // - Copper thread
 // - Stack frames
 // - Console
@@ -39,7 +36,29 @@ import { Hunk, parseHunks } from "./amigaHunkParser";
 import { DWARFData, parseDwarf } from "./dwarfParser";
 import { sourceMapFromDwarf } from "./dwarfSourceMap";
 import { sourceMapFromHunks } from "./amigaHunkSourceMap";
-import { SourceMap } from "./sourceMap";
+import { Location, SourceMap } from "./sourceMap";
+
+interface LaunchRequestArguments extends DebugProtocol.LaunchRequestArguments {
+  program: string;
+  debugProgram?: string | null;
+  stopOnEntry?: boolean;
+  trace?: boolean;
+}
+
+interface Segment {
+  start: number;
+  size: number;
+}
+
+interface BreakpointRef {
+  id: number;
+  address: number;
+}
+
+interface TmpBreakpoint {
+  reason: string;
+  address: number;
+}
 
 // Error ID categories
 const ERROR_IDS = {
@@ -61,22 +80,15 @@ const ERROR_IDS = {
   STACK_TRACE_ERROR: 5001,
 } as const;
 
-interface LaunchRequestArguments extends DebugProtocol.LaunchRequestArguments {
-  program: string;
-  debugProgram?: string | null;
-  stopOnEntry?: boolean;
-  trace?: boolean;
-}
-
-interface Segment {
-  start: number;
-  size: number;
-}
-
-interface BreakpointRef {
-  id: number;
-  address: number;
-}
+const exceptionBreakpointFilters: DebugProtocol.ExceptionBreakpointsFilter[] = [
+  { filter: "0x8", label: "Bus error", default: true },
+  { filter: "0xC", label: "Address error", default: true },
+  { filter: "0x10", label: "Illegal instruction", default: true },
+  { filter: "0x14", label: "Zero divide", default: true },
+  // { filter: '0x18', label: 'CHK' },
+  // { filter: '0x1C', label: 'TRAPV' },
+  { filter: "0x20", label: "Privilege violation", default: true },
+];
 
 function formatHex(value: number, length = 8): string {
   return "0x" + value.toString(16).padStart(length, "0");
@@ -89,6 +101,7 @@ function isNumeric(value: string): boolean {
 export class VamigaDebugAdapter extends LoggingDebugSession {
   private static THREAD_ID = 1;
   private variableHandles = new Handles<string>();
+  private locationHandles = new Handles<Location>();
   private isRunning = false;
   private stopOnEntry = false;
   private programPath = "";
@@ -97,10 +110,12 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
   private dwarfData?: DWARFData;
   private sourceMap?: SourceMap;
   private trace = false;
-  private stepping = true;
+  private stepping = false;
   private disposables: vscode.Disposable[] = [];
   private sourceBreakpoints: Map<string, BreakpointRef[]> = new Map();
   private instructionBreakpoints: BreakpointRef[] = [];
+  private exceptionBreakpoints: BreakpointRef[] = [];
+  private tmpBreakpoints: TmpBreakpoint[] = [];
   private bpId = 0;
 
   public constructor() {
@@ -147,6 +162,7 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
     response: DebugProtocol.InitializeResponse,
   ): void {
     logger.log("Initialize request");
+
     response.body = response.body || {};
     response.body.supportsConfigurationDoneRequest = true;
     response.body.supportsSetVariable = true;
@@ -156,6 +172,8 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
     response.body.supportsInstructionBreakpoints = true;
     response.body.supportsConfigurationDoneRequest = true;
     response.body.supportsHitConditionalBreakpoints = true;
+
+    response.body.exceptionBreakpointFilters = exceptionBreakpointFilters;
 
     this.sendResponse(response);
   }
@@ -242,25 +260,21 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
     response: DebugProtocol.ConfigurationDoneResponse,
   ): void {
     logger.log("Configuration done");
-    this.sendCommand("run");
+    this.vAmiga.run();
     this.sendResponse(response);
   }
 
-  protected continueRequest(
-    response: DebugProtocol.ContinueResponse,
-  ): void {
+  protected continueRequest(response: DebugProtocol.ContinueResponse): void {
     logger.log("Continue request");
-    this.sendCommand("run");
+    this.vAmiga.run();
     this.vAmiga.reveal();
     response.body = { allThreadsContinued: true };
     this.sendResponse(response);
   }
 
-  protected pauseRequest(
-    response: DebugProtocol.PauseResponse,
-  ): void {
+  protected pauseRequest(response: DebugProtocol.PauseResponse): void {
     logger.log("Pause request");
-    this.sendCommand("pause");
+    this.vAmiga.pause();
     this.sendResponse(response);
   }
 
@@ -295,7 +309,7 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
       const endFrame = startFrame + maxLevels;
 
       const stk = [];
-      const cpuInfo = await this.sendRpcCommand("getCpuInfo");
+      const cpuInfo = await this.vAmiga.getCpuInfo();
       const pc = Number(cpuInfo.pc);
 
       if (this.sourceMap) {
@@ -336,9 +350,7 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
     }
   }
 
-  protected scopesRequest(
-    response: DebugProtocol.ScopesResponse,
-  ): void {
+  protected scopesRequest(response: DebugProtocol.ScopesResponse): void {
     const scopes = [
       new Scope(
         "CPU Registers",
@@ -368,7 +380,7 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
     let variables: DebugProtocol.Variable[] = [];
     try {
       if (id === "registers") {
-        const info = await this.sendRpcCommand("getCpuInfo");
+        const info = await this.vAmiga.getCpuInfo();
         variables = Object.keys(info)
           .filter((k) => k !== "flags")
           .map((name) => {
@@ -384,14 +396,14 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
             return v;
           });
       } else if (id === "custom") {
-        const info = await this.sendRpcCommand("getAllCustomRegisters");
+        const info = await this.vAmiga.getAllCustomRegisters();
         variables = Object.keys(info).map((name) => ({
           name,
           value: info[name].value,
           variablesReference: 0,
         }));
       } else if (id === "sr_flags") {
-        const info = await this.sendRpcCommand("getCpuInfo");
+        const info = await this.vAmiga.getCpuInfo();
         const flags = info.flags;
         const presentationHint = {
           attributes: ["readOnly"],
@@ -460,9 +472,9 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
         ];
       } else if (id === "symbols" && this.sourceMap) {
         const symbols = this.sourceMap.getSymbols();
-        variables = Object.keys(symbols).map((name) => {
+        variables = Object.keys(symbols).map((name): DebugProtocol.Variable => {
           const value = formatHex(symbols[name]);
-          return {
+          const variable: DebugProtocol.Variable = {
             name,
             value,
             memoryReference: value,
@@ -471,6 +483,15 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
             },
             variablesReference: 0,
           };
+          try {
+            const loc = this.sourceMap?.lookupAddress(symbols[name]);
+            variable.declarationLocationReference = loc
+              ? this.locationHandles.create(loc)
+              : undefined;
+          } catch (_) {
+            // No location
+          }
+          return variable;
         });
       }
       response.body = {
@@ -495,9 +516,9 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
     try {
       let res: any;
       if (id === "registers") {
-        res = await this.sendRpcCommand("setRegister", { name, value });
+        res = await this.vAmiga.setRegister(name, value);
       } else if (id === "custom") {
-        res = await this.sendRpcCommand("setCustomRegister", { name, value });
+        res = await this.vAmiga.setCustomRegister(name, value);
       } else {
         throw new Error("Not writeable");
       }
@@ -519,7 +540,7 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
     try {
       this.stepping = true;
       this.isRunning = true;
-      await this.sendRpcCommand("stepInto");
+      this.vAmiga.stepInto();
       this.sendResponse(response);
     } catch (err) {
       this.sendErrorResponse(response, {
@@ -533,9 +554,29 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
     response: DebugProtocol.NextResponse,
   ): Promise<void> {
     try {
-      this.stepping = true;
-      this.isRunning = true;
-      await this.sendRpcCommand("stepOver");
+      // vAmiga's built-in stepOver doesn't work correctly. It seems to only work with short branches.
+      // Need to implement this ourselves.
+
+      // Disassemble at pc to get current and next instruction.
+      const cpuInfo = await this.vAmiga.getCpuInfo();
+      const pc = Number(cpuInfo.pc);
+      const disasm = await this.vAmiga.disassemble(pc, 2);
+      const currInst = disasm?.instructions[0].instruction ?? "";
+      const next = disasm?.instructions[1];
+
+      // If current intruction is one of these i.e. it should eventually reach the next line,
+      // set tmp breakpoint on next instruction, otherwise just use built-in stepInto.
+      const isBranch = currInst.match(/^(jsr|bsr|dbra)/i);
+      if (next && isBranch) {
+        const addr = parseInt(next.addr, 16);
+        this.setTmpBreakpoint(addr, "step");
+        this.isRunning = true;
+        this.vAmiga.run();
+      } else {
+        this.stepping = true;
+        this.isRunning = true;
+        this.vAmiga.stepInto();
+      }
       this.sendResponse(response);
     } catch (err) {
       this.sendErrorResponse(response, {
@@ -559,7 +600,7 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
         logger.log(
           `Breakpoint #${ref.id} removed at ${formatHex(ref.address)}`,
         );
-        this.sendCommand("removeBreakpoint", { address: ref.address });
+        this.vAmiga.removeBreakpoint(ref.address);
       }
     }
 
@@ -585,7 +626,7 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
         hitCondition && isNumeric(hitCondition) ? Number(hitCondition) : 0;
       refs.push({ id, address });
 
-      this.sendCommand("setBreakpoint", { address, ignores });
+      this.vAmiga.setBreakpoint(address, ignores);
       logger.log(
         `Breakpoint #${id} at ${path}:${line} set at ${instructionReference}`,
       );
@@ -609,7 +650,7 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
       logger.log(
         `Instruction breakpoint #${ref.id} removed at ${formatHex(ref.address)}`,
       );
-      this.sendCommand("removeBreakpoint", { address: ref.address });
+      this.vAmiga.removeBreakpoint(ref.address);
     }
     this.instructionBreakpoints = [];
 
@@ -625,7 +666,7 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
           : 0;
       this.instructionBreakpoints.push({ id, address });
 
-      this.sendCommand("setBreakpoint", { address, ignores });
+      this.vAmiga.setBreakpoint(address, ignores);
       logger.log(
         `Instruction breakpoint #${id} set at ${bp.instructionReference}`,
       );
@@ -649,19 +690,12 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
       const address = Number(args.memoryReference) + (args.offset || 0);
       const count = Math.min(4096, args.count);
       if (count) {
-        const result = await this.sendRpcCommand("readMemory", {
-          address,
-          count,
-        });
-        if (result.success) {
-          response.body = {
-            address: result.address,
-            data: result.data, // Already base64 encoded
-            unreadableBytes: 0,
-          };
-        } else {
-          throw new Error(result.error || "Memory read failed");
-        }
+        const result = await this.vAmiga.readMemory(address, count);
+        response.body = {
+          address: result.address,
+          data: result.data, // Already base64 encoded
+          unreadableBytes: 0,
+        };
       }
       this.sendResponse(response);
     } catch (err) {
@@ -681,21 +715,12 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
     );
     try {
       const address = Number(args.memoryReference) + (args.offset || 0);
-
-      const result = await this.sendRpcCommand("writeMemory", {
-        address,
-        data: args.data, // Pass base64 data directly
-      });
-
-      if (result.success) {
-        response.body = {
-          offset: args.offset,
-          bytesWritten:
-            result.bytesWritten || Buffer.from(args.data, "base64").length,
-        };
-      } else {
-        throw new Error(result.error || "Memory write failed");
-      }
+      const result = await this.vAmiga.writeMemory(address, args.data); // Pass base64 data directly
+      response.body = {
+        offset: args.offset,
+        bytesWritten:
+          result.bytesWritten || Buffer.from(args.data, "base64").length,
+      };
       this.sendResponse(response);
     } catch (err) {
       this.sendErrorResponse(response, {
@@ -717,10 +742,7 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
         Number(args.memoryReference) + (args.instructionOffset ?? 0);
       const count = args.instructionCount;
 
-      const result = await this.sendRpcCommand("disassemble", {
-        address,
-        count,
-      });
+      const result = await this.vAmiga.disassemble(address, count);
 
       if (result.instructions) {
         const instructions: DebugProtocol.DisassembledInstruction[] =
@@ -765,6 +787,48 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
     }
   }
 
+  protected locationsRequest(
+    response: DebugProtocol.LocationsResponse,
+    args: DebugProtocol.LocationsArguments,
+  ): void {
+    try {
+      const location = this.locationHandles.get(args.locationReference);
+      if (location) {
+        response.body = {
+          source: new Source(path.basename(location.path), location.path),
+          line: location.line,
+        };
+      }
+      this.sendResponse(response);
+    } catch (err) {
+      this.sendErrorResponse(response, {
+        id: ERROR_IDS.DEBUG_SYMBOLS_READ_ERROR,
+        format: `Failed to get location: ${this.errorString(err)}`,
+      });
+    }
+  }
+
+  protected setExceptionBreakPointsRequest(
+    response: DebugProtocol.SetExceptionBreakpointsResponse,
+    args: DebugProtocol.SetExceptionBreakpointsArguments,
+  ): void {
+    for (const ref of this.exceptionBreakpoints) {
+      this.vAmiga.removeCatchpoint(ref.address);
+    }
+    this.exceptionBreakpoints = [];
+
+    const breakpoints: DebugProtocol.Breakpoint[] = [];
+    for (const filter of args.filters) {
+      const vector = Number(filter);
+      const id = this.bpId++;
+      this.vAmiga.setCatchpoint(vector);
+      this.exceptionBreakpoints.push({ id, address: vector });
+      breakpoints.push({ id, verified: true });
+    }
+    response.body = { breakpoints };
+    this.sendResponse(response);
+  }
+
   // Helpers:
 
   private handleMessageFromEmulator(message: any) {
@@ -779,12 +843,32 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
     }
   }
 
+  private setTmpBreakpoint(address: number, reason: string) {
+    const existing = this.findSourceBreakpoint(address);
+    if (existing) {
+      logger.log(`Breakpoint already exists at ${formatHex(address)}`);
+      return;
+    }
+    logger.log(
+      `Setting temporary breakpoint at ${formatHex(address)} (${reason})`,
+    );
+    this.tmpBreakpoints.push({ address, reason });
+    this.vAmiga.setBreakpoint(address);
+  }
+
+  private findSourceBreakpoint(address: number): BreakpointRef | undefined {
+    for (const bps of this.sourceBreakpoints.values()) {
+      const bpMatch = bps.find((bp) => bp.address === address);
+      if (bpMatch) {
+        return bpMatch;
+      }
+    }
+  }
+
   private attach(segments: Segment[]) {
     const offsets = segments.map((s) => s.start);
     if (this.stopOnEntry) {
-      logger.log(`Setting entry breakpoint at ${formatHex(offsets[0])}`);
-      // Set a breakpoint at entry point
-      this.sendCommand("setBreakpoint", { address: offsets[0], ignores: 0 });
+      this.setTmpBreakpoint(offsets[0], "entry");
     }
     try {
       if (this.dwarfData) {
@@ -820,24 +904,35 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
         this.stepping = false;
         this.sendEvent(new StoppedEvent("step", VamigaDebugAdapter.THREAD_ID));
       } else {
-        const evt: DebugProtocol.StoppedEvent = new StoppedEvent("breakpoint", VamigaDebugAdapter.THREAD_ID);
+        const evt: DebugProtocol.StoppedEvent = new StoppedEvent(
+          "breakpoint",
+          VamigaDebugAdapter.THREAD_ID,
+        );
         this.isRunning = false;
 
         // Look for matching breakpoint:
-        const cpuInfo = await this.sendRpcCommand('getCpuInfo');
+        const cpuInfo = await this.vAmiga.getCpuInfo();
         const pc = Number(cpuInfo.pc);
-        let bpMatch: BreakpointRef | undefined;
-        // First check source breakpoints
-        for (const bps of this.sourceBreakpoints.values()) {
-          bpMatch = bps.find(bp => bp.address === pc);
-          if (bpMatch) break;
-        }
-        // fall back to instruction breakpoints
-        if (!bpMatch) {
-            bpMatch = this.instructionBreakpoints.find(bp => bp.address === pc);
-        }
-        if (bpMatch) {
-          evt.body.hitBreakpointIds = [bpMatch.id];
+
+        // First check tmp breakpoints
+        const tmpMatch = this.tmpBreakpoints.find((bp) => bp.address === pc);
+        if (tmpMatch) {
+          logger.log(`Matched tmp breakpoint at ${cpuInfo.pc}`);
+          this.vAmiga.removeBreakpoint(tmpMatch.address);
+          evt.body.reason = tmpMatch.reason;
+          this.tmpBreakpoints = this.tmpBreakpoints.filter(
+            (bp) => bp.address !== pc,
+          );
+        } else {
+          // Check source breakpoints
+          const bpMatch =
+            this.findSourceBreakpoint(pc) ||
+            this.instructionBreakpoints.find((bp) => bp.address === pc);
+
+          // Add breakpoint info to response. Client doesn't know about tmp breakpoints.
+          if (bpMatch) {
+            evt.body.hitBreakpointIds = [bpMatch.id];
+          }
         }
 
         this.sendEvent(evt);
@@ -850,22 +945,5 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
       return this.trace ? err.stack || err.message : err.message;
     }
     return String(err);
-  }
-
-  // Wrap commands for logging:
-
-  private sendCommand<A = any>(command: string, args?: A) {
-    logger.verbose(`Send command: ${command}(${JSON.stringify(args)})`);
-    this.vAmiga.sendCommand(command, args);
-  }
-
-  private async sendRpcCommand<T = any, A = any>(
-    command: string,
-    args?: A,
-  ): Promise<T> {
-    logger.verbose(`RPC Request: ${command}(${JSON.stringify(args)})`);
-    const res = await this.vAmiga.sendRpcCommand<T>(command, args);
-    logger.verbose(`RPC response: ${JSON.stringify(res)}`);
-    return res;
   }
 }

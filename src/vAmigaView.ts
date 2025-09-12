@@ -3,12 +3,60 @@ import * as vscode from "vscode";
 import { existsSync, readFileSync } from "fs";
 import { join } from "path";
 
+interface CpuInfo {
+  pc: string;
+  flags: {
+    carry: boolean;
+    overflow: boolean;
+    zero: boolean;
+    negative: boolean;
+    extend: boolean;
+    trace1: boolean;
+    trace0: boolean;
+    supervisor: boolean;
+    master: boolean;
+    interrupt_mask: number;
+  };
+  [key: string]: any;
+}
+
+interface CustomRegisters {
+  [name: string]: {
+    value: string;
+  };
+}
+
+interface RegisterSetStatus {
+  value: string;
+}
+
+interface MemResult {
+  address: string;
+  data: string;
+}
+
+interface WriteMemResult {
+  bytesWritten: number;
+}
+
+interface Disassembly {
+  instructions: Array<{
+    addr: string;
+    instruction: string;
+    hex: string;
+  }>;
+}
+
 export class VAmigaView {
   public static readonly viewType = "vamiga-debugger.webview";
   private _panel?: vscode.WebviewPanel;
   private _pendingRpcs = new Map<
     string,
-    { resolve: (result: any) => void; reject: (err: Error) => void; timeout: NodeJS.Timeout }
+    {
+      resolve: (result: any) => void;
+      reject: (err: Error) => void;
+      timeout: NodeJS.Timeout;
+    }
   >();
 
   constructor(private readonly _extensionUri: vscode.Uri) {}
@@ -65,7 +113,9 @@ export class VAmigaView {
     this._panel?.reveal();
   }
 
-  public onDidReceiveMessage(callback: (data: any) => void): vscode.Disposable | undefined {
+  public onDidReceiveMessage(
+    callback: (data: any) => void,
+  ): vscode.Disposable | undefined {
     return this._panel?.webview.onDidReceiveMessage(callback);
   }
 
@@ -115,6 +165,84 @@ export class VAmigaView {
     this._pendingRpcs.clear();
 
     this._panel?.dispose();
+  }
+
+  public pause(): void {
+    this.sendCommand("pause");
+  }
+
+  public run(): void {
+    this.sendCommand("run");
+  }
+
+  // Wasm commands:
+
+  public setBreakpoint(address: number, ignores = 0): void {
+    this.sendCommand("setBreakpoint", { address, ignores });
+  }
+
+  public removeBreakpoint(address: number): void {
+    this.sendCommand("removeBreakpoint", { address });
+  }
+
+  public setWatchpoint(address: number, ignores = 0): void {
+    this.sendCommand("setWatchpoint", { address, ignores });
+  }
+
+  public removeWatchpoint(address: number): void {
+    this.sendCommand("removeWatchpoint", { address });
+  }
+
+  public setCatchpoint(vector: number, ignores = 0): void {
+    this.sendCommand("setCatchpoint", { vector, ignores });
+  }
+
+  public removeCatchpoint(vector: number): void {
+    this.sendCommand("removeCatchpoint", { vector });
+  }
+
+  public stepInto(): void {
+    this.sendCommand("stepInto");
+  }
+
+  public async getCpuInfo(): Promise<CpuInfo> {
+    return this.sendRpcCommand("getCpuInfo");
+  }
+
+  public async getAllCustomRegisters(): Promise<CustomRegisters> {
+    return this.sendRpcCommand("getAllCustomRegisters");
+  }
+
+  public async setRegister(
+    name: string,
+    value: number,
+  ): Promise<RegisterSetStatus> {
+    return this.sendRpcCommand("setRegister", { name, value });
+  }
+
+  public async setCustomRegister(
+    name: string,
+    value: number,
+  ): Promise<RegisterSetStatus> {
+    return this.sendRpcCommand("setCustomRegister", { name, value });
+  }
+
+  public async readMemory(address: number, count: number): Promise<MemResult> {
+    return this.sendRpcCommand("readMemory", { address, count });
+  }
+
+  public async writeMemory(
+    address: number,
+    data: string,
+  ): Promise<WriteMemResult> {
+    return this.sendRpcCommand("writeMemory", { address, data });
+  }
+
+  public async disassemble(
+    address: number,
+    count: number,
+  ): Promise<Disassembly> {
+    return this.sendRpcCommand("disassemble", { address, count });
   }
 
   // Helper methods:
@@ -176,4 +304,3 @@ export class VAmigaView {
     return htmlContent;
   }
 }
-
