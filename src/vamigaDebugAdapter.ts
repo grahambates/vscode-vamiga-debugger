@@ -3,7 +3,6 @@
 // TODO:
 // - Focus issue
 // - Disassembly view panel
-// - Evaluate
 // - Console
 // - Change hex syntax?
 // - Copper debugging
@@ -30,7 +29,7 @@ import * as vscode from "vscode";
 import * as path from "path";
 import { readFile } from "fs/promises";
 
-import { VAmigaView, CpuInfo } from "./vAmigaView";
+import { VAmigaView, CpuInfo, CustomRegisters } from "./vAmigaView";
 import { Hunk, parseHunks } from "./amigaHunkParser";
 import { DWARFData, parseDwarf } from "./dwarfParser";
 import { sourceMapFromDwarf } from "./dwarfSourceMap";
@@ -69,11 +68,11 @@ interface TmpBreakpoint {
 
 interface StopMessage {
   hasMessage: boolean;
-  name: 'BREAKPOINT_REACHED' | 'WATCHPOINT_REACHED' | 'CATCHPOINT_REACHED'
+  name: "BREAKPOINT_REACHED" | "WATCHPOINT_REACHED" | "CATCHPOINT_REACHED";
   payload: {
     pc: number;
     vector: number;
-  }
+  };
 }
 
 // Error ID categories
@@ -233,6 +232,8 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
     response.body.supportsDataBreakpoints = true;
     response.body.supportsConfigurationDoneRequest = true;
     response.body.supportsHitConditionalBreakpoints = true;
+    response.body.supportsEvaluateForHovers = true;
+    response.body.supportsCompletionsRequest = false;
 
     response.body.exceptionBreakpointFilters = exceptionBreakpointFilters;
 
@@ -947,6 +948,82 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
     }
 
     this.sendResponse(response);
+  }
+
+  protected async evaluateRequest(
+    response: DebugProtocol.EvaluateResponse,
+    args: DebugProtocol.EvaluateArguments,
+  ): Promise<void> {
+    logger.log(`Evaluate request: ${args.expression}`);
+
+    try {
+      const expression = args.expression.trim();
+      let result: string | undefined;
+      let memoryReference: string | undefined;
+
+      if (expression.match(/^0x[0-9a-f]+$/i)) {
+        // Address hex
+        const address = Number(expression);
+        if (!isNaN(address)) {
+          // Read longword value at address
+          // TODO: is this what we want? Support .w .b modifier?
+          const memData = await this.vAmiga.readMemoryBuffer(address, 4);
+          const value = memData.readUInt32BE(0);
+          result = formatHex(value);
+          memoryReference = formatHex(address);
+        } else {
+          throw new Error(`Invalid memory address: ${expression}`);
+        }
+      } else {
+        // Combine numeric variables
+        const numVars: Record<string, number> = {};
+        const cpuInfo = await this.vAmiga.getCpuInfo();
+        const customRegs = await this.vAmiga.getAllCustomRegisters();
+        const symbols = this.sourceMap?.getSymbols() ?? {};
+        for (const k in cpuInfo) {
+          if (k !== "flags") {
+            numVars[k] = Number(cpuInfo[k as keyof CpuInfo]);
+          }
+        }
+        for (const k in customRegs) {
+          numVars[k] = Number(customRegs[k]);
+        }
+        for (const k in symbols) {
+          numVars[k] = Number(symbols[k]);
+        }
+        numVars.sp = numVars.a7;
+
+        // Exact match of variable
+        if (expression in numVars) {
+          if (expression.match(/^(a[0-7]|pc|usp|msp|vbr)$/)) {
+            result = this.formatAddress(numVars[expression]);
+          } else {
+            result = formatHex(numVars[expression]);
+          }
+          if (expression in symbols) {
+            memoryReference = result;
+          }
+        }
+      }
+
+      if (result !== undefined) {
+        response.body = {
+          result,
+          type: "number",
+          memoryReference,
+          variablesReference: 0,
+        };
+      } else {
+        throw new Error(`Failed to evaluate: ${expression}`);
+      }
+
+      this.sendResponse(response);
+    } catch (err) {
+      this.sendErrorResponse(response, {
+        id: ERROR_IDS.VARIABLE_UPDATE_ERROR,
+        format: `Error evaluating '${args.expression}': ${this.errorString(err)}`,
+      });
+    }
   }
 
   protected async readMemoryRequest(
