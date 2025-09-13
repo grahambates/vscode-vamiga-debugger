@@ -1959,8 +1959,9 @@ function InitWrappers() {
                         console.log("Execution stopped (breakpoint or exception):", e);
                         // Stop the emulator - don't call wasm_halt as that would post another 'paused' event
                         Module._wasm_halt();
+                        const message = JSON.parse(wasm_get_current_message());
                         // Assume it's a breakpoint
-                        vscode.postMessage({ type: 'emulator-state', state: 'stopped' });
+                        vscode.postMessage({ type: 'emulator-state', state: 'stopped', message });
                     }
                 } finally {
                     queued_executes--;
@@ -2015,8 +2016,9 @@ function InitWrappers() {
                         // Stop the emulator - don't call wasm_halt as that would post another 'paused' event
                         Module._wasm_halt();
                         stop_request_animation_frame=true;
+                        const message = JSON.parse(wasm_get_current_message());
                         // Assume it's a breakpoint
-                        vscode.postMessage({ type: 'emulator-state', state: 'stopped' });
+                        vscode.postMessage({ type: 'emulator-state', state: 'stopped', message });
                     }
                 }
 
@@ -2137,11 +2139,14 @@ function InitWrappers() {
     // custom
     wasm_get_all_custom_registers = Module.cwrap('wasm_get_all_custom_registers', 'string');
     wasm_set_custom_register = Module.cwrap('wasm_set_custom_register', 'string', ['string', 'number']);
+
     wasm_get_current_process = Module.cwrap('wasm_get_current_process', 'string');
     wasm_get_call_stack = Module.cwrap('wasm_get_call_stack', 'string');
     wasm_debug_emulator_state =  Module.cwrap('wasm_debug_emulator_state', 'string');
     wasm_read_memory =  Module.cwrap('wasm_read_memory', 'string', ['number', 'number']); // address, count
     wasm_write_memory =  Module.cwrap('wasm_write_memory', 'string', ['number', 'string']); // address, data
+    wasm_get_current_message =  Module.cwrap('wasm_get_current_message', 'string');
+    wasm_clear_current_message =  Module.cwrap('wasm_clear_current_message', 'undefined');
 
     const volumeSlider = document.getElementById('volume-slider');
     set_volume = (new_volume)=>{

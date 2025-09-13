@@ -3,7 +3,6 @@
 // TODO:
 // - Focus issue
 // - Disassembly view panel
-// - Watchpoints
 // - Evaluate
 // - Console
 // - Change hex syntax?
@@ -54,6 +53,13 @@ interface Segment {
 interface BreakpointRef {
   id: number;
   address: number;
+}
+
+interface DataBreakpointRef {
+  id: number;
+  address: number;
+  accessType: string;
+  dataId: string;
 }
 
 interface TmpBreakpoint {
@@ -159,6 +165,7 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
   private sourceBreakpoints: Map<string, BreakpointRef[]> = new Map();
   private instructionBreakpoints: BreakpointRef[] = [];
   private exceptionBreakpoints: BreakpointRef[] = [];
+  private dataBreakpoints: DataBreakpointRef[] = [];
   private tmpBreakpoints: TmpBreakpoint[] = [];
   private bpId = 0;
 
@@ -214,6 +221,7 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
     response.body.supportsWriteMemoryRequest = true;
     response.body.supportsDisassembleRequest = true;
     response.body.supportsInstructionBreakpoints = true;
+    response.body.supportsDataBreakpoints = true;
     response.body.supportsConfigurationDoneRequest = true;
     response.body.supportsHitConditionalBreakpoints = true;
 
@@ -792,6 +800,146 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
     this.sendResponse(response);
   }
 
+  protected dataBreakpointInfoRequest(
+    response: DebugProtocol.DataBreakpointInfoResponse,
+    args: DebugProtocol.DataBreakpointInfoArguments,
+  ): void {
+    logger.log(`Data breakpoint info request: ${args.name}`);
+
+    // Handle variables that have memory references
+    if (args.variablesReference) {
+      const id = this.variableHandles.get(args.variablesReference);
+      if (id === "registers" || id === "custom" || id === "symbols") {
+        // For registers and symbols, we can create data breakpoints
+        const dataId = `${id}:${args.name}`;
+        response.body = {
+          dataId,
+          description: `Watch ${args.name}`,
+          accessTypes: ["read", "write", "readWrite"],
+          canPersist: false,
+        };
+        this.sendResponse(response);
+        return;
+      }
+    }
+
+    // Handle memory references directly
+    if (args.name && args.name.startsWith("0x")) {
+      const address = parseInt(args.name, 16);
+      if (!isNaN(address)) {
+        const dataId = `memory:${args.name}`;
+        response.body = {
+          dataId,
+          description: `Watch memory at ${args.name}`,
+          accessTypes: ["read", "write", "readWrite"],
+          canPersist: false,
+        };
+        this.sendResponse(response);
+        return;
+      }
+    }
+
+    // No data breakpoint available for this variable
+    response.body = {
+      dataId: null,
+      description: "Data breakpoint not supported for this variable",
+      accessTypes: [],
+      canPersist: false,
+    };
+    this.sendResponse(response);
+  }
+
+  protected setDataBreakpointsRequest(
+    response: DebugProtocol.SetDataBreakpointsResponse,
+    args: DebugProtocol.SetDataBreakpointsArguments,
+  ): void {
+    logger.log(`Set data breakpoints request`);
+
+    // Remove existing data breakpoints
+    for (const ref of this.dataBreakpoints) {
+      logger.log(
+        `Data breakpoint #${ref.id} removed at ${formatHex(ref.address)}`,
+      );
+      this.vAmiga.removeWatchpoint(ref.address);
+    }
+    this.dataBreakpoints = [];
+
+    response.body = { breakpoints: [] };
+
+    // Add new data breakpoints
+    for (const bp of args.breakpoints) {
+      try {
+        let address: number | undefined;
+        const parts = bp.dataId.split(":");
+
+        if (parts[0] === "memory") {
+          // Direct memory address
+          address = parseInt(parts[1], 16);
+        } else if (parts[0] === "registers" && this.sourceMap) {
+          // CPU register - not directly watchable as memory
+          response.body.breakpoints.push({
+            id: this.bpId++,
+            verified: false,
+            message: "CPU registers cannot be watched as memory locations",
+          });
+          continue;
+        } else if (parts[0] === "symbols" && this.sourceMap) {
+          // Symbol address
+          const symbols = this.sourceMap.getSymbols();
+          address = symbols[parts[1]];
+        } else if (parts[0] === "custom") {
+          // Custom chip registers - not directly watchable as standard memory
+          response.body.breakpoints.push({
+            id: this.bpId++,
+            verified: false,
+            message: "Custom registers cannot be watched as memory locations",
+          });
+          continue;
+        }
+
+        if (address !== undefined && !isNaN(address)) {
+          const id = this.bpId++;
+          const accessType = bp.accessType || "write";
+          const ignores =
+            bp.hitCondition && isNumeric(bp.hitCondition)
+              ? Number(bp.hitCondition)
+              : 0;
+
+          this.dataBreakpoints.push({
+            id,
+            address,
+            accessType,
+            dataId: bp.dataId,
+          });
+          this.vAmiga.setWatchpoint(address, ignores);
+
+          logger.log(
+            `Data breakpoint #${id} set at ${formatHex(address)} (${accessType})`,
+          );
+
+          response.body.breakpoints.push({
+            id,
+            verified: true,
+          });
+        } else {
+          response.body.breakpoints.push({
+            id: this.bpId++,
+            verified: false,
+            message: "Invalid memory address for data breakpoint",
+          });
+        }
+      } catch (err) {
+        response.body.breakpoints.push({
+          id: this.bpId++,
+          verified: false,
+          message: `Error setting data breakpoint: ${this.errorString(err)}`,
+        });
+      }
+    }
+
+    this.sendResponse(response);
+  }
+
   protected async readMemoryRequest(
     response: DebugProtocol.ReadMemoryResponse,
     args: DebugProtocol.ReadMemoryArguments,
@@ -950,7 +1098,7 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
       case "attached":
         return this.attach(message.segments);
       case "emulator-state":
-        return this.updateState(message.state);
+        return this.updateState(message);
       case "emulator-output":
         this.sendEvent(new OutputEvent(message.data + "\n"));
     }
@@ -999,8 +1147,9 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
     }
   }
 
-  private async updateState(state: string) {
-    logger.log(`State: ${state}`);
+  private async updateState(msg: { state: string; message: any }) {
+    const { state, message } = msg;
+    logger.log(`State: ${state}, ${JSON.stringify(message)}`);
     if (state === "paused") {
       if (this.isRunning) {
         this.isRunning = false;
@@ -1023,31 +1172,44 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
         );
         this.isRunning = false;
 
-        // Look for matching breakpoint:
-        const cpuInfo = await this.vAmiga.getCpuInfo();
-        const pc = Number(cpuInfo.pc);
+        let bpMatch: { id: number } | undefined;
 
-        // First check tmp breakpoints
-        const tmpMatch = this.tmpBreakpoints.find((bp) => bp.address === pc);
-        if (tmpMatch) {
-          logger.log(`Matched tmp breakpoint at ${cpuInfo.pc}`);
-          this.vAmiga.removeBreakpoint(tmpMatch.address);
-          evt.body.reason = tmpMatch.reason;
-          this.tmpBreakpoints = this.tmpBreakpoints.filter(
-            (bp) => bp.address !== pc,
+        if (message.name === "WATCHPOINT_REACHED") {
+          evt.body.reason = "data breakpoint";
+          bpMatch = this.dataBreakpoints.find(
+            (bp) => bp.address === message.payload.pc,
           );
-        } else {
-          // Check source breakpoints
-          const bpMatch =
-            this.findSourceBreakpoint(pc) ||
-            this.instructionBreakpoints.find((bp) => bp.address === pc);
-
-          // Add breakpoint info to response. Client doesn't know about tmp breakpoints.
-          if (bpMatch) {
-            evt.body.hitBreakpointIds = [bpMatch.id];
+        } else if (message.name === "CATCHPOINT_REACHED") {
+          evt.body.reason = "exception";
+          bpMatch = this.exceptionBreakpoints.find(
+            (bp) => bp.address === message.payload.vector,
+          );
+        } else if (message.name === "BREAKPOINT_REACHED") {
+          // First check tmp breakpoints
+          const tmpMatch = this.tmpBreakpoints.find(
+            (bp) => bp.address === message.payload.pc,
+          );
+          if (tmpMatch) {
+            // Client doesn't know about tmp breakpoints - don't set hitBreakpointIds
+            logger.log(`Matched tmp breakpoint at ${message.payload.pc}`);
+            this.vAmiga.removeBreakpoint(tmpMatch.address);
+            evt.body.reason = tmpMatch.reason;
+            this.tmpBreakpoints = this.tmpBreakpoints.filter(
+              (bp) => bp.address !== message.payload.pc,
+            );
+          } else {
+            // check source and instruction breakpoints
+            bpMatch =
+              this.findSourceBreakpoint(message.payload.pc) ||
+              this.instructionBreakpoints.find(
+                (bp) => bp.address === message.payload.pc,
+              );
           }
         }
 
+        if (bpMatch) {
+          evt.body.hitBreakpointIds = [bpMatch.id];
+        }
         this.sendEvent(evt);
       }
     }

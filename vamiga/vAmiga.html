@@ -1539,10 +1539,10 @@
 						wasm_remove_breakpoint(message.args.address);
 						break;
 					case 'setWatchpoint':
-						wasm_set_watchpoint(message.args);
+						wasm_set_watchpoint(message.args.address, message.args.ignores);
 						break;
 					case 'removeWatchpoint':
-						wasm_remove_watchpoint(message.args);
+						wasm_remove_watchpoint(message.args.address);
 						break;
 					case 'setCatchpoint':
 						wasm_set_catchpoint(message.args.vector);
