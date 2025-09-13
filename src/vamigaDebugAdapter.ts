@@ -37,6 +37,7 @@ import { DWARFData, parseDwarf } from "./dwarfParser";
 import { sourceMapFromDwarf } from "./dwarfSourceMap";
 import { sourceMapFromHunks } from "./amigaHunkSourceMap";
 import { Location, SourceMap } from "./sourceMap";
+import { formatHex, isNumeric } from "./helpers";
 
 interface LaunchRequestArguments extends DebugProtocol.LaunchRequestArguments {
   program: string;
@@ -140,14 +141,6 @@ export const vectors = [
   "TRAP 14",
   "TRAP 15",
 ];
-
-function formatHex(value: number, length = 8): string {
-  return "0x" + value.toString(16).padStart(length, "0");
-}
-
-function isNumeric(value: string): boolean {
-  return !isNaN(Number(value));
-}
 
 export class VamigaDebugAdapter extends LoggingDebugSession {
   private static THREAD_ID = 1;
