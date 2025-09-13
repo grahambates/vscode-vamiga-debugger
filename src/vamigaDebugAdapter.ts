@@ -28,8 +28,9 @@ import { DebugProtocol } from "@vscode/debugprotocol";
 import * as vscode from "vscode";
 import * as path from "path";
 import { readFile } from "fs/promises";
+import { Parser } from "expr-eval";
 
-import { VAmigaView, CpuInfo, CustomRegisters } from "./vAmigaView";
+import { VAmigaView, CpuInfo } from "./vAmigaView";
 import { Hunk, parseHunks } from "./amigaHunkParser";
 import { DWARFData, parseDwarf } from "./dwarfParser";
 import { sourceMapFromDwarf } from "./dwarfSourceMap";
@@ -176,6 +177,7 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
   private dataBreakpoints: DataBreakpointRef[] = [];
   private tmpBreakpoints: TmpBreakpoint[] = [];
   private bpId = 0;
+  private parser: Parser;
 
   public constructor() {
     super();
@@ -203,6 +205,7 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
     });
 
     this.vAmiga = new VAmigaView(vscode.Uri.file(path.dirname(__dirname)));
+    this.parser = new Parser();
   }
 
   public shutdown(): void {
@@ -956,57 +959,58 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
   ): Promise<void> {
     logger.log(`Evaluate request: ${args.expression}`);
 
+    const numVars: Record<string, number> = {};
+    const cpuInfo = await this.vAmiga.getCpuInfo();
+    const customRegs = await this.vAmiga.getAllCustomRegisters();
+    const symbols = this.sourceMap?.getSymbols() ?? {};
+    for (const k in cpuInfo) {
+      if (k !== "flags") {
+        numVars[k] = Number(cpuInfo[k as keyof CpuInfo]);
+      }
+    }
+    for (const k in customRegs) {
+      numVars[k] = Number(customRegs[k]);
+    }
+    for (const k in symbols) {
+      numVars[k] = Number(symbols[k]);
+    }
+    numVars.sp = numVars.a7;
+
     try {
       const expression = args.expression.trim();
-      let result: string | undefined;
+      let value: number | undefined;
       let memoryReference: string | undefined;
 
       if (expression.match(/^0x[0-9a-f]+$/i)) {
-        // Address hex
+        // Address hex:
         const address = Number(expression);
-        if (!isNaN(address)) {
-          // Read longword value at address
-          // TODO: is this what we want? Support .w .b modifier?
-          const memData = await this.vAmiga.readMemoryBuffer(address, 4);
-          const value = memData.readUInt32BE(0);
-          result = formatHex(value);
-          memoryReference = formatHex(address);
-        } else {
-          throw new Error(`Invalid memory address: ${expression}`);
-        }
+        // Read longword value at address
+        // TODO: is this what we want? Support .w .b modifier?
+        const memData = await this.vAmiga.readMemoryBuffer(address, 4);
+        value = memData.readUInt32BE(0);
+        memoryReference = formatHex(address);
       } else {
-        // Combine numeric variables
-        const numVars: Record<string, number> = {};
-        const cpuInfo = await this.vAmiga.getCpuInfo();
-        const customRegs = await this.vAmiga.getAllCustomRegisters();
-        const symbols = this.sourceMap?.getSymbols() ?? {};
-        for (const k in cpuInfo) {
-          if (k !== "flags") {
-            numVars[k] = Number(cpuInfo[k as keyof CpuInfo]);
-          }
-        }
-        for (const k in customRegs) {
-          numVars[k] = Number(customRegs[k]);
-        }
-        for (const k in symbols) {
-          numVars[k] = Number(symbols[k]);
-        }
-        numVars.sp = numVars.a7;
-
-        // Exact match of variable
         if (expression in numVars) {
-          if (expression.match(/^(a[0-7]|pc|usp|msp|vbr)$/)) {
-            result = this.formatAddress(numVars[expression]);
-          } else {
-            result = formatHex(numVars[expression]);
-          }
+          // Exact match of variable
+          value = numVars[expression];
           if (expression in symbols) {
-            memoryReference = result;
+            memoryReference = formatHex(value);
           }
+        } else {
+          // Complex expression
+          const expr = this.parser.parse(expression);
+          value = expr.evaluate(numVars);
         }
       }
 
-      if (result !== undefined) {
+      if (value !== undefined) {
+        let result: string | undefined;
+        // format as address?
+        if (expression.match(/^(a[0-7]|pc|usp|msp|vbr)$/)) {
+          result = this.formatAddress(value);
+        } else {
+          result = formatHex(value);
+        }
         response.body = {
           result,
           type: "number",

@@ -112,7 +112,8 @@
     "format:check": "prettier --check src/**/*.ts"
   },
   "dependencies": {
-    "@vscode/debugadapter": "^1.64.0"
+    "@vscode/debugadapter": "^1.64.0",
+    "expr-eval": "^2.0.2"
   },
   "devDependencies": {
     "@eslint/js": "^9.35.0",
