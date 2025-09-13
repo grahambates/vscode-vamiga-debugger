@@ -1,13 +1,13 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 // TODO:
-// - Step out
 // - Focus issue
 // - Disassembly view panel
 // - Watchpoints
-// - Copper thread
-// - Stack frames
+// - Evaluate
 // - Console
+// - Change hex syntax?
+// - Copper debugging
 // BUGS:
 // - disassembly current line
 
@@ -353,43 +353,49 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
     args: DebugProtocol.StackTraceArguments,
   ): Promise<void> {
     logger.log("Stack trace request");
+    const startFrame = args.startFrame ?? 0;
+    const maxLevels = args.levels ?? 16;
+    const endFrame = startFrame + maxLevels;
+
     try {
-      const startFrame =
-        typeof args.startFrame === "number" ? args.startFrame : 0;
-      const maxLevels = typeof args.levels === "number" ? args.levels : 1000;
-      const endFrame = startFrame + maxLevels;
+      const addresses = await this.getStack(endFrame);
 
+      let foundSource = false;
+
+      // Now build stack frame response from addresses
       const stk = [];
-      const cpuInfo = await this.vAmiga.getCpuInfo();
-      const pc = Number(cpuInfo.pc);
-
-      if (this.sourceMap) {
-        try {
-          const loc = this.sourceMap.lookupAddress(pc);
-          const frame = new StackFrame(
-            0,
-            "Main",
-            new Source(path.basename(loc.path), loc.path),
-            loc.line,
-          );
-          frame.instructionPointerReference = cpuInfo.pc;
-          stk.push(frame);
-        } catch (_err) {
-          // Fallback to disassembly view - no source file
-          const frame = new StackFrame(0, `Assembly: ${formatHex(pc)}`);
-          frame.instructionPointerReference = formatHex(pc);
-          frame.presentationHint = "subtle";
-          stk.push(frame);
+      for (let i = startFrame; i < addresses.length && i < endFrame; i++) {
+        const addr = addresses[i];
+        if (this.sourceMap) {
+          try {
+            const loc = this.sourceMap.lookupAddress(addr);
+            const frame = new StackFrame(
+              0,
+              this.formatAddress(addr),
+              new Source(path.basename(loc.path), loc.path),
+              loc.line,
+            );
+            frame.instructionPointerReference = formatHex(addr);
+            stk.push(frame);
+            foundSource = true;
+            continue;
+          } catch (_) {
+            // failed to look up source
+          }
         }
-      } else {
-        // No source map available - create disassembly frame
-        const frame = new StackFrame(0, `Assembly: ${formatHex(pc)}`);
-        frame.instructionPointerReference = formatHex(pc);
+        // stop on first rom call after user code
+        if (foundSource && addr > 0x00e00000 && addr < 0x01000000) {
+          break;
+        }
+        // No source available - create disassembly frame
+        const frame = new StackFrame(0, formatHex(addr));
+        frame.instructionPointerReference = formatHex(addr);
         frame.presentationHint = "subtle";
         stk.push(frame);
       }
+
       response.body = {
-        stackFrames: stk.slice(startFrame, endFrame),
+        stackFrames: stk,
         totalFrames: stk.length,
       };
       this.sendResponse(response);
@@ -528,10 +534,10 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
         ];
       } else if (id === "vectors") {
         const cpuInfo = await this.vAmiga.getCpuInfo();
-        const memStr = (
-          await this.vAmiga.readMemory(Number(cpuInfo.vbr), vectors.length * 4)
-        ).data;
-        const mem = Buffer.from(memStr, "base64");
+        const mem = await this.vAmiga.readMemoryBuffer(
+          Number(cpuInfo.vbr),
+          vectors.length * 4,
+        );
         for (let i = 0; i < vectors.length; i++) {
           const name = vectors[i];
           if (name) {
@@ -658,6 +664,32 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
       if (next && isBranch) {
         const addr = parseInt(next.addr, 16);
         this.setTmpBreakpoint(addr, "step");
+        this.isRunning = true;
+        this.vAmiga.run();
+      } else {
+        this.stepping = true;
+        this.isRunning = true;
+        this.vAmiga.stepInto();
+      }
+      this.sendResponse(response);
+    } catch (err) {
+      this.sendErrorResponse(response, {
+        id: 1006,
+        format: this.errorString(err),
+      });
+    }
+  }
+
+  protected async stepOutRequest(
+    response: DebugProtocol.StepOutResponse,
+  ): Promise<void> {
+    try {
+      // vAmiga has no stepOut function, as it doesn't track stack frames. We need to use our guessed stack list to set a tmp breakpoint.
+      const stack = await this.getStack();
+
+      // stack 0 is pc
+      if (stack[1]) {
+        this.setTmpBreakpoint(stack[1], "step");
         this.isRunning = true;
         this.vAmiga.run();
       } else {
@@ -1026,6 +1058,53 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
         this.sendEvent(evt);
       }
     }
+  }
+
+  private async getStack(maxLength = 16): Promise<number[]> {
+    const cpuInfo = await this.vAmiga.getCpuInfo();
+
+    // vAmiga doesn't currently track stack frames, so we'll need to look at the stack data and guess...
+    // Fetch data from sp, up to a reasonable length
+    const maxSize = 128;
+    const stackData = await this.vAmiga.readMemoryBuffer(
+      Number(cpuInfo.a7),
+      128,
+    );
+
+    const addresses = [Number(cpuInfo.pc)]; // Start with at least the current frame
+
+    // Look for values that could be a possible return address (as opposed to other data pushed to the stack)
+    let offset = 0;
+    addresses: while (offset <= maxSize - 4 && addresses.length < maxLength) {
+      const addr = stackData.readInt32BE(offset);
+      // TODO: more ways to validate address early e.g. valid range?
+      if (
+        addr > 0 && // non-zero address
+        !(addr & 1) // even address
+      ) {
+        try {
+          // Look at previous 3 words, and check if they look like a jsr or bsr
+          const prevBytes = await this.vAmiga.readMemoryBuffer(addr - 6, 6);
+          for (let i = 0; i < 3; i++) {
+            const w = prevBytes.readUInt16BE(i * 2);
+            if (
+              (w & 0xffc0) === 0x4e80 || // jsr
+              (w & 0xff00) === 0x6100 // bsr
+            ) {
+              // found likely return
+              addresses.push(addr);
+              offset += 4;
+              continue addresses;
+            }
+          }
+        } catch (_) {
+          // probably failed to read mem at invalid address
+        }
+      }
+      // next word if match not found
+      offset += 2;
+    }
+    return addresses;
   }
 
   private labelOffset(

@@ -344,6 +344,19 @@ export class VAmigaView {
   }
 
   /**
+   * Reads memory from the specified address to a Buffer
+   * @param address Starting memory address
+   * @param count Number of bytes to read
+   * @returns Promise resolving to memory data (Buffer)
+   */
+  public async readMemoryBuffer(
+    address: number,
+    count: number,
+  ): Promise<Buffer> {
+    return Buffer.from((await this.readMemory(address, count)).data, "base64");
+  }
+
+  /**
    * Writes memory at the specified address
    * @param address Starting memory address
    * @param data Base64 encoded data to write
