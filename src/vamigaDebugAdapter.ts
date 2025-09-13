@@ -67,6 +67,15 @@ interface TmpBreakpoint {
   address: number;
 }
 
+interface StopMessage {
+  hasMessage: boolean;
+  name: 'BREAKPOINT_REACHED' | 'WATCHPOINT_REACHED' | 'CATCHPOINT_REACHED'
+  payload: {
+    pc: number;
+    vector: number;
+  }
+}
+
 // Error ID categories
 const ERROR_IDS = {
   // Launch/initialization errors (2000-2099)
@@ -1147,7 +1156,7 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
     }
   }
 
-  private async updateState(msg: { state: string; message: any }) {
+  private async updateState(msg: { state: string; message: StopMessage }) {
     const { state, message } = msg;
     logger.log(`State: ${state}, ${JSON.stringify(message)}`);
     if (state === "paused") {
@@ -1162,6 +1171,7 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
       }
     } else if (state === "stopped") {
       if (this.stepping) {
+        // Special case for built-in stepIn function. No actual breakpoints used.
         this.isRunning = false;
         this.stepping = false;
         this.sendEvent(new StoppedEvent("step", VamigaDebugAdapter.THREAD_ID));
