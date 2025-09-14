@@ -28,7 +28,7 @@ import * as path from "path";
 import { readFile } from "fs/promises";
 import { Parser } from "expr-eval";
 
-import { VAmigaView, CpuInfo, Disassembly } from "./vAmigaView";
+import { VAmigaView, CpuInfo } from "./vAmigaView";
 import { Hunk, parseHunks } from "./amigaHunkParser";
 import { DWARFData, parseDwarf } from "./dwarfParser";
 import { sourceMapFromDwarf } from "./dwarfSourceMap";

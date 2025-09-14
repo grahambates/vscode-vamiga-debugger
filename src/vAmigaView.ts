@@ -231,6 +231,8 @@ export class VAmigaView {
    */
   public run(): void {
     this.sendCommand("run");
+    // Workaround - requestAnimationFrame isn't called when webview is hidden
+    this.reveal();
   }
 
   /**
@@ -289,6 +291,8 @@ export class VAmigaView {
    */
   public stepInto(): void {
     this.sendCommand("stepInto");
+    // Workaround - requestAnimationFrame isn't called when webview is hidden
+    this.reveal();
   }
 
   /**
