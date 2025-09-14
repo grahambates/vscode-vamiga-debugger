@@ -2,12 +2,10 @@
 
 // TODO:
 // - Focus issue
-// - Disassembly view panel
 // - Console
-// - Change hex syntax?
 // - Copper debugging
-// BUGS:
-// - disassembly current line
+// - Change hex syntax? - or not?
+// - Disassembly view panel - still needed?
 
 import {
   logger,
@@ -30,7 +28,7 @@ import * as path from "path";
 import { readFile } from "fs/promises";
 import { Parser } from "expr-eval";
 
-import { VAmigaView, CpuInfo } from "./vAmigaView";
+import { VAmigaView, CpuInfo, Disassembly } from "./vAmigaView";
 import { Hunk, parseHunks } from "./amigaHunkParser";
 import { DWARFData, parseDwarf } from "./dwarfParser";
 import { sourceMapFromDwarf } from "./dwarfSourceMap";
@@ -106,6 +104,7 @@ const exceptionBreakpointFilters: DebugProtocol.ExceptionBreakpointsFilter[] = [
   { filter: "0x20", label: "Privilege violation", default: true },
 ];
 
+// What's your vector Victor?
 export const vectors = [
   "Reset:SSP",
   "EXECBASE",
@@ -405,7 +404,6 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
         // No source available - create disassembly frame
         const frame = new StackFrame(0, formatHex(addr));
         frame.instructionPointerReference = formatHex(addr);
-        // frame.presentationHint = "subtle";
         stk.push(frame);
       }
 
@@ -681,13 +679,12 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
       if (next && isBranch) {
         const addr = parseInt(next.addr, 16);
         this.setTmpBreakpoint(addr, "step");
-        this.isRunning = true;
         this.vAmiga.run();
       } else {
         this.stepping = true;
-        this.isRunning = true;
         this.vAmiga.stepInto();
       }
+      this.isRunning = true;
       this.sendResponse(response);
     } catch (err) {
       this.sendErrorResponse(response, {
@@ -1089,25 +1086,81 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
     args: DebugProtocol.DisassembleArguments,
   ): Promise<void> {
     logger.log(
-      `Disassemble request: ${args.memoryReference}, offset: ${args.offset}, count: ${args.instructionCount}`,
+      `Disassemble request: ${args.memoryReference}, instructionOffset: ${args.instructionOffset}, count: ${args.instructionCount}`,
     );
     try {
-      const address =
-        Number(args.memoryReference) + (args.instructionOffset ?? 0);
+      const baseAddress = Number(args.memoryReference) + (args.offset ?? 0);
+      const instructionOffset = args.instructionOffset ?? 0;
       const count = args.instructionCount;
 
-      const result = await this.vAmiga.disassemble(address, count);
+      let requestCount = count;
+      let startAddress = baseAddress;
+
+      // Instruction offsets are a pain in the arse!€
+      if (instructionOffset < 0) {
+        // Negative instruction offset:
+        // Here we don't really know the start address to disassemble from to get this many additional instructions,
+        // because their length varies.
+        // Use the worst case, and set the start address way back as if each instruction is the maximum possible size.
+        // This will result in getting way more than we need.
+        const MAX_BYTES_PER_INSTRUCTION = 8; // really 10, but super unlikely
+        const MIN_BYTES_PER_INSTRUCTION = 2;
+        startAddress += instructionOffset * MAX_BYTES_PER_INSTRUCTION;
+        // Clamp to make sure we don't get a negative address. If we don't get enough instructions, we'll pad the result later
+        startAddress = Math.max(startAddress, 0);
+        // We also need to take the worst case of how many instructions to disassemble from the start address to include the requested range
+        // i.e. we set start address as if all the instructions were max size, but if they were min size, we have 4x
+        // that many instructions before we reach our base address
+        requestCount +=
+          -instructionOffset *
+          (MAX_BYTES_PER_INSTRUCTION / MIN_BYTES_PER_INSTRUCTION);
+      } else {
+        // Positive instruction offset:
+        // We still need to start disassembling from the base address, but just fetch more instructions and trim them later.
+        requestCount += instructionOffset;
+      }
+
+      const result = await this.vAmiga.disassemble(startAddress, requestCount);
 
       if (result.instructions) {
+        // find the instruction containing the base address. We'll slice relative to this to get the requested range
+        const startIndex = result.instructions.findIndex(
+          (i) => parseInt(i.addr, 16) === baseAddress,
+        );
+        // If it's not there we're pretty screwed...
+        if (startIndex === -1) {
+          throw new Error("start instruction not found");
+        }
+        let realStart = startIndex + instructionOffset;
+
+        // These are the instructions that will actually go in the response
+        const includedInstructions: typeof result.instructions = [];
+
+        // Pad with filler instructions to make up requested amount if start index is negative.
+        if (realStart < 0) {
+          for (let i = 0; i < -realStart; i++) {
+            includedInstructions.push({
+              addr: "0x00000000",
+              instruction: "invalid",
+              hex: "0000 0000",
+            });
+          }
+          realStart = 0;
+        }
+
+        includedInstructions.push(
+          ...result.instructions.slice(realStart, realStart + count),
+        );
+
         const instructions: DebugProtocol.DisassembledInstruction[] =
-          result.instructions.map((instr: any) => {
+          includedInstructions.map((instr: any) => {
             const disasm: DebugProtocol.DisassembledInstruction = {
               address: "0x" + instr.addr,
               instruction: instr.instruction,
               instructionBytes: instr.hex,
             };
             if (
-              instr.hex === "0000 0000" ||
+              instr.hex === "0000 0000" || // I mean, it could be `or.w #0,d0` but who's doing that?
               instr.instruction.startsWith("dc.")
             ) {
               disasm.presentationHint = "invalid";
@@ -1263,7 +1316,7 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
         // Fake stop reason as 'instruction breakpoint' to allow selecting a stack frame with no source, and open disassembly
         // Don't need to do this for step with instruction granularity, as this is already handled
         // see: https://github.com/microsoft/vscode/pull/143649/files
-        if (this.lastStepGranularity !== 'instruction') {
+        if (this.lastStepGranularity !== "instruction") {
           const cpuInfo = await this.vAmiga.getCpuInfo();
           try {
             this.sourceMap?.lookupAddress(Number(cpuInfo.pc));
