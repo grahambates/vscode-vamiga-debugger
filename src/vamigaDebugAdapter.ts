@@ -170,6 +170,7 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
   private sourceMap?: SourceMap;
   private trace = false;
   private stepping = false;
+  private lastStepGranularity: DebugProtocol.SteppingGranularity | undefined;
   private disposables: vscode.Disposable[] = [];
   private sourceBreakpoints: Map<string, BreakpointRef[]> = new Map();
   private instructionBreakpoints: BreakpointRef[] = [];
@@ -404,7 +405,7 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
         // No source available - create disassembly frame
         const frame = new StackFrame(0, formatHex(addr));
         frame.instructionPointerReference = formatHex(addr);
-        frame.presentationHint = "subtle";
+        // frame.presentationHint = "subtle";
         stk.push(frame);
       }
 
@@ -644,10 +645,12 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
 
   protected async stepInRequest(
     response: DebugProtocol.StepInResponse,
+    args: DebugProtocol.StepInArguments,
   ): Promise<void> {
     try {
       this.stepping = true;
       this.isRunning = true;
+      this.lastStepGranularity = args.granularity;
       this.vAmiga.stepInto();
       this.sendResponse(response);
     } catch (err) {
@@ -1255,7 +1258,21 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
         // Special case for built-in stepIn function. No actual breakpoints used.
         this.isRunning = false;
         this.stepping = false;
-        this.sendEvent(new StoppedEvent("step", VamigaDebugAdapter.THREAD_ID));
+        const evt = new StoppedEvent("step", VamigaDebugAdapter.THREAD_ID);
+
+        // Fake stop reason as 'instruction breakpoint' to allow selecting a stack frame with no source, and open disassembly
+        // Don't need to do this for step with instruction granularity, as this is already handled
+        // see: https://github.com/microsoft/vscode/pull/143649/files
+        if (this.lastStepGranularity !== 'instruction') {
+          const cpuInfo = await this.vAmiga.getCpuInfo();
+          try {
+            this.sourceMap?.lookupAddress(Number(cpuInfo.pc));
+          } catch (_) {
+            evt.body.reason = "instruction breakpoint";
+          }
+        }
+
+        this.sendEvent(evt);
       } else {
         const evt: DebugProtocol.StoppedEvent = new StoppedEvent(
           "breakpoint",
@@ -1289,12 +1306,16 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
               (bp) => bp.address !== message.payload.pc,
             );
           } else {
-            // check source and instruction breakpoints
-            bpMatch =
-              this.findSourceBreakpoint(message.payload.pc) ||
-              this.instructionBreakpoints.find(
-                (bp) => bp.address === message.payload.pc,
-              );
+            // check instruction breakpoints
+            bpMatch = this.instructionBreakpoints.find(
+              (bp) => bp.address === message.payload.pc,
+            );
+            if (bpMatch) {
+              evt.body.reason = "instruction breakpoint";
+            } else {
+              // check source breakpoints
+              bpMatch = this.findSourceBreakpoint(message.payload.pc);
+            }
           }
         }
 
