@@ -4,7 +4,6 @@
 // - step on entry not working?
 // - Console
 // - constants
-// - Completions
 // - Copper debugging
 // - Change hex syntax? - or not?
 // - Disassembly view panel - still needed?
@@ -1254,7 +1253,6 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
         matches.forEach((varName) => {
           response.body.targets.push({
             label: varName,
-            // text: varName.substring(prefix.length),
             start: args.text.length - prefix.length + 1,
             length: prefix.length,
             type: "variable",
