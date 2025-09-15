@@ -362,7 +362,7 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
     const endFrame = startFrame + maxLevels;
 
     try {
-      const addresses = await this.getStack(endFrame);
+      const addresses = await this.guessStack(endFrame);
 
       let foundSource = false;
 
@@ -699,7 +699,7 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
   ): Promise<void> {
     try {
       // vAmiga has no stepOut function, as it doesn't track stack frames. We need to use our guessed stack list to set a tmp breakpoint.
-      const stack = await this.getStack();
+      const stack = await this.guessStack();
 
       // stack 0 is pc
       if (stack[1]) {
@@ -1396,7 +1396,13 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
     }
   }
 
-  private async getStack(maxLength = 16): Promise<[number, number][]> {
+  /**
+   * Guess stack frames by looking at stack memory.
+   *
+   * @param maxLength
+   * @returns [jmp address, return address]
+   */
+  private async guessStack(maxLength = 16): Promise<[number, number][]> {
     const cpuInfo = await this.vAmiga.getCpuInfo();
 
     // vAmiga doesn't currently track stack frames, so we'll need to look at the stack data and guess...
