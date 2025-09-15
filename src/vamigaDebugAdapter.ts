@@ -3,6 +3,7 @@
 // TODO:
 // - step on entry not working?
 // - Console
+// - constants
 // - Completions
 // - Copper debugging
 // - Change hex syntax? - or not?
@@ -89,6 +90,7 @@ enum ErrorCode {
   VARIABLE_UPDATE_ERROR = 4002,
   EXPRESSION_EVALUATION_ERROR = 4003,
   STACK_TRACE_ERROR = 4004,
+  COMPLETIONS_ERROR = 4005,
 
   // Memory errors (5000-5099)
   MEMORY_READ_ERROR = 5001,
@@ -232,7 +234,7 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
     response.body.supportsConfigurationDoneRequest = true;
     response.body.supportsHitConditionalBreakpoints = true;
     response.body.supportsEvaluateForHovers = true;
-    response.body.supportsCompletionsRequest = false;
+    response.body.supportsCompletionsRequest = true;
 
     response.body.exceptionBreakpointFilters = exceptionBreakpointFilters;
 
@@ -375,19 +377,19 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
       for (let i = startFrame; i < addresses.length && i < endFrame; i++) {
         const addr = addresses[i][0];
         if (this.sourceMap) {
-            const loc = this.sourceMap.lookupAddress(addr);
-            if (loc) {
-              const frame = new StackFrame(
-                0,
-                this.formatAddress(addr),
-                new Source(path.basename(loc.path), loc.path),
-                loc.line,
-              );
-              frame.instructionPointerReference = formatHex(addr);
-              stk.push(frame);
-              foundSource = true;
-              continue;
-            }
+          const loc = this.sourceMap.lookupAddress(addr);
+          if (loc) {
+            const frame = new StackFrame(
+              0,
+              this.formatAddress(addr),
+              new Source(path.basename(loc.path), loc.path),
+              loc.line,
+            );
+            frame.instructionPointerReference = formatHex(addr);
+            stk.push(frame);
+            foundSource = true;
+            continue;
+          }
         }
         // stop on first rom call after user code
         if (foundSource && addr > 0x00e00000 && addr < 0x01000000) {
@@ -962,23 +964,6 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
   ): Promise<void> {
     logger.log(`Evaluate request: ${args.expression}`);
 
-    const numVars: Record<string, number> = {};
-    const cpuInfo = await this.getCachedCpuInfo();
-    const customRegs = await this.getCachedCustomRegisters();
-    const symbols = this.sourceMap?.getSymbols() ?? {};
-    for (const k in cpuInfo) {
-      if (k !== "flags") {
-        numVars[k] = Number(cpuInfo[k as keyof CpuInfo]);
-      }
-    }
-    for (const k in customRegs) {
-      numVars[k] = Number(customRegs[k]);
-    }
-    for (const k in symbols) {
-      numVars[k] = Number(symbols[k]);
-    }
-    numVars.sp = numVars.a7;
-
     try {
       const expression = args.expression.trim();
       let value: number | undefined;
@@ -993,10 +978,12 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
         value = memData.readUInt32BE(0);
         memoryReference = formatHex(address);
       } else {
+        const numVars = await this.getVars();
+
         if (expression in numVars) {
           // Exact match of variable
           value = numVars[expression];
-          if (expression in symbols) {
+          if (expression in (this.sourceMap?.getSymbols() ?? {})) {
             memoryReference = formatHex(value);
           }
         } else {
@@ -1245,6 +1232,45 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
     }
     response.body = { breakpoints };
     this.sendResponse(response);
+  }
+
+  protected async completionsRequest(
+    response: DebugProtocol.CompletionsResponse,
+    args: DebugProtocol.CompletionsArguments,
+  ): Promise<void> {
+    try {
+      response.body = { targets: [] };
+
+      // Get the prefix part (what's before the cursor) for matching
+      const beforeCursor = args.text.substring(0, args.column - 1);
+      const beforeMatch = beforeCursor.match(/\b[a-zA-Z0-9_$]*$/);
+
+      if (beforeMatch) {
+        const prefix = beforeMatch[0];
+        const vars = await this.getVars();
+        const matches = Object.keys(vars).filter((name) =>
+          name.toLowerCase().startsWith(prefix.toLowerCase()),
+        );
+        matches.forEach((varName) => {
+          response.body.targets.push({
+            label: varName,
+            // text: varName.substring(prefix.length),
+            start: args.text.length - prefix.length + 1,
+            length: prefix.length,
+            type: "variable",
+          });
+        });
+      }
+
+      this.sendResponse(response);
+    } catch (err) {
+      this.sendError(
+        response,
+        ErrorCode.COMPLETIONS_ERROR,
+        "Error generating completions",
+        err,
+      );
+    }
   }
 
   // Helpers:
@@ -1560,5 +1586,25 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
 
     await this.refreshCache();
     return this.cachedCustomRegisters!;
+  }
+
+  private async getVars() {
+    const variables: Record<string, number> = {};
+    const cpuInfo = await this.getCachedCpuInfo();
+    const customRegs = await this.getCachedCustomRegisters();
+    const symbols = this.sourceMap?.getSymbols() ?? {};
+    for (const k in cpuInfo) {
+      if (k !== "flags") {
+        variables[k] = Number(cpuInfo[k as keyof CpuInfo]);
+      }
+    }
+    for (const k in customRegs) {
+      variables[k] = Number(customRegs[k]);
+    }
+    for (const k in symbols) {
+      variables[k] = Number(symbols[k]);
+    }
+    variables.sp = variables.a7;
+    return variables;
   }
 }
