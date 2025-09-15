@@ -1893,21 +1893,9 @@ function InitWrappers() {
     wasm_reset = Module.cwrap('wasm_reset', 'undefined');
 
     stop_request_animation_frame=true;
-
-    // Use setInterval instead of requestAnimationFrame so it can run when tab is not visible
-    let animationInterval = null;
-    let targetFrameRate = 60; // Target 60 FPS
-    let frameTime = 1000 / targetFrameRate;
-
     wasm_halt=function () {
         Module._wasm_halt();
         stop_request_animation_frame=true;
-
-        // Stop setInterval if running
-        if (animationInterval) {
-            clearInterval(animationInterval);
-            animationInterval = null;
-        }
         vscode.postMessage({ type: 'emulator-state', state: 'paused' });
     }
     wasm_draw_one_frame= Module.cwrap('wasm_draw_one_frame', 'undefined');
@@ -2017,8 +2005,7 @@ function InitWrappers() {
                 }
             }
 
-            do_animation_frame = function() {
-                const now = performance.now();
+            do_animation_frame = function(now) {
                 try {
                     calculate_and_render(now);
                 } catch(e) {
@@ -2029,24 +2016,23 @@ function InitWrappers() {
                         // Stop the emulator - don't call wasm_halt as that would post another 'paused' event
                         Module._wasm_halt();
                         stop_request_animation_frame=true;
-                        if (animationInterval) {
-                            clearInterval(animationInterval);
-                            animationInterval = null;
-                        }
                         const message = JSON.parse(wasm_get_current_message());
                         // Assume it's a breakpoint
                         vscode.postMessage({ type: 'emulator-state', state: 'stopped', message });
                     }
+                }
+
+                // request another animation frame
+                if(!stop_request_animation_frame)
+                {
+                    requestAnimationFrame(do_animation_frame);
                 }
             }
         }
         if(stop_request_animation_frame)
         {
             stop_request_animation_frame=false;
-            // Start setInterval-based animation loop
-            if (!animationInterval) {
-                animationInterval = setInterval(do_animation_frame, frameTime);
-            }
+            requestAnimationFrame(do_animation_frame);
         }
         vscode.postMessage({ type: 'emulator-state', state: 'running' });
     }
