@@ -2038,8 +2038,6 @@ function InitWrappers() {
                         vscode.postMessage({ type: 'emulator-state', state: 'stopped', message });
                     }
                 }
-
-                lastFrameTime = now;
             }
         }
         if(stop_request_animation_frame)

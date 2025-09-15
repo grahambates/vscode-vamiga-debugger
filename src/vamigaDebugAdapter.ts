@@ -2,9 +2,13 @@
 
 // TODO:
 // - Console
+// - Completions
 // - Copper debugging
 // - Change hex syntax? - or not?
 // - Disassembly view panel - still needed?
+// data breakpoints from registers?
+// - stack should be jump instruction, make sure we don't break step out
+// - stop using exceptions in sourceMap
 
 import {
   logger,
@@ -166,21 +170,20 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
   private vAmiga: VAmigaView;
   private parser: Parser;
 
+  private trace = false;
+  private programPath = "";
+
   private isRunning = false;
   private stopOnEntry = false;
   private stepping = false;
-  private trace = false;
+  private lastStepGranularity: DebugProtocol.SteppingGranularity | undefined;
 
   private variableHandles = new Handles<string>();
   private locationHandles = new Handles<Location>();
-  private programPath = "";
 
   private hunks: Hunk[] = [];
   private dwarfData?: DWARFData;
   private sourceMap?: SourceMap;
-
-  private lastStepGranularity: DebugProtocol.SteppingGranularity | undefined;
-  private disposables: vscode.Disposable[] = [];
 
   private sourceBreakpoints: Map<string, BreakpointRef[]> = new Map();
   private instructionBreakpoints: BreakpointRef[] = [];
@@ -188,6 +191,8 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
   private dataBreakpoints: DataBreakpointRef[] = [];
   private tmpBreakpoints: TmpBreakpoint[] = [];
   private bpId = 0;
+
+  private disposables: vscode.Disposable[] = [];
 
   public constructor() {
     super();
@@ -212,8 +217,6 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
   protected initializeRequest(
     response: DebugProtocol.InitializeResponse,
   ): void {
-    logger.log("Initialize request");
-
     response.body = response.body || {};
     response.body.supportsConfigurationDoneRequest = true;
     response.body.supportsSetVariable = true;
@@ -236,7 +239,6 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
     response: DebugProtocol.LaunchResponse,
     args: LaunchRequestArguments,
   ) {
-    logger.log("Launch request");
     // Validate the program path
     this.programPath = args.program;
     if (!this.programPath) {
@@ -318,13 +320,11 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
   protected configurationDoneRequest(
     response: DebugProtocol.ConfigurationDoneResponse,
   ): void {
-    logger.log("Configuration done");
     this.vAmiga.run();
     this.sendResponse(response);
   }
 
   protected continueRequest(response: DebugProtocol.ContinueResponse): void {
-    logger.log("Continue request");
     this.vAmiga.run();
     this.vAmiga.reveal();
     response.body = { allThreadsContinued: true };
@@ -332,7 +332,6 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
   }
 
   protected pauseRequest(response: DebugProtocol.PauseResponse): void {
-    logger.log("Pause request");
     this.vAmiga.pause();
     this.sendResponse(response);
   }
@@ -340,7 +339,6 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
   protected disconnectRequest(
     response: DebugProtocol.DisconnectResponse,
   ): void {
-    logger.log("Disconnect request");
     this.dispose();
     this.sendEvent(new TerminatedEvent());
     this.sendResponse(response);
@@ -349,7 +347,6 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
   protected async threadsRequest(
     response: DebugProtocol.ThreadsResponse,
   ): Promise<void> {
-    logger.log("Threads request");
     response.body = {
       threads: [new Thread(VamigaDebugAdapter.THREAD_ID, "Main")],
     };
@@ -360,7 +357,6 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
     response: DebugProtocol.StackTraceResponse,
     args: DebugProtocol.StackTraceArguments,
   ): Promise<void> {
-    logger.log("Stack trace request");
     const startFrame = args.startFrame ?? 0;
     const maxLevels = args.levels ?? 16;
     const endFrame = startFrame + maxLevels;
@@ -373,7 +369,7 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
       // Now build stack frame response from addresses
       const stk = [];
       for (let i = startFrame; i < addresses.length && i < endFrame; i++) {
-        const addr = addresses[i];
+        const addr = addresses[i][0];
         if (this.sourceMap) {
           try {
             const loc = this.sourceMap.lookupAddress(addr);
@@ -707,7 +703,7 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
 
       // stack 0 is pc
       if (stack[1]) {
-        this.setTmpBreakpoint(stack[1], "step");
+        this.setTmpBreakpoint(stack[1][1], "step");
         this.isRunning = true;
         this.vAmiga.run();
       } else {
@@ -824,8 +820,6 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
     response: DebugProtocol.DataBreakpointInfoResponse,
     args: DebugProtocol.DataBreakpointInfoArguments,
   ): void {
-    logger.log(`Data breakpoint info request: ${args.name}`);
-
     // Handle variables that have memory references
     if (args.variablesReference) {
       const id = this.variableHandles.get(args.variablesReference);
@@ -835,7 +829,7 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
         response.body = {
           dataId,
           description: `Watch ${args.name}`,
-          accessTypes: ["read", "write", "readWrite"],
+          accessTypes: ["readWrite"],
           canPersist: false,
         };
         this.sendResponse(response);
@@ -851,7 +845,7 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
         response.body = {
           dataId,
           description: `Watch memory at ${args.name}`,
-          accessTypes: ["read", "write", "readWrite"],
+          accessTypes: ["readWrite"],
           canPersist: false,
         };
         this.sendResponse(response);
@@ -1402,7 +1396,7 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
     }
   }
 
-  private async getStack(maxLength = 16): Promise<number[]> {
+  private async getStack(maxLength = 16): Promise<[number, number][]> {
     const cpuInfo = await this.vAmiga.getCpuInfo();
 
     // vAmiga doesn't currently track stack frames, so we'll need to look at the stack data and guess...
@@ -1413,7 +1407,8 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
       128,
     );
 
-    const addresses = [Number(cpuInfo.pc)]; // Start with at least the current frame
+    const pc = Number(cpuInfo.pc);
+    const addresses: [number, number][] = [[pc, pc]]; // Start with at least the current frame
 
     // Look for values that could be a possible return address (as opposed to other data pushed to the stack)
     let offset = 0;
@@ -1434,7 +1429,7 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
               (w & 0xff00) === 0x6100 // bsr
             ) {
               // found likely return
-              addresses.push(addr);
+              addresses.push([addr - 6 + i * 2, addr]);
               offset += 4;
               continue addresses;
             }
