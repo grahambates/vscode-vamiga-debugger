@@ -1,5 +1,9 @@
 const default_app_title="vAmiga - start screen";
 let global_apptitle=default_app_title;
+
+// Web Worker for consistent emulation timing
+let emulationWorker = null;
+let workerInitialized = false;
 let call_param_openROMS=false;
 let call_param_gpu=null;
 let call_param_navbar=null;
@@ -1893,9 +1897,17 @@ function InitWrappers() {
     wasm_reset = Module.cwrap('wasm_reset', 'undefined');
 
     stop_request_animation_frame=true;
+    // Stop emulation worker when stopping animation frame
+    if (emulationWorker && workerInitialized) {
+        emulationWorker.postMessage({ command: 'stop' });
+    }
     wasm_halt=function () {
         Module._wasm_halt();
         stop_request_animation_frame=true;
+        // Stop emulation worker when halting
+        if (emulationWorker && workerInitialized) {
+            emulationWorker.postMessage({ command: 'stop' });
+        }
         vscode.postMessage({ type: 'emulator-state', state: 'paused' });
     }
     wasm_draw_one_frame= Module.cwrap('wasm_draw_one_frame', 'undefined');
@@ -1939,19 +1951,136 @@ function InitWrappers() {
             wasm_configure('WARP_MODE', 'NEVER');
             Module._wasm_halt();
             stop_request_animation_frame=true;
+            // Stop emulation worker when attaching debugger
+            if (emulationWorker && workerInitialized) {
+                emulationWorker.postMessage({ command: 'stop' });
+            }
             vscode.postMessage({ type: 'attached', segments: proc.segments });
         } else {
             console.log('not ready');
         }
     };
 
-    // Use polyfilled requestAnimationFrame to allow background running when tab is not visible.
-    let lastTime = 0;
-    const requestAnimationFrame = function(callback) {
-        const now = performance.now();
-        let nextTime = Math.max(lastTime + 16, now);
-        return setTimeout(() => callback(now), nextTime - now);
-    };
+    // Initialize web worker for consistent emulation timing
+    function initEmulationWorker() {
+        if (emulationWorker || workerInitialized) return;
+        
+        try {
+            // Create worker from inline script to avoid security restrictions in VS Code webviews
+            const workerScript = `
+// Web Worker for consistent emulation timing
+// This worker runs unthrottled even when the webview tab is not active
+
+let running = false;
+let intervalId = null;
+let targetFPS = 60;
+let frameInterval = 1000 / targetFPS; // ~16.67ms for 60 FPS
+
+// High-resolution timer for consistent frame timing
+let lastFrameTime = 0;
+
+function emulationLoop() {
+    if (!running) return;
+    
+    const now = performance.now();
+    const deltaTime = now - lastFrameTime;
+    
+    // Only execute frame if enough time has passed
+    if (deltaTime >= frameInterval) {
+        // Send frame execution command to main thread
+        postMessage({
+            type: 'executeFrame',
+            timestamp: now,
+            deltaTime: deltaTime
+        });
+        
+        lastFrameTime = now - (deltaTime % frameInterval); // Maintain consistent timing
+    }
+    
+    // Schedule next check - use shorter interval for precision
+    setTimeout(emulationLoop, 1);
+}
+
+// Handle messages from main thread
+self.onmessage = function(event) {
+    const { command, data } = event.data;
+    
+    switch (command) {
+        case 'start':
+            if (!running) {
+                running = true;
+                lastFrameTime = performance.now();
+                emulationLoop();
+                postMessage({ type: 'started' });
+            }
+            break;
+            
+        case 'stop':
+            running = false;
+            if (intervalId) {
+                clearTimeout(intervalId);
+                intervalId = null;
+            }
+            postMessage({ type: 'stopped' });
+            break;
+            
+        case 'setFPS':
+            targetFPS = data.fps || 60;
+            frameInterval = 1000 / targetFPS;
+            postMessage({ type: 'fpsSet', fps: targetFPS });
+            break;
+            
+        case 'isRunning':
+            postMessage({ type: 'runningStatus', running: running });
+            break;
+            
+        default:
+            console.log('Unknown command:', command);
+    }
+};
+
+// Initialize
+postMessage({ type: 'ready' });
+            `;
+            
+            const blob = new Blob([workerScript], { type: 'application/javascript' });
+            emulationWorker = new Worker(URL.createObjectURL(blob));
+            
+            emulationWorker.onmessage = function(event) {
+                const { type, timestamp } = event.data;
+                
+                switch (type) {
+                    case 'ready':
+                        console.log('Emulation worker initialized');
+                        workerInitialized = true;
+                        break;
+                        
+                    case 'executeFrame':
+                        if (do_animation_frame) {
+                            do_animation_frame(timestamp);
+                        }
+                        break;
+                        
+                    case 'started':
+                        console.log('Worker emulation started');
+                        break;
+                        
+                    case 'stopped':
+                        console.log('Worker emulation stopped');
+                        break;
+                }
+            };
+            
+            emulationWorker.onerror = function(error) {
+                console.error('Fatal: Emulation worker error:', error);
+                throw new Error('Emulation worker failed - unable to continue');
+            };
+        } catch (error) {
+            console.error('Fatal: Failed to initialize emulation worker:', error);
+            throw new Error('Failed to initialize emulation worker - unable to continue');
+        }
+    }
+
 
     wasm_run = function () {
         Module._wasm_run();
@@ -2024,23 +2153,37 @@ function InitWrappers() {
                         // Stop the emulator - don't call wasm_halt as that would post another 'paused' event
                         Module._wasm_halt();
                         stop_request_animation_frame=true;
+                        // Stop emulation worker when execution stops
+                        if (emulationWorker && workerInitialized) {
+                            emulationWorker.postMessage({ command: 'stop' });
+                        }
                         const message = JSON.parse(wasm_get_current_message());
                         // Assume it's a breakpoint
                         vscode.postMessage({ type: 'emulator-state', state: 'stopped', message });
                     }
                 }
 
-                // request another animation frame
+                // Use web worker for animation timing instead of requestAnimationFrame
                 if(!stop_request_animation_frame)
                 {
-                    requestAnimationFrame(do_animation_frame);
+                    if (emulationWorker && workerInitialized) {
+                        // Worker will handle the timing and call do_animation_frame via message
+                    } else {
+                        // Fallback should never happen since worker failure is fatal
+                        throw new Error('Emulation worker not available - this should not happen');
+                    }
                 }
             }
         }
         if(stop_request_animation_frame)
         {
             stop_request_animation_frame=false;
-            requestAnimationFrame(do_animation_frame);
+            // Start the worker instead of requestAnimationFrame
+            if (emulationWorker && workerInitialized) {
+                emulationWorker.postMessage({ command: 'start' });
+            } else {
+                throw new Error('Emulation worker not available - this should not happen');
+            }
         }
         vscode.postMessage({ type: 'emulator-state', state: 'running' });
     }
@@ -2155,6 +2298,9 @@ function InitWrappers() {
     wasm_write_memory =  Module.cwrap('wasm_write_memory', 'string', ['number', 'string']); // address, data
     wasm_get_current_message =  Module.cwrap('wasm_get_current_message', 'string');
     wasm_clear_current_message =  Module.cwrap('wasm_clear_current_message', 'undefined');
+
+    // Initialize worker after all WASM functions are available - failure is fatal
+    initEmulationWorker();
 
     const volumeSlider = document.getElementById('volume-slider');
     set_volume = (new_volume)=>{
