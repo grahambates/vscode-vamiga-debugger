@@ -4,6 +4,7 @@ let global_apptitle=default_app_title;
 // Web Worker for consistent emulation timing
 let emulationWorker = null;
 let workerInitialized = false;
+let stop_request_animation_frame = false;
 let call_param_openROMS=false;
 let call_param_gpu=null;
 let call_param_navbar=null;
@@ -1901,14 +1902,13 @@ function InitWrappers() {
     if (emulationWorker && workerInitialized) {
         emulationWorker.postMessage({ command: 'stop' });
     }
-    wasm_halt=function () {
+    wasm_halt=function (pauseEvent = true) {
         Module._wasm_halt();
         stop_request_animation_frame=true;
-        // Stop emulation worker when halting
-        if (emulationWorker && workerInitialized) {
-            emulationWorker.postMessage({ command: 'stop' });
+        emulationWorker.postMessage({ command: 'stop' });
+        if (pauseEvent) {
+            vscode.postMessage({ type: 'emulator-state', state: 'paused' });
         }
-        vscode.postMessage({ type: 'emulator-state', state: 'paused' });
     }
     wasm_draw_one_frame= Module.cwrap('wasm_draw_one_frame', 'undefined');
 
@@ -1916,55 +1916,70 @@ function InitWrappers() {
     queued_executes=0;
 
 
+    // Watch for debugee program starting:
+    // We need to hook into something that happens right before our program starts, in order to install breakpoints using segment offsets.
+    // AllocMem is a good candidate for this, even though it's also called quite a few times during boot for other reasons.
+
     let attached = false;
-    let execBase;
+    let allocMemAddr;
+    let allocBpAdded = false;
 
-
-    // Install breakpoint at AllocMem
-    // We need to hook into something that happens right before our program starts.
-    // Execbase is not immediately available after power on / reset, so need a short delay
-    // and keep trying until the offset actually points to a jmp
-    let int = setInterval(() => {
-        execBase = wasm_peek32(4);
-        const allocMem = execBase-198;
-        // execBase could be zero or some nonsense value. Check what's at the offset.
-        if (allocMem > 0 && wasm_peek16(allocMem) === 0x4ef9) {
-            clearInterval(int);
-            console.log('Installing AllocMem breakpoint at ' + allocMem);
-            wasm_set_breakpoint(allocMem, 0);
+    // Install breakpoint at AllocMem:
+    const tryInstallaAllocBp = function () {
+        // Execbase - _LV0_AllocMem
+        allocMemAddr = wasm_peek32(4)-198;
+        // Execbase is not immediately available after power on / reset, and could be zero or a bullshit address.
+        // Keep trying until the offset actually points to a jmp instruction
+        if (allocMemAddr > 0 && wasm_peek16(allocMemAddr) === 0x4ef9) {
+            console.log('Installing AllocMem breakpoint at ' + allocMemAddr);
+            wasm_set_breakpoint(allocMemAddr, 0);
+            allocBpAdded = true;
         }
-    }, 10);
+    }
 
-    // Check whether our process is ready to attach.
+    // Each time we hit the AllocMem breakpoint, check whether our process is running and has segment data.
     // We need to ignore a bunch of AllocMems, until our process is found.
-    const checkProc = function () {
+    const allocBpCheckProcess = function () {
         const proc = JSON.parse(wasm_get_current_process());
         // Command has a standard name of 'file' when vAmiga converts an exe to an ADF
-        // We need the segment list ready in order to set breakpoints.
         if (proc.command === 'file' && proc.segments) {
             console.log('attached');
             console.log(proc);
             // Can remove the AllocMem breakpoint now
-            wasm_remove_breakpoint(execBase-198);
+            wasm_remove_breakpoint(allocMemAddr);
             attached = true;
             // Turn off warp mode
             wasm_configure('WARP_MODE', 'NEVER');
-            Module._wasm_halt();
-            stop_request_animation_frame=true;
-            // Stop emulation worker when attaching debugger
-            if (emulationWorker && workerInitialized) {
-                emulationWorker.postMessage({ command: 'stop' });
-            }
+            // Stop so we can set breakpoints before resuming
+            wasm_halt(false);
             vscode.postMessage({ type: 'attached', segments: proc.segments });
         } else {
-            console.log('not ready');
+            console.log('process not ready');
         }
+        return attached;
     };
 
-    // Initialize web worker for consistent emulation timing
+    // Callback for error thrown during frame, which is likely to be a breakpoint or similar.
+    // There's a message available via wasm that contains the reason for the stop.
+    const handleStop = function (e) {
+        if (!attached) {
+            // Still checking on AllocMem for process to start
+            return allocBpCheckProcess();
+        }
+        console.log("Execution stopped (breakpoint or exception):", e);
+        wasm_halt(false);
+        // Get current message for stop
+        const message = JSON.parse(wasm_get_current_message());
+        vscode.postMessage({ type: 'emulator-state', state: 'stopped', message });
+    }
+
+    // We need a way to keep the emulator running even when the tab is hidden.
+    // - requestAnimationFrame isn't called at all when not visible
+    // - setInterval / setTimeout on the main thread get throttled by Chromium, based on percieved inactivity
+    // - web workers provide a good way to have a consitent timing that isn't affected by any of this
+
+    // Initialize web worker
     function initEmulationWorker() {
-        if (emulationWorker || workerInitialized) return;
-        
         try {
             // Create worker from inline script to avoid security restrictions in VS Code webviews
             const workerScript = `
@@ -1981,10 +1996,10 @@ let lastFrameTime = 0;
 
 function emulationLoop() {
     if (!running) return;
-    
+
     const now = performance.now();
     const deltaTime = now - lastFrameTime;
-    
+
     // Only execute frame if enough time has passed
     if (deltaTime >= frameInterval) {
         // Send frame execution command to main thread
@@ -1993,10 +2008,10 @@ function emulationLoop() {
             timestamp: now,
             deltaTime: deltaTime
         });
-        
+
         lastFrameTime = now - (deltaTime % frameInterval); // Maintain consistent timing
     }
-    
+
     // Schedule next check - use shorter interval for precision
     setTimeout(emulationLoop, 1);
 }
@@ -2004,17 +2019,17 @@ function emulationLoop() {
 // Handle messages from main thread
 self.onmessage = function(event) {
     const { command, data } = event.data;
-    
+
     switch (command) {
         case 'start':
             if (!running) {
                 running = true;
                 lastFrameTime = performance.now();
-                emulationLoop();
+                intervalId = setInterval(emulationLoop, 1);
                 postMessage({ type: 'started' });
             }
             break;
-            
+
         case 'stop':
             running = false;
             if (intervalId) {
@@ -2023,17 +2038,17 @@ self.onmessage = function(event) {
             }
             postMessage({ type: 'stopped' });
             break;
-            
+
         case 'setFPS':
             targetFPS = data.fps || 60;
             frameInterval = 1000 / targetFPS;
             postMessage({ type: 'fpsSet', fps: targetFPS });
             break;
-            
+
         case 'isRunning':
             postMessage({ type: 'runningStatus', running: running });
             break;
-            
+
         default:
             console.log('Unknown command:', command);
     }
@@ -2042,35 +2057,38 @@ self.onmessage = function(event) {
 // Initialize
 postMessage({ type: 'ready' });
             `;
-            
+
             const blob = new Blob([workerScript], { type: 'application/javascript' });
             emulationWorker = new Worker(URL.createObjectURL(blob));
-            
+
             emulationWorker.onmessage = function(event) {
                 const { type, timestamp } = event.data;
-                
+
                 switch (type) {
                     case 'ready':
                         console.log('Emulation worker initialized');
                         workerInitialized = true;
                         break;
-                        
+
                     case 'executeFrame':
-                        if (do_animation_frame) {
+                        if (do_animation_frame && !stop_request_animation_frame) {
                             do_animation_frame(timestamp);
+                            if (!allocBpAdded) {
+                                tryInstallaAllocBp();
+                            }
                         }
                         break;
-                        
+
                     case 'started':
                         console.log('Worker emulation started');
                         break;
-                        
+
                     case 'stopped':
                         console.log('Worker emulation stopped');
                         break;
                 }
             };
-            
+
             emulationWorker.onerror = function(error) {
                 console.error('Fatal: Emulation worker error:', error);
                 throw new Error('Emulation worker failed - unable to continue');
@@ -2081,7 +2099,6 @@ postMessage({ type: 'ready' });
         }
     }
 
-
     wasm_run = function () {
         Module._wasm_run();
         if(do_animation_frame == null)
@@ -2090,16 +2107,7 @@ postMessage({ type: 'ready' });
                 try {
                     Module._wasm_execute();
                 } catch (err) {
-                    if (!attached) {
-                        checkProc();
-                    } else {
-                        console.log("Execution stopped (breakpoint or exception):", e);
-                        // Stop the emulator - don't call wasm_halt as that would post another 'paused' event
-                        Module._wasm_halt();
-                        const message = JSON.parse(wasm_get_current_message());
-                        // Assume it's a breakpoint
-                        vscode.postMessage({ type: 'emulator-state', state: 'stopped', message });
-                    }
+                    handleStop(err);
                 } finally {
                     queued_executes--;
                 }
@@ -2146,44 +2154,14 @@ postMessage({ type: 'ready' });
                 try {
                     calculate_and_render(now);
                 } catch(e) {
-                    if (!attached) {
-                        checkProc();
-                    } else {
-                        console.log("Execution stopped (breakpoint or exception):", e);
-                        // Stop the emulator - don't call wasm_halt as that would post another 'paused' event
-                        Module._wasm_halt();
-                        stop_request_animation_frame=true;
-                        // Stop emulation worker when execution stops
-                        if (emulationWorker && workerInitialized) {
-                            emulationWorker.postMessage({ command: 'stop' });
-                        }
-                        const message = JSON.parse(wasm_get_current_message());
-                        // Assume it's a breakpoint
-                        vscode.postMessage({ type: 'emulator-state', state: 'stopped', message });
-                    }
-                }
-
-                // Use web worker for animation timing instead of requestAnimationFrame
-                if(!stop_request_animation_frame)
-                {
-                    if (emulationWorker && workerInitialized) {
-                        // Worker will handle the timing and call do_animation_frame via message
-                    } else {
-                        // Fallback should never happen since worker failure is fatal
-                        throw new Error('Emulation worker not available - this should not happen');
-                    }
+                    handleStop(err);
                 }
             }
         }
         if(stop_request_animation_frame)
         {
             stop_request_animation_frame=false;
-            // Start the worker instead of requestAnimationFrame
-            if (emulationWorker && workerInitialized) {
-                emulationWorker.postMessage({ command: 'start' });
-            } else {
-                throw new Error('Emulation worker not available - this should not happen');
-            }
+            emulationWorker.postMessage({ command: 'start' });
         }
         vscode.postMessage({ type: 'emulator-state', state: 'running' });
     }
