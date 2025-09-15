@@ -27,7 +27,16 @@ import * as path from "path";
 import { readFile } from "fs/promises";
 import { Parser } from "expr-eval";
 
-import { VAmigaView, CpuInfo, EmulatorMessage, isAttachedMessage, isEmulatorStateMessage, isEmulatorOutputMessage, EmulatorStateMessage, AttachedMessage } from "./vAmigaView";
+import {
+  VAmigaView,
+  CpuInfo,
+  EmulatorMessage,
+  isAttachedMessage,
+  isEmulatorStateMessage,
+  isEmulatorOutputMessage,
+  EmulatorStateMessage,
+  AttachedMessage,
+} from "./vAmigaView";
 import { Hunk, parseHunks } from "./amigaHunkParser";
 import { DWARFData, parseDwarf } from "./dwarfParser";
 import { sourceMapFromDwarf } from "./dwarfSourceMap";
@@ -59,26 +68,35 @@ interface TmpBreakpoint {
   address: number;
 }
 
-
-// Error ID categories
-const ERROR_IDS = {
+enum ErrorCode {
   // Launch/initialization errors (2000-2099)
-  PROGRAM_NOT_SPECIFIED: 2001,
-  DEBUG_SYMBOLS_READ_ERROR: 2002,
-  EMULATOR_START_ERROR: 2003,
-  // Runtime errors (3000-3099)
-  RPC_TIMEOUT: 3001,
-  VARIABLE_UPDATE_ERROR: 3002,
-  STEP_ERROR: 3003,
+  PROGRAM_NOT_SPECIFIED = 2001,
+  DEBUG_SYMBOLS_READ_ERROR = 2002,
+  EMULATOR_START_ERROR = 2003,
 
-  // Memory errors (4000-4099)
-  MEMORY_READ_ERROR: 4001,
-  MEMORY_WRITE_ERROR: 4002,
-  DISASSEMBLE_ERROR: 4003,
+  // Runtime/execution errors (3000-3099)
+  RPC_TIMEOUT = 3001,
+  STEP_ERROR = 3002,
+  CONTINUE_ERROR = 3003,
+  PAUSE_ERROR = 3004,
+  TERMINATE_ERROR = 3005,
 
-  // Stack trace errors (5000-5099)
-  STACK_TRACE_ERROR: 5001,
-} as const;
+  // Variable/expression errors (4000-4099)
+  VARIABLE_READ_ERROR = 4001,
+  VARIABLE_UPDATE_ERROR = 4002,
+  EXPRESSION_EVALUATION_ERROR = 4003,
+  STACK_TRACE_ERROR = 4004,
+
+  // Memory errors (5000-5099)
+  MEMORY_READ_ERROR = 5001,
+  MEMORY_WRITE_ERROR = 5002,
+  DISASSEMBLE_ERROR = 5003,
+
+  // Breakpoint errors (6000-6099)
+  BREAKPOINT_SET_ERROR = 6001,
+  BREAKPOINT_REMOVE_ERROR = 6002,
+  SOURCE_LOCATION_ERROR = 6003,
+}
 
 const exceptionBreakpointFilters: DebugProtocol.ExceptionBreakpointsFilter[] = [
   { filter: "0x8", label: "Bus error", default: true },
@@ -144,52 +162,37 @@ export const vectors = [
 
 export class VamigaDebugAdapter extends LoggingDebugSession {
   private static THREAD_ID = 1;
-  private variableHandles = new Handles<string>();
-  private locationHandles = new Handles<Location>();
+
+  private vAmiga: VAmigaView;
+  private parser: Parser;
+
   private isRunning = false;
   private stopOnEntry = false;
+  private stepping = false;
+  private trace = false;
+
+  private variableHandles = new Handles<string>();
+  private locationHandles = new Handles<Location>();
   private programPath = "";
-  private vAmiga: VAmigaView;
+
   private hunks: Hunk[] = [];
   private dwarfData?: DWARFData;
   private sourceMap?: SourceMap;
-  private trace = false;
-  private stepping = false;
+
   private lastStepGranularity: DebugProtocol.SteppingGranularity | undefined;
   private disposables: vscode.Disposable[] = [];
+
   private sourceBreakpoints: Map<string, BreakpointRef[]> = new Map();
   private instructionBreakpoints: BreakpointRef[] = [];
   private exceptionBreakpoints: BreakpointRef[] = [];
   private dataBreakpoints: DataBreakpointRef[] = [];
   private tmpBreakpoints: TmpBreakpoint[] = [];
   private bpId = 0;
-  private parser: Parser;
 
   public constructor() {
     super();
     this.setDebuggerLinesStartAt1(false);
     this.setDebuggerColumnsStartAt1(false);
-
-    // Store process event listeners for cleanup
-    const rejectionHandler = (reason: any, p: Promise<any>) => {
-      logger.error(reason + " Unhandled Rejection at Promise " + p);
-    };
-    const exceptionHandler = (err: Error) => {
-      logger.error("Uncaught Exception thrown: " + this.errorString(err));
-      process.exit(1);
-    };
-
-    process.on("unhandledRejection", rejectionHandler);
-    process.on("uncaughtException", exceptionHandler);
-
-    // Store cleanup functions
-    this.disposables.push({
-      dispose: () => {
-        process.off("unhandledRejection", rejectionHandler);
-        process.off("uncaughtException", exceptionHandler);
-      },
-    });
-
     this.vAmiga = new VAmigaView(vscode.Uri.file(path.dirname(__dirname)));
     this.parser = new Parser();
   }
@@ -237,10 +240,11 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
     // Validate the program path
     this.programPath = args.program;
     if (!this.programPath) {
-      this.sendErrorResponse(response, {
-        id: ERROR_IDS.PROGRAM_NOT_SPECIFIED,
-        format: "program not specified",
-      });
+      this.sendError(
+        response,
+        ErrorCode.PROGRAM_NOT_SPECIFIED,
+        "program not specified",
+      );
       this.sendEvent(new TerminatedEvent());
       return;
     }
@@ -269,10 +273,12 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
         this.hunks = parseHunks(buffer);
       }
     } catch (err) {
-      this.sendErrorResponse(response, {
-        id: 1004,
-        format: `error reading debug symbols: ${this.errorString(err)}`,
-      });
+      this.sendError(
+        response,
+        ErrorCode.DEBUG_SYMBOLS_READ_ERROR,
+        "error reading debug symbols",
+        err,
+      );
     }
 
     try {
@@ -299,10 +305,12 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
       this.stopOnEntry = args.stopOnEntry ?? false;
       this.sendResponse(response);
     } catch (err) {
-      this.sendErrorResponse(response, {
-        id: ERROR_IDS.EMULATOR_START_ERROR,
-        format: `Failed to start emulator: ${this.errorString(err)}`,
-      });
+      this.sendError(
+        response,
+        ErrorCode.EMULATOR_START_ERROR,
+        "Failed to start emulator",
+        err,
+      );
       this.sendEvent(new TerminatedEvent());
     }
   }
@@ -399,10 +407,12 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
       };
       this.sendResponse(response);
     } catch (err) {
-      this.sendErrorResponse(response, {
-        id: 1005,
-        format: `Error getting stack trace: ${this.errorString(err)}`,
-      });
+      this.sendError(
+        response,
+        ErrorCode.STACK_TRACE_ERROR,
+        "Error getting stack trace",
+        err,
+      );
     }
   }
 
@@ -592,10 +602,12 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
       };
       this.sendResponse(response);
     } catch (err) {
-      this.sendErrorResponse(response, {
-        id: 1002,
-        format: `Error fetching variables ${id}: ${this.errorString(err)}`,
-      });
+      this.sendError(
+        response,
+        ErrorCode.VARIABLE_READ_ERROR,
+        `Error fetching variables ${id}`,
+        err,
+      );
     }
   }
 
@@ -620,10 +632,12 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
       };
       this.sendResponse(response);
     } catch (err) {
-      this.sendErrorResponse(response, {
-        id: 1003,
-        format: `Error updating variable ${name}: ${this.errorString(err)}`,
-      });
+      this.sendError(
+        response,
+        ErrorCode.VARIABLE_UPDATE_ERROR,
+        `Error updating variable ${name}`,
+        err,
+      );
     }
   }
 
@@ -638,10 +652,12 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
       this.vAmiga.stepInto();
       this.sendResponse(response);
     } catch (err) {
-      this.sendErrorResponse(response, {
-        id: 1005,
-        format: this.errorString(err),
-      });
+      this.sendError(
+        response,
+        ErrorCode.STEP_ERROR,
+        "Step operation failed",
+        err,
+      );
     }
   }
 
@@ -673,10 +689,12 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
       this.isRunning = true;
       this.sendResponse(response);
     } catch (err) {
-      this.sendErrorResponse(response, {
-        id: 1006,
-        format: this.errorString(err),
-      });
+      this.sendError(
+        response,
+        ErrorCode.STEP_ERROR,
+        "Step operation failed",
+        err,
+      );
     }
   }
 
@@ -699,10 +717,12 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
       }
       this.sendResponse(response);
     } catch (err) {
-      this.sendErrorResponse(response, {
-        id: 1006,
-        format: this.errorString(err),
-      });
+      this.sendError(
+        response,
+        ErrorCode.STEP_ERROR,
+        "Step operation failed",
+        err,
+      );
     }
   }
 
@@ -730,10 +750,11 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
     response.body = { breakpoints: [] };
 
     if (!this.sourceMap) {
-      return this.sendErrorResponse(response, {
-        id: ERROR_IDS.DEBUG_SYMBOLS_READ_ERROR,
-        format: "Debug symbols not loaded",
-      });
+      return this.sendError(
+        response,
+        ErrorCode.DEBUG_SYMBOLS_READ_ERROR,
+        "Debug symbols not loaded",
+      );
     }
 
     // Add new breakpoints
@@ -927,11 +948,11 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
             message: "Invalid memory address for data breakpoint",
           });
         }
-      } catch (err) {
+      } catch (_) {
         response.body.breakpoints.push({
           id: this.bpId++,
           verified: false,
-          message: `Error setting data breakpoint: ${this.errorString(err)}`,
+          message: `Error setting data breakpoint`,
         });
       }
     }
@@ -1009,10 +1030,12 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
 
       this.sendResponse(response);
     } catch (err) {
-      this.sendErrorResponse(response, {
-        id: ERROR_IDS.VARIABLE_UPDATE_ERROR,
-        format: `Error evaluating '${args.expression}': ${this.errorString(err)}`,
-      });
+      this.sendError(
+        response,
+        ErrorCode.EXPRESSION_EVALUATION_ERROR,
+        `Error evaluating '${args.expression}'`,
+        err,
+      );
     }
   }
 
@@ -1036,10 +1059,12 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
       }
       this.sendResponse(response);
     } catch (err) {
-      this.sendErrorResponse(response, {
-        id: ERROR_IDS.MEMORY_READ_ERROR,
-        format: `Failed to read memory: ${this.errorString(err)}`,
-      });
+      this.sendError(
+        response,
+        ErrorCode.MEMORY_READ_ERROR,
+        "Failed to read memory",
+        err,
+      );
     }
   }
 
@@ -1060,10 +1085,12 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
       };
       this.sendResponse(response);
     } catch (err) {
-      this.sendErrorResponse(response, {
-        id: ERROR_IDS.MEMORY_WRITE_ERROR,
-        format: `Failed to write memory: ${this.errorString(err)}`,
-      });
+      this.sendError(
+        response,
+        ErrorCode.MEMORY_WRITE_ERROR,
+        "Failed to write memory",
+        err,
+      );
     }
   }
 
@@ -1173,10 +1200,12 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
       }
       this.sendResponse(response);
     } catch (err) {
-      this.sendErrorResponse(response, {
-        id: ERROR_IDS.DISASSEMBLE_ERROR,
-        format: `Failed to disassemble: ${this.errorString(err)}`,
-      });
+      this.sendError(
+        response,
+        ErrorCode.DISASSEMBLE_ERROR,
+        "Failed to disassemble",
+        err,
+      );
     }
   }
 
@@ -1194,10 +1223,12 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
       }
       this.sendResponse(response);
     } catch (err) {
-      this.sendErrorResponse(response, {
-        id: ERROR_IDS.DEBUG_SYMBOLS_READ_ERROR,
-        format: `Failed to get location: ${this.errorString(err)}`,
-      });
+      this.sendError(
+        response,
+        ErrorCode.DEBUG_SYMBOLS_READ_ERROR,
+        "Failed to get location",
+        err,
+      );
     }
   }
 
@@ -1274,7 +1305,12 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
       }
       this.sendEvent(new InitializedEvent());
     } catch (error) {
-      vscode.window.showErrorMessage(this.errorString(error));
+      this.sendEvent(
+        new OutputEvent(
+          `Fatal error during attach: ${this.errorString(error)}\n`,
+          "stderr",
+        ),
+      );
       this.sendEvent(new TerminatedEvent());
     }
   }
@@ -1460,5 +1496,18 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
       return this.trace ? err.stack || err.message : err.message;
     }
     return String(err);
+  }
+
+  private sendError(
+    response: DebugProtocol.Response,
+    errorId: ErrorCode,
+    message: string,
+    cause?: unknown,
+  ): void {
+    const formattedCause = cause ? `: ${this.errorString(cause)}` : "";
+    this.sendErrorResponse(response, {
+      id: errorId,
+      format: `${message}${formattedCause}`,
+    });
   }
 }
