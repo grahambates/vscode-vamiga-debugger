@@ -76,6 +76,60 @@ export interface Disassembly {
   }>;
 }
 
+export interface Segment {
+  start: number;
+  size: number;
+}
+
+export interface StopMessage {
+  hasMessage: boolean;
+  name: "BREAKPOINT_REACHED" | "WATCHPOINT_REACHED" | "CATCHPOINT_REACHED";
+  payload: {
+    pc: number;
+    vector: number;
+  };
+}
+
+export interface AttachedMessage {
+  type: "attached";
+  segments: Segment[];
+}
+
+export interface EmulatorStateMessage {
+  type: "emulator-state";
+  state: string;
+  message: StopMessage;
+}
+
+export interface EmulatorOutputMessage {
+  type: "emulator-output";
+  data: string;
+}
+
+export interface RpcResponseMessage {
+  type: "rpcResponse";
+  id: string;
+  result: any;
+}
+
+export type EmulatorMessage = AttachedMessage | EmulatorStateMessage | EmulatorOutputMessage | RpcResponseMessage;
+
+export function isAttachedMessage(message: EmulatorMessage): message is AttachedMessage {
+  return message.type === "attached";
+}
+
+export function isEmulatorStateMessage(message: EmulatorMessage): message is EmulatorStateMessage {
+  return message.type === "emulator-state";
+}
+
+export function isEmulatorOutputMessage(message: EmulatorMessage): message is EmulatorOutputMessage {
+  return message.type === "emulator-output";
+}
+
+export function isRpcResponseMessage(message: EmulatorMessage): message is RpcResponseMessage {
+  return message.type === "rpcResponse";
+}
+
 export class VAmigaView {
   public static readonly viewType = "vamiga-debugger.webview";
   private _panel?: vscode.WebviewPanel;

@@ -1,7 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 // TODO:
-// - Focus issue
 // - Console
 // - Copper debugging
 // - Change hex syntax? - or not?
@@ -28,7 +27,7 @@ import * as path from "path";
 import { readFile } from "fs/promises";
 import { Parser } from "expr-eval";
 
-import { VAmigaView, CpuInfo } from "./vAmigaView";
+import { VAmigaView, CpuInfo, EmulatorMessage, isAttachedMessage, isEmulatorStateMessage, isEmulatorOutputMessage, EmulatorStateMessage, AttachedMessage } from "./vAmigaView";
 import { Hunk, parseHunks } from "./amigaHunkParser";
 import { DWARFData, parseDwarf } from "./dwarfParser";
 import { sourceMapFromDwarf } from "./dwarfSourceMap";
@@ -41,11 +40,6 @@ interface LaunchRequestArguments extends DebugProtocol.LaunchRequestArguments {
   debugProgram?: string | null;
   stopOnEntry?: boolean;
   trace?: boolean;
-}
-
-interface Segment {
-  start: number;
-  size: number;
 }
 
 interface BreakpointRef {
@@ -65,14 +59,6 @@ interface TmpBreakpoint {
   address: number;
 }
 
-interface StopMessage {
-  hasMessage: boolean;
-  name: "BREAKPOINT_REACHED" | "WATCHPOINT_REACHED" | "CATCHPOINT_REACHED";
-  payload: {
-    pc: number;
-    vector: number;
-  };
-}
 
 // Error ID categories
 const ERROR_IDS = {
@@ -1096,7 +1082,7 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
       let requestCount = count;
       let startAddress = baseAddress;
 
-      // Instruction offsets are a pain in the arse!€
+      // Instruction offsets are a pain in the arse!
       if (instructionOffset < 0) {
         // Negative instruction offset:
         // Here we don't really know the start address to disassemble from to get this many additional instructions,
@@ -1238,15 +1224,15 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
 
   // Helpers:
 
-  private handleMessageFromEmulator(message: any) {
+  private handleMessageFromEmulator(message: EmulatorMessage) {
     logger.log(`Recieved message: ${message.type}`);
-    switch (message.type) {
-      case "attached":
-        return this.attach(message.segments);
-      case "emulator-state":
-        return this.updateState(message);
-      case "emulator-output":
-        this.sendEvent(new OutputEvent(message.data + "\n"));
+
+    if (isAttachedMessage(message)) {
+      return this.attach(message);
+    } else if (isEmulatorStateMessage(message)) {
+      return this.updateState(message);
+    } else if (isEmulatorOutputMessage(message)) {
+      this.sendEvent(new OutputEvent(message.data + "\n"));
     }
   }
 
@@ -1272,7 +1258,7 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
     }
   }
 
-  private attach(segments: Segment[]) {
+  private attach({ segments }: AttachedMessage) {
     const offsets = segments.map((s) => s.start);
     if (this.stopOnEntry) {
       this.setTmpBreakpoint(offsets[0], "entry");
@@ -1293,7 +1279,7 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
     }
   }
 
-  private async updateState(msg: { state: string; message: StopMessage }) {
+  private async updateState(msg: EmulatorStateMessage) {
     const { state, message } = msg;
     logger.log(`State: ${state}, ${JSON.stringify(message)}`);
     if (state === "paused") {
