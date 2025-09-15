@@ -194,6 +194,11 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
 
   private disposables: vscode.Disposable[] = [];
 
+  // CPU state cache - only valid when emulator is stopped
+  private cachedCpuInfo?: CpuInfo;
+  private cachedCustomRegisters?: Record<string, { value: string }>;
+  private cacheValid = false;
+
   public constructor() {
     super();
     this.setDebuggerLinesStartAt1(false);
@@ -444,7 +449,7 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
     let variables: DebugProtocol.Variable[] = [];
     try {
       if (id === "registers") {
-        const info = await this.vAmiga.getCpuInfo();
+        const info = await this.getCachedCpuInfo();
         variables = Object.keys(info)
           .filter((k) => k !== "flags")
           .map((name) => {
@@ -463,14 +468,14 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
             return v;
           });
       } else if (id === "custom") {
-        const info = await this.vAmiga.getAllCustomRegisters();
+        const info = await this.getCachedCustomRegisters();
         variables = Object.keys(info).map((name) => ({
           name,
           value: info[name].value,
           variablesReference: 0,
         }));
       } else if (id === "sr_flags") {
-        const info = await this.vAmiga.getCpuInfo();
+        const info = await this.getCachedCpuInfo();
         const flags = info.flags;
         const presentationHint = {
           attributes: ["readOnly"],
@@ -538,7 +543,7 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
           },
         ];
       } else if (id === "vectors") {
-        const cpuInfo = await this.vAmiga.getCpuInfo();
+        const cpuInfo = await this.getCachedCpuInfo();
         const mem = await this.vAmiga.readMemoryBuffer(
           Number(cpuInfo.vbr),
           vectors.length * 4,
@@ -626,6 +631,8 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
       response.body = {
         value: res.value,
       };
+      // Variable was changed, invalidate cache
+      this.invalidateCache();
       this.sendResponse(response);
     } catch (err) {
       this.sendError(
@@ -665,7 +672,7 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
       // Need to implement this ourselves.
 
       // Disassemble at pc to get current and next instruction.
-      const cpuInfo = await this.vAmiga.getCpuInfo();
+      const cpuInfo = await this.getCachedCpuInfo();
       const pc = Number(cpuInfo.pc);
       const disasm = await this.vAmiga.disassemble(pc, 2);
       const currInst = disasm?.instructions[0].instruction ?? "";
@@ -961,8 +968,8 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
     logger.log(`Evaluate request: ${args.expression}`);
 
     const numVars: Record<string, number> = {};
-    const cpuInfo = await this.vAmiga.getCpuInfo();
-    const customRegs = await this.vAmiga.getAllCustomRegisters();
+    const cpuInfo = await this.getCachedCpuInfo();
+    const customRegs = await this.getCachedCustomRegisters();
     const symbols = this.sourceMap?.getSymbols() ?? {};
     for (const k in cpuInfo) {
       if (k !== "flags") {
@@ -1315,11 +1322,13 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
     if (state === "paused") {
       if (this.isRunning) {
         this.isRunning = false;
+        this.invalidateCache(); // Cache needs refresh when emulator stops
         this.sendEvent(new StoppedEvent("pause", VamigaDebugAdapter.THREAD_ID));
       }
     } else if (state === "running") {
       if (!this.isRunning) {
         this.isRunning = true;
+        this.invalidateCache(); // Invalidate cache when emulator starts running
         this.sendEvent(new ContinuedEvent(VamigaDebugAdapter.THREAD_ID));
       }
     } else if (state === "stopped") {
@@ -1327,13 +1336,14 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
         // Special case for built-in stepIn function. No actual breakpoints used.
         this.isRunning = false;
         this.stepping = false;
+        this.invalidateCache(); // Cache needs refresh when emulator stops
         const evt = new StoppedEvent("step", VamigaDebugAdapter.THREAD_ID);
 
         // Fake stop reason as 'instruction breakpoint' to allow selecting a stack frame with no source, and open disassembly
         // Don't need to do this for step with instruction granularity, as this is already handled
         // see: https://github.com/microsoft/vscode/pull/143649/files
         if (this.lastStepGranularity !== "instruction") {
-          const cpuInfo = await this.vAmiga.getCpuInfo();
+          const cpuInfo = await this.getCachedCpuInfo();
           try {
             this.sourceMap?.lookupAddress(Number(cpuInfo.pc));
           } catch (_) {
@@ -1348,6 +1358,7 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
           VamigaDebugAdapter.THREAD_ID,
         );
         this.isRunning = false;
+        this.invalidateCache(); // Cache needs refresh when emulator stops
 
         let bpMatch: { id: number } | undefined;
 
@@ -1403,7 +1414,7 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
    * @returns [jmp address, return address]
    */
   private async guessStack(maxLength = 16): Promise<[number, number][]> {
-    const cpuInfo = await this.vAmiga.getCpuInfo();
+    const cpuInfo = await this.getCachedCpuInfo();
 
     // vAmiga doesn't currently track stack frames, so we'll need to look at the stack data and guess...
     // Fetch data from sp, up to a reasonable length
@@ -1450,6 +1461,12 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
     return addresses;
   }
 
+  /**
+   * Find the offset from the previous label in source for a given address
+   *
+   * @param address
+   * @returns
+   */
   private labelOffset(
     address: number,
   ): { label: string; offset: number } | undefined {
@@ -1510,5 +1527,47 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
       id: errorId,
       format: `${message}${formattedCause}`,
     });
+  }
+
+  private invalidateCache(): void {
+    this.cacheValid = false;
+    this.cachedCpuInfo = undefined;
+    this.cachedCustomRegisters = undefined;
+  }
+
+  private async refreshCache(): Promise<void> {
+    if (!this.cacheValid && !this.isRunning) {
+      try {
+        this.cachedCpuInfo = await this.vAmiga.getCpuInfo();
+        this.cachedCustomRegisters = await this.vAmiga.getAllCustomRegisters();
+        this.cacheValid = true;
+      } catch (error) {
+        // If cache refresh fails, leave cache invalid
+        this.invalidateCache();
+        throw error;
+      }
+    }
+  }
+
+  private async getCachedCpuInfo(): Promise<CpuInfo> {
+    if (this.isRunning) {
+      // When running, always fetch fresh data
+      return await this.vAmiga.getCpuInfo();
+    }
+
+    await this.refreshCache();
+    return this.cachedCpuInfo!;
+  }
+
+  private async getCachedCustomRegisters(): Promise<
+    Record<string, { value: string }>
+  > {
+    if (this.isRunning) {
+      // When running, always fetch fresh data
+      return await this.vAmiga.getAllCustomRegisters();
+    }
+
+    await this.refreshCache();
+    return this.cachedCustomRegisters!;
   }
 }
