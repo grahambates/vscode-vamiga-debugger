@@ -7,8 +7,6 @@
 // - Change hex syntax? - or not?
 // - Disassembly view panel - still needed?
 // data breakpoints from registers?
-// - stack should be jump instruction, make sure we don't break step out
-// - stop using exceptions in sourceMap
 
 import {
   logger,
@@ -376,21 +374,19 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
       for (let i = startFrame; i < addresses.length && i < endFrame; i++) {
         const addr = addresses[i][0];
         if (this.sourceMap) {
-          try {
             const loc = this.sourceMap.lookupAddress(addr);
-            const frame = new StackFrame(
-              0,
-              this.formatAddress(addr),
-              new Source(path.basename(loc.path), loc.path),
-              loc.line,
-            );
-            frame.instructionPointerReference = formatHex(addr);
-            stk.push(frame);
-            foundSource = true;
-            continue;
-          } catch (_) {
-            // failed to look up source
-          }
+            if (loc) {
+              const frame = new StackFrame(
+                0,
+                this.formatAddress(addr),
+                new Source(path.basename(loc.path), loc.path),
+                loc.line,
+              );
+              frame.instructionPointerReference = formatHex(addr);
+              stk.push(frame);
+              foundSource = true;
+              continue;
+            }
         }
         // stop on first rom call after user code
         if (foundSource && addr > 0x00e00000 && addr < 0x01000000) {
@@ -573,13 +569,11 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
             },
             variablesReference: 0,
           };
-          try {
-            const loc = this.sourceMap?.lookupAddress(symbols[name]);
+          const loc = this.sourceMap?.lookupAddress(symbols[name]);
+          if (loc) {
             variable.declarationLocationReference = loc
               ? this.locationHandles.create(loc)
               : undefined;
-          } catch (_) {
-            // No location
           }
           return variable;
         });
@@ -1182,14 +1176,12 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
 
             // Add symbol lookup if we have source map
             if (this.sourceMap) {
-              try {
-                const addr = parseInt(instr.addr, 16);
-                const loc = this.sourceMap.lookupAddress(addr);
+              const addr = parseInt(instr.addr, 16);
+              const loc = this.sourceMap.lookupAddress(addr);
+              if (loc) {
                 disasm.symbol = path.basename(loc.path) + ":" + loc.line;
                 disasm.location = new Source(path.basename(loc.path), loc.path);
                 disasm.line = loc.line;
-              } catch (_err) {
-                // No source mapping for this address
               }
             }
             return disasm;
@@ -1344,9 +1336,7 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
         // see: https://github.com/microsoft/vscode/pull/143649/files
         if (this.lastStepGranularity !== "instruction") {
           const cpuInfo = await this.getCachedCpuInfo();
-          try {
-            this.sourceMap?.lookupAddress(Number(cpuInfo.pc));
-          } catch (_) {
+          if (!this.sourceMap?.lookupAddress(Number(cpuInfo.pc))) {
             evt.body.reason = "instruction breakpoint";
           }
         }

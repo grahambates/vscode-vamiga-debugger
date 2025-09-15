@@ -50,16 +50,13 @@ export class SourceMap {
     return this.symbols;
   }
 
-  public lookupAddress(address: number): Location {
+  public lookupAddress(address: number): Location | undefined {
     let location = this.locationsByAddress.get(address);
     if (!location) {
       for (const [a, l] of this.locationsByAddress.entries()) {
         if (a > address) break;
         if (address - a <= 10) location = l;
       }
-    }
-    if (!location) {
-      throw new Error("Location not found for address " + address);
     }
     return location;
   }
@@ -84,10 +81,6 @@ export class SourceMap {
   }
 
   public getSegmentInfo(segmentId: number): Segment {
-    const segment = this.segments[segmentId];
-    if (!segment) {
-      throw new Error("Invalid segment: " + segmentId);
-    }
-    return segment;
+    return this.segments[segmentId];
   }
 }
