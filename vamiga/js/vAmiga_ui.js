@@ -1945,6 +1945,14 @@ function InitWrappers() {
         }
     };
 
+    // Use polyfilled requestAnimationFrame to allow background running when tab is not visible.
+    let lastTime = 0;
+    const requestAnimationFrame = function(callback) {
+        const now = performance.now();
+        let nextTime = Math.max(lastTime + 16, now);
+        return setTimeout(() => callback(now), nextTime - now);
+    };
+
     wasm_run = function () {
         Module._wasm_run();
         if(do_animation_frame == null)

@@ -1,12 +1,13 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 // TODO:
+// - step on entry not working?
 // - Console
 // - Completions
 // - Copper debugging
 // - Change hex syntax? - or not?
 // - Disassembly view panel - still needed?
-// data breakpoints from registers?
+// - data breakpoints from registers?
 
 import {
   logger,
