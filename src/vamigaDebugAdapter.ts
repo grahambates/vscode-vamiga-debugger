@@ -477,26 +477,125 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
   ): Promise<void> {
     const id = this.variableHandles.get(args.variablesReference);
     let variables: DebugProtocol.Variable[] = [];
+    const readOnly: DebugProtocol.VariablePresentationHint = {
+      attributes: ["readOnly"],
+    };
+
     try {
       if (id === "registers") {
         const info = await this.getCachedCpuInfo();
         variables = Object.keys(info)
           .filter((k) => k !== "flags")
           .map((name) => {
-            const value = String(info[name as keyof CpuInfo]);
-            const v: DebugProtocol.Variable = {
+            let value = String(info[name as keyof CpuInfo]);
+            let variablesReference = 0;
+            let memoryReference: string | undefined;
+
+            if (name === "sr") {
+              variablesReference = this.variableHandles.create(`sr_flags`);
+            } else if (name.startsWith("d")) {
+              variablesReference = this.variableHandles.create(
+                `data_reg_${name}`,
+              );
+            } else if (name.match(/(a[0-9]|pc|usp|msp|isp|vbr)/)) {
+              variablesReference = this.variableHandles.create(
+                `addr_reg_${name}`,
+              );
+              value = this.formatAddress(Number(value));
+            }
+
+            return {
               name,
               value,
-              variablesReference:
-                name === "sr" ? this.variableHandles.create(`sr_flags`) : 0,
+              variablesReference,
+              memoryReference,
             };
-            // Limit to useful regs
-            if (name.match(/(a[0-9]|pc|usp|msp|vbr)/)) {
-              v.memoryReference = value;
-              v.value = this.formatAddress(Number(value));
-            }
-            return v;
           });
+      } else if (id.startsWith("data_reg_")) {
+        const info = await this.getCachedCpuInfo();
+        const name = id.replace("data_reg_", "");
+        const value = Number(info[name as keyof CpuInfo]);
+        variables = [
+          {
+            name: `u32`,
+            value: u32(value).toString(),
+            variablesReference: 0,
+            presentationHint: readOnly,
+          },
+          {
+            name: `i32`,
+            value: i32(value).toString(),
+            variablesReference: 0,
+            presentationHint: readOnly,
+          },
+          {
+            name: `u16`,
+            value: u16(value).toString(),
+            variablesReference: 0,
+            presentationHint: readOnly,
+          },
+          {
+            name: `i16`,
+            value: i16(value).toString(),
+            variablesReference: 0,
+            presentationHint: readOnly,
+          },
+          {
+            name: `u8`,
+            value: u8(value).toString(),
+            variablesReference: 0,
+            presentationHint: readOnly,
+          },
+          {
+            name: `i8`,
+            value: i8(value).toString(),
+            variablesReference: 0,
+            presentationHint: readOnly,
+          },
+        ];
+      } else if (id.startsWith("addr_reg_")) {
+        const info = await this.getCachedCpuInfo();
+        const name = id.replace("addr_reg_", "");
+        const value = Number(info[name as keyof CpuInfo]);
+        variables = [
+          {
+            name: `u32`,
+            value: u32(value).toString(),
+            variablesReference: 0,
+            presentationHint: readOnly,
+          },
+          {
+            name: `i32`,
+            value: i32(value).toString(),
+            variablesReference: 0,
+            presentationHint: readOnly,
+          },
+          {
+            name: `u16`,
+            value: u16(value).toString(),
+            variablesReference: 0,
+            presentationHint: readOnly,
+          },
+          {
+            name: `i16`,
+            value: i16(value).toString(),
+            variablesReference: 0,
+            presentationHint: readOnly,
+          },
+        ];
+        const labelOffset = await this.labelOffset(value);
+        if (labelOffset) {
+          let value = labelOffset.label;
+          if (labelOffset.offset) {
+            value += "+" + labelOffset.offset;
+          }
+          variables.unshift({
+            name: "offset",
+            value,
+            variablesReference: 0,
+            presentationHint: readOnly,
+          });
+        }
       } else if (id === "custom") {
         const info = await this.getCachedCustomRegisters();
         variables = Object.keys(info).map((name) => ({
@@ -507,69 +606,66 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
       } else if (id === "sr_flags") {
         const info = await this.getCachedCpuInfo();
         const flags = info.flags;
-        const presentationHint = {
-          attributes: ["readOnly"],
-        };
         variables = [
           {
             name: "carry",
             value: flags.carry ? "true" : "false",
             variablesReference: 0,
-            presentationHint,
+            presentationHint: readOnly,
           },
           {
             name: "overflow",
             value: flags.overflow ? "true" : "false",
             variablesReference: 0,
-            presentationHint,
+            presentationHint: readOnly,
           },
           {
             name: "zero",
             value: flags.zero ? "true" : "false",
             variablesReference: 0,
-            presentationHint,
+            presentationHint: readOnly,
           },
           {
             name: "negative",
             value: flags.negative ? "true" : "false",
             variablesReference: 0,
-            presentationHint,
+            presentationHint: readOnly,
           },
           {
             name: "extend",
             value: flags.extend ? "true" : "false",
             variablesReference: 0,
-            presentationHint,
+            presentationHint: readOnly,
           },
           {
             name: "trace1",
             value: flags.trace1 ? "true" : "false",
             variablesReference: 0,
-            presentationHint,
+            presentationHint: readOnly,
           },
           {
             name: "trace0",
             value: flags.trace0 ? "true" : "false",
             variablesReference: 0,
-            presentationHint,
+            presentationHint: readOnly,
           },
           {
             name: "supervisor",
             value: flags.supervisor ? "true" : "false",
             variablesReference: 0,
-            presentationHint,
+            presentationHint: readOnly,
           },
           {
             name: "master",
             value: flags.master ? "true" : "false",
             variablesReference: 0,
-            presentationHint,
+            presentationHint: readOnly,
           },
           {
             name: "interrupt_mask",
             value: String(flags.interrupt_mask),
             variablesReference: 0,
-            presentationHint,
+            presentationHint: readOnly,
           },
         ];
       } else if (id === "vectors") {
@@ -1024,7 +1120,11 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
     const context = args.context;
 
     try {
-      const { value, memoryReference, type: resultType } = await this.evaluate(args.expression);
+      const {
+        value,
+        memoryReference,
+        type: resultType,
+      } = await this.evaluate(args.expression);
 
       if (value !== undefined) {
         let result: string | undefined;
@@ -1032,8 +1132,8 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
         if (resultType === EvaluateResultType.ADDRESS_REGISTER) {
           result = this.formatAddress(value);
         } else if (resultType === EvaluateResultType.DATA_REGISTER) {
-          if (context === 'repl') {
-            result = formatHex(value, 8) + ' = ' + value;
+          if (context === "repl") {
+            result = formatHex(value, 8) + " = " + value;
           } else {
             result = formatHex(value, 8);
           }
@@ -1042,8 +1142,8 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
         } else if (resultType === EvaluateResultType.CUSTOM_REGISTER) {
           result = formatHex(value, 4);
         } else {
-          if (context === 'repl') {
-            result = formatHex(value, 0) + ' = ' + value;
+          if (context === "repl") {
+            result = formatHex(value, 0) + " = " + value;
           } else {
             result = formatHex(value, 0);
           }
@@ -1590,7 +1690,7 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
     let out = formatHex(address);
     const labelOffset = this.labelOffset(address);
     if (labelOffset) {
-      out += " " + labelOffset.label;
+      out += " = " + labelOffset.label;
       if (labelOffset.offset) {
         out += "+" + labelOffset.offset;
       }
