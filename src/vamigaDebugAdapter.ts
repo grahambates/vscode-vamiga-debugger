@@ -1,12 +1,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 // TODO:
-// - Console
+// - Console - mem functions
+// - Pointers in variables list
+// - Change hex syntax?
 // - constants
 // - Copper debugging
-// - Change hex syntax? - or not?
-// - Disassembly view panel - still needed?
-// - data breakpoints from registers?
 
 import {
   logger,
@@ -56,13 +55,6 @@ interface LaunchRequestArguments extends DebugProtocol.LaunchRequestArguments {
 interface BreakpointRef {
   id: number;
   address: number;
-}
-
-interface DataBreakpointRef {
-  id: number;
-  address: number;
-  accessType: string;
-  dataId: string;
 }
 
 interface TmpBreakpoint {
@@ -187,7 +179,7 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
   private sourceBreakpoints: Map<string, BreakpointRef[]> = new Map();
   private instructionBreakpoints: BreakpointRef[] = [];
   private exceptionBreakpoints: BreakpointRef[] = [];
-  private dataBreakpoints: DataBreakpointRef[] = [];
+  private dataBreakpoints: BreakpointRef[] = [];
   private functionBreakpoints: BreakpointRef[] = [];
   private tmpBreakpoints: TmpBreakpoint[] = [];
   private bpId = 0;
@@ -726,10 +718,10 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
     }
   }
 
-  protected setBreakPointsRequest(
+  protected async setBreakPointsRequest(
     response: DebugProtocol.SetBreakpointsResponse,
     args: DebugProtocol.SetBreakpointsArguments,
-  ): void {
+  ): Promise<void> {
     const path = args.source.path!;
     logger.log(`Set breakpoints request: ${path}`);
 
@@ -761,15 +753,17 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
     for (const bp of args.breakpoints ?? []) {
       const address = this.sourceMap.lookupSourceLine(path, bp.line).address;
       const instructionReference = formatHex(address);
-      const { line, hitCondition } = bp;
       const id = this.bpId++;
-      const ignores =
-        hitCondition && isNumeric(hitCondition) ? Number(hitCondition) : 0;
       refs.push({ id, address });
 
+      let ignores = 0;
+      if (bp.hitCondition) {
+        ignores = (await this.evaluate(bp.hitCondition)).value ?? 0;
+      }
       this.vAmiga.setBreakpoint(address, ignores);
+
       logger.log(
-        `Breakpoint #${id} at ${path}:${line} set at ${instructionReference}`,
+        `Breakpoint #${id} at ${path}:${bp.line} set at ${instructionReference}`,
       );
       response.body.breakpoints.push({
         id,
@@ -781,11 +775,10 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
     this.sendResponse(response);
   }
 
-  protected setInstructionBreakpointsRequest(
+  protected async setInstructionBreakpointsRequest(
     response: DebugProtocol.SetInstructionBreakpointsResponse,
     args: DebugProtocol.SetInstructionBreakpointsArguments,
-  ): void {
-    logger.log(`Set instruction breakpoints request`);
+  ): Promise<void> {
     // Remove existing
     for (const ref of this.instructionBreakpoints) {
       logger.log(
@@ -801,10 +794,11 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
     for (const bp of args.breakpoints ?? []) {
       const address = Number(bp.instructionReference) + (bp.offset ?? 0);
       const id = this.bpId++;
-      const ignores =
-        bp.hitCondition && isNumeric(bp.hitCondition)
-          ? Number(bp.hitCondition)
-          : 0;
+
+      let ignores = 0;
+      if (bp.hitCondition) {
+        ignores = (await this.evaluate(bp.hitCondition)).value ?? 0;
+      }
       this.instructionBreakpoints.push({ id, address });
 
       this.vAmiga.setBreakpoint(address, ignores);
@@ -820,8 +814,10 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
     this.sendResponse(response);
   }
 
-  protected setFunctionBreakPointsRequest(response: DebugProtocol.SetFunctionBreakpointsResponse, args: DebugProtocol.SetFunctionBreakpointsArguments): void {
-    logger.log(`Set function breakpoints request`);
+  protected setFunctionBreakPointsRequest(
+    response: DebugProtocol.SetFunctionBreakpointsResponse,
+    args: DebugProtocol.SetFunctionBreakpointsArguments,
+  ): void {
     // Remove existing
     for (const ref of this.functionBreakpoints) {
       logger.log(
@@ -864,7 +860,7 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
     // Handle variables that have memory references
     if (args.variablesReference) {
       const id = this.variableHandles.get(args.variablesReference);
-      if (id === "registers" || id === "custom" || id === "symbols") {
+      if (id === "registers" || id === "symbols") {
         // For registers and symbols, we can create data breakpoints
         const dataId = `${id}:${args.name}`;
         response.body = {
@@ -904,10 +900,10 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
     this.sendResponse(response);
   }
 
-  protected setDataBreakpointsRequest(
+  protected async setDataBreakpointsRequest(
     response: DebugProtocol.SetDataBreakpointsResponse,
     args: DebugProtocol.SetDataBreakpointsArguments,
-  ): void {
+  ): Promise<void> {
     logger.log(`Set data breakpoints request`);
 
     // Remove existing data breakpoints
@@ -930,42 +926,27 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
         if (parts[0] === "memory") {
           // Direct memory address
           address = parseInt(parts[1], 16);
-        } else if (parts[0] === "registers" && this.sourceMap) {
-          // CPU register - not directly watchable as memory
-          response.body.breakpoints.push({
-            id: this.bpId++,
-            verified: false,
-            message: "CPU registers cannot be watched as memory locations",
-          });
-          continue;
+        } else if (parts[0] === "registers") {
+          const cpuInfo = await this.getCachedCpuInfo();
+          const value = cpuInfo[parts[1] as keyof CpuInfo];
+          if (typeof value === 'string') {
+            address = Number(value);
+          }
         } else if (parts[0] === "symbols" && this.sourceMap) {
           // Symbol address
           const symbols = this.sourceMap.getSymbols();
           address = symbols[parts[1]];
-        } else if (parts[0] === "custom") {
-          // Custom chip registers - not directly watchable as standard memory
-          response.body.breakpoints.push({
-            id: this.bpId++,
-            verified: false,
-            message: "Custom registers cannot be watched as memory locations",
-          });
-          continue;
         }
 
         if (address !== undefined && !isNaN(address)) {
           const id = this.bpId++;
-          const accessType = bp.accessType || "write";
-          const ignores =
-            bp.hitCondition && isNumeric(bp.hitCondition)
-              ? Number(bp.hitCondition)
-              : 0;
+          const accessType = bp.accessType || "access";
+          this.dataBreakpoints.push({ id, address });
 
-          this.dataBreakpoints.push({
-            id,
-            address,
-            accessType,
-            dataId: bp.dataId,
-          });
+          let ignores = 0;
+          if (bp.hitCondition) {
+            ignores = (await this.evaluate(bp.hitCondition)).value ?? 0;
+          }
           this.vAmiga.setWatchpoint(address, ignores);
 
           logger.log(
@@ -1002,38 +983,12 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
     logger.log(`Evaluate request: ${args.expression}`);
 
     try {
-      const expression = args.expression.trim();
-      let value: number | undefined;
-      let memoryReference: string | undefined;
-
-      if (expression.match(/^0x[0-9a-f]+$/i)) {
-        // Address hex:
-        const address = Number(expression);
-        // Read longword value at address
-        // TODO: is this what we want? Support .w .b modifier?
-        const memData = await this.vAmiga.readMemoryBuffer(address, 4);
-        value = memData.readUInt32BE(0);
-        memoryReference = formatHex(address);
-      } else {
-        const numVars = await this.getVars();
-
-        if (expression in numVars) {
-          // Exact match of variable
-          value = numVars[expression];
-          if (expression in (this.sourceMap?.getSymbols() ?? {})) {
-            memoryReference = formatHex(value);
-          }
-        } else {
-          // Complex expression
-          const expr = this.parser.parse(expression);
-          value = expr.evaluate(numVars);
-        }
-      }
+      const { value, memoryReference } = await this.evaluate(args.expression);
 
       if (value !== undefined) {
         let result: string | undefined;
         // format as address?
-        if (expression.match(/^(a[0-7]|pc|usp|msp|vbr)$/)) {
+        if (args.expression.match(/^(a[0-7]|pc|usp|msp|vbr)$/)) {
           result = this.formatAddress(value);
         } else {
           result = formatHex(value);
@@ -1045,7 +1000,7 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
           variablesReference: 0,
         };
       } else {
-        throw new Error(`Failed to evaluate: ${expression}`);
+        throw new Error(`Failed to evaluate: ${args.expression}`);
       }
 
       this.sendResponse(response);
@@ -1424,7 +1379,9 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
           );
         } else if (message.name === "CATCHPOINT_REACHED") {
           evt.body.reason = "exception";
-          evt.body.text = exceptionBreakpointFilters.find(f => Number(f.filter) === message.payload.vector)?.label;
+          evt.body.text = exceptionBreakpointFilters.find(
+            (f) => Number(f.filter) === message.payload.vector,
+          )?.label;
           bpMatch = this.exceptionBreakpoints.find(
             (bp) => bp.address === message.payload.vector,
           );
@@ -1653,5 +1610,41 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
     }
     variables.sp = variables.a7;
     return variables;
+  }
+
+  private async evaluate(
+    expression: string,
+  ): Promise<{ value?: number; memoryReference?: string }> {
+    expression = expression.trim();
+    let value: number | undefined;
+    let memoryReference: string | undefined;
+
+    if (expression.match(/-?[0-9]+$/i)) {
+      // Interpret decimal as numeric literal
+      value = Number(expression);
+    } else if (expression.match(/^0x[0-9a-f]+$/i)) {
+      // Interpret hex as address:
+      const address = Number(expression);
+      // Read longword value at address
+      // TODO: is this what we want? Support .w .b modifier?
+      const memData = await this.vAmiga.readMemoryBuffer(address, 4);
+      value = memData.readUInt32BE(0);
+      memoryReference = formatHex(address);
+    } else {
+      const numVars = await this.getVars();
+
+      if (expression in numVars) {
+        // Exact match of variable
+        value = numVars[expression];
+        if (expression in (this.sourceMap?.getSymbols() ?? {})) {
+          memoryReference = formatHex(value);
+        }
+      } else {
+        // Complex expression
+        const expr = this.parser.parse(expression);
+        value = expr.evaluate(numVars);
+      }
+    }
+    return { value, memoryReference };
   }
 }

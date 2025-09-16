@@ -4,6 +4,10 @@ let global_apptitle=default_app_title;
 // Web Worker for consistent emulation timing
 let emulationWorker = null;
 let workerInitialized = false;
+
+// vscode api instance
+let vscode;
+
 let stop_request_animation_frame = false;
 let call_param_openROMS=false;
 let call_param_gpu=null;
@@ -2532,8 +2536,80 @@ postMessage({ type: 'ready' });
 
     add_unlock_user_action();
 
+    vscode = acquireVsCodeApi();
+
     window.addEventListener('message', event => {
-        if(event.data == "poll_state")
+        // Debugger commands:
+        if (event.data.command) {
+            const message = event.data;
+            console.log('Command recieved', message)
+            const rpcRequest = (resultCb) => {
+                const res = {
+                    type: 'rpcResponse',
+                    id: message.args._rpcId,
+                }
+                try {
+                    res.result = resultCb();
+                } catch (error) {
+                    res.result = { error: error.message };
+                }
+                vscode.postMessage(res);
+            }
+            switch (message.command) {
+                case 'pause':
+                    wasm_halt();
+                    break;
+                case 'run':
+                    wasm_run();
+                    break;
+                case 'setBreakpoint':
+                    wasm_set_breakpoint(message.args.address, message.args.ignores);
+                    break;
+                case 'removeBreakpoint':
+                    wasm_remove_breakpoint(message.args.address);
+                    break;
+                case 'setWatchpoint':
+                    wasm_set_watchpoint(message.args.address, message.args.ignores);
+                    break;
+                case 'removeWatchpoint':
+                    wasm_remove_watchpoint(message.args.address);
+                    break;
+                case 'setCatchpoint':
+                    wasm_set_catchpoint(message.args.vector);
+                    break;
+                case 'removeCatchpoint':
+                    wasm_remove_catchpoint(message.args.vector);
+                    break;
+                case 'stepInto':
+                    wasm_step_into();
+                    wasm_run();
+                    break;
+                case 'getCpuInfo':
+                    rpcRequest(() => JSON.parse(wasm_get_cpu_info()));
+                    break;
+                case 'getAllCustomRegisters':
+                    rpcRequest(() => JSON.parse(wasm_get_all_custom_registers()));
+                    break;
+                case 'setRegister':
+                    rpcRequest(() => JSON.parse(wasm_set_register(message.args.name, message.args.value)));
+                    break;
+                case 'setCustomRegister':
+                    rpcRequest(() => JSON.parse(wasm_set_custom_register(message.args.name, message.args.value)));
+                    break;
+                case 'readMemory':
+                    rpcRequest(() => JSON.parse(wasm_read_memory(message.args.address, message.args.count)));
+                    break;
+                case 'writeMemory':
+                    rpcRequest(() => JSON.parse(wasm_write_memory(message.args.address, message.args.data)));
+                    break;
+                case 'disassemble':
+                    rpcRequest(() => JSON.parse(wasm_disassemble(message.args.address, message.args.count)));
+                    break;
+                default:
+                    vscode.postMessage({ type: 'error', text: `Unknown command: ${message.command}` });
+            }
+        }
+        else if(event.data == "poll_state")
         {
             window.parent.postMessage({ msg: 'render_run_state', value: is_running(), is_warping:  Module._wasm_is_warping() },"*");
             window.parent.postMessage({ msg: 'render_current_audio_state',
