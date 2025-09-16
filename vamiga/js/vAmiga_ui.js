@@ -2236,6 +2236,7 @@ postMessage({ type: 'ready' });
     wasm_peek_custom = Module.cwrap('wasm_peek_custom', 'number', ['number']);
     wasm_poke8 = Module.cwrap('wasm_poke8', 'undefined', ['number']);
     wasm_poke16 = Module.cwrap('wasm_poke16', 'undefined', ['number']);
+    wasm_poke32 = Module.cwrap('wasm_poke32', 'undefined', ['number']);
     wasm_poke_custom = Module.cwrap('wasm_poke_custom', 'undefined', ['number']);
     wasm_enable_cpu_logging = Module.cwrap('wasm_enable_cpu_logging', 'boolean', ['boolean']);
     wasm_clear_cpu_trace = Module.cwrap('wasm_clear_cpu_trace', 'undefined');
@@ -2604,6 +2605,24 @@ postMessage({ type: 'ready' });
                     break;
                 case 'disassemble':
                     rpcRequest(() => JSON.parse(wasm_disassemble(message.args.address, message.args.count)));
+                    break;
+                case 'peek32':
+                    rpcRequest(() => wasm_peek32(message.args.address));
+                    break;
+                case 'peek16':
+                    rpcRequest(() => wasm_peek16(message.args.address));
+                    break;
+                case 'peek8':
+                    rpcRequest(() => wasm_peek8(message.args.address));
+                    break;
+                case 'poke32':
+                    rpcRequest(() => wasm_poke32(message.args.address, message.args.value));
+                    break;
+                case 'poke16':
+                    rpcRequest(() => wasm_poke16(message.args.address, message.args.value));
+                    break;
+                case 'poke8':
+                    rpcRequest(() => wasm_poke8(message.args.address, message.args.value));
                     break;
                 default:
                     vscode.postMessage({ type: 'error', text: `Unknown command: ${message.command}` });

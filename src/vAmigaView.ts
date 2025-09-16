@@ -424,6 +424,78 @@ export class VAmigaView {
   }
 
   /**
+   * Reads longword at specified address
+   * @param address Starting memory address
+   * @returns Promise resolving to unsigned read result
+   */
+  public async peek32(address: number): Promise<number> {
+    return this.sendRpcCommand("peek32", { address });
+  }
+
+  /**
+   * Reads word at specified address
+   * @param address Starting memory address
+   * @returns Promise resolving to unsigned read result
+   */
+  public async peek16(address: number): Promise<number> {
+    return this.sendRpcCommand("peek16", { address });
+  }
+
+  /**
+   * Reads byte at specified address
+   * @param address Starting memory address
+   * @returns Promise resolving to unsigned read result
+   */
+  public async peek8(address: number): Promise<number> {
+    return this.sendRpcCommand("peek8", { address });
+  }
+
+  /**
+   * Writes longword at the specified address
+   * @param address Starting memory address
+   * @param value numeric value to write
+   */
+  public async poke32(address: number, value: number): Promise<void> {
+    if (value < 0) {
+      value += 0x1_0000_0000;
+    }
+    if (value < 0 || value >= 0x1_0000_0000) {
+      throw new Error('value out of 32 bit range');
+    }
+    return this.sendRpcCommand("poke32", { address, value });
+  }
+
+  /**
+   * Writes word at the specified address
+   * @param address Starting memory address
+   * @param value numeric value to write
+   */
+  public async poke16(address: number, value: number): Promise<void> {
+    if (value < 0) {
+      value += 0x1_0000;
+    }
+    if (value < 0 || value >= 0x1_0000) {
+      throw new Error('value out of 16 bit range');
+    }
+    return this.sendRpcCommand("poke16", { address, value });
+  }
+
+  /**
+   * Writes byte at the specified address
+   * @param address Starting memory address
+   * @param value numeric value to write
+   */
+  public async poke8(address: number, value: number): Promise<void> {
+    if (value < 0) {
+      value += 0x100;
+    }
+    if (value < 0 || value >= 0x100) {
+      throw new Error('value out of 8 bit range');
+    }
+    return this.sendRpcCommand("poke8", { address, value });
+  }
+
+  /**
    * Disassembles instructions starting at the specified address
    * @param address Starting memory address
    * @param count Number of instructions to disassemble

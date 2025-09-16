@@ -1,11 +1,16 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 // TODO:
-// - Console - mem functions
+// - Console
+//   - help text
+//   - debug
+//   - mem
 // - Pointers in variables list
+// - Register size / sign
 // - Change hex syntax?
 // - constants
 // - Copper debugging
+// - DMA debug layer
 
 import {
   logger,
@@ -43,7 +48,7 @@ import { DWARFData, parseDwarf } from "./dwarfParser";
 import { sourceMapFromDwarf } from "./dwarfSourceMap";
 import { sourceMapFromHunks } from "./amigaHunkSourceMap";
 import { Location, SourceMap } from "./sourceMap";
-import { formatHex, isNumeric } from "./helpers";
+import { formatHex, isNumeric, u32, u16, u8, i32, i16, i8 } from "./helpers";
 
 interface LaunchRequestArguments extends DebugProtocol.LaunchRequestArguments {
   program: string;
@@ -60,6 +65,22 @@ interface BreakpointRef {
 interface TmpBreakpoint {
   reason: string;
   address: number;
+}
+
+interface EvaluateResult {
+  value?: number;
+  memoryReference?: string;
+  type: EvaluateResultType;
+}
+
+enum EvaluateResultType {
+  EMPTY,
+  UNKNOWN,
+  SYMBOL,
+  DATA_REGISTER,
+  ADDRESS_REGISTER,
+  CUSTOM_REGISTER,
+  PARSED,
 }
 
 enum ErrorCode {
@@ -196,7 +217,25 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
     this.setDebuggerLinesStartAt1(false);
     this.setDebuggerColumnsStartAt1(false);
     this.vAmiga = new VAmigaView(vscode.Uri.file(path.dirname(__dirname)));
+
     this.parser = new Parser();
+    this.parser.functions = {
+      u32,
+      u16,
+      u8,
+      i32,
+      i16,
+      i8,
+      peekU32: (addr: number) => this.vAmiga.peek32(addr),
+      peekU16: (addr: number) => this.vAmiga.peek16(addr),
+      peekU8: (addr: number) => this.vAmiga.peek8(addr),
+      peekI32: (addr: number) => this.vAmiga.peek32(addr).then(i32),
+      peekI16: (addr: number) => this.vAmiga.peek16(addr).then(i16),
+      peekI8: (addr: number) => this.vAmiga.peek8(addr).then(i8),
+      poke32: (addr: number, value: number) => this.vAmiga.poke32(addr, value),
+      poke16: (addr: number, value: number) => this.vAmiga.poke16(addr, value),
+      poke8: (addr: number, value: number) => this.vAmiga.poke8(addr, value),
+    };
   }
 
   public shutdown(): void {
@@ -929,7 +968,7 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
         } else if (parts[0] === "registers") {
           const cpuInfo = await this.getCachedCpuInfo();
           const value = cpuInfo[parts[1] as keyof CpuInfo];
-          if (typeof value === 'string') {
+          if (typeof value === "string") {
             address = Number(value);
           }
         } else if (parts[0] === "symbols" && this.sourceMap) {
@@ -981,21 +1020,36 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
     args: DebugProtocol.EvaluateArguments,
   ): Promise<void> {
     logger.log(`Evaluate request: ${args.expression}`);
+    // 'watch' | 'repl' | 'hover' | 'clipboard' | 'variables' | string;
+    const context = args.context;
 
     try {
-      const { value, memoryReference } = await this.evaluate(args.expression);
+      const { value, memoryReference, type: resultType } = await this.evaluate(args.expression);
 
       if (value !== undefined) {
         let result: string | undefined;
-        // format as address?
-        if (args.expression.match(/^(a[0-7]|pc|usp|msp|vbr)$/)) {
+
+        if (resultType === EvaluateResultType.ADDRESS_REGISTER) {
           result = this.formatAddress(value);
+        } else if (resultType === EvaluateResultType.DATA_REGISTER) {
+          if (context === 'repl') {
+            result = formatHex(value, 8) + ' = ' + value;
+          } else {
+            result = formatHex(value, 8);
+          }
+        } else if (resultType === EvaluateResultType.SYMBOL) {
+          result = formatHex(value, 8);
+        } else if (resultType === EvaluateResultType.CUSTOM_REGISTER) {
+          result = formatHex(value, 4);
         } else {
-          result = formatHex(value);
+          if (context === 'repl') {
+            result = formatHex(value, 0) + ' = ' + value;
+          } else {
+            result = formatHex(value, 0);
+          }
         }
         response.body = {
           result,
-          type: "number",
           memoryReference,
           variablesReference: 0,
         };
@@ -1240,15 +1294,29 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
       if (beforeMatch) {
         const prefix = beforeMatch[0];
         const vars = await this.getVars();
-        const matches = Object.keys(vars).filter((name) =>
+        const varMatches = Object.keys(vars).filter((name) =>
           name.toLowerCase().startsWith(prefix.toLowerCase()),
         );
-        matches.forEach((varName) => {
+        varMatches.forEach((varName) => {
           response.body.targets.push({
             label: varName,
             start: args.text.length - prefix.length + 1,
             length: prefix.length,
             type: "variable",
+          });
+        });
+        const funcMatches = Object.keys(this.parser.functions).filter((name) =>
+          name.toLowerCase().startsWith(prefix.toLowerCase()),
+        );
+        funcMatches.forEach((varName) => {
+          response.body.targets.push({
+            label: varName,
+            text: varName + "()",
+            selectionLength: 0,
+            selectionStart: varName.length + 1,
+            start: args.text.length - prefix.length + 1,
+            length: prefix.length,
+            type: "function",
           });
         });
       }
@@ -1612,14 +1680,16 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
     return variables;
   }
 
-  private async evaluate(
-    expression: string,
-  ): Promise<{ value?: number; memoryReference?: string }> {
+  private async evaluate(expression: string): Promise<EvaluateResult> {
     expression = expression.trim();
+    if (expression === "") {
+      return { type: EvaluateResultType.EMPTY };
+    }
     let value: number | undefined;
     let memoryReference: string | undefined;
+    let type = EvaluateResultType.UNKNOWN;
 
-    if (expression.match(/-?[0-9]+$/i)) {
+    if (expression.match(/^-?[0-9]+$/i)) {
       // Interpret decimal as numeric literal
       value = Number(expression);
     } else if (expression.match(/^0x[0-9a-f]+$/i)) {
@@ -1636,15 +1706,29 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
       if (expression in numVars) {
         // Exact match of variable
         value = numVars[expression];
-        if (expression in (this.sourceMap?.getSymbols() ?? {})) {
+        const cpuInfo = await this.getCachedCpuInfo();
+        const customRegs = await this.getCachedCustomRegisters();
+        const symbols = this.sourceMap?.getSymbols() ?? {};
+
+        if (expression in symbols) {
           memoryReference = formatHex(value);
+          type = EvaluateResultType.SYMBOL;
+        } else if (expression in cpuInfo) {
+          if (expression.match(/^(a[0-7]|pc|usp|msp|vbr)$/)) {
+            type = EvaluateResultType.ADDRESS_REGISTER;
+          } else {
+            type = EvaluateResultType.DATA_REGISTER;
+          }
+        } else if (expression in customRegs) {
+          type = EvaluateResultType.CUSTOM_REGISTER;
         }
       } else {
         // Complex expression
         const expr = this.parser.parse(expression);
-        value = expr.evaluate(numVars);
+        value = await expr.evaluate(numVars);
+        type = EvaluateResultType.PARSED;
       }
     }
-    return { value, memoryReference };
+    return { value, memoryReference, type };
   }
 }
