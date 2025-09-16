@@ -1,7 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 // TODO:
-// - step on entry not working?
 // - Console
 // - constants
 // - Copper debugging
@@ -189,6 +188,7 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
   private instructionBreakpoints: BreakpointRef[] = [];
   private exceptionBreakpoints: BreakpointRef[] = [];
   private dataBreakpoints: DataBreakpointRef[] = [];
+  private functionBreakpoints: BreakpointRef[] = [];
   private tmpBreakpoints: TmpBreakpoint[] = [];
   private bpId = 0;
 
@@ -234,6 +234,7 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
     response.body.supportsHitConditionalBreakpoints = true;
     response.body.supportsEvaluateForHovers = true;
     response.body.supportsCompletionsRequest = true;
+    response.body.supportsFunctionBreakpoints = true;
 
     response.body.exceptionBreakpointFilters = exceptionBreakpointFilters;
 
@@ -819,6 +820,43 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
     this.sendResponse(response);
   }
 
+  protected setFunctionBreakPointsRequest(response: DebugProtocol.SetFunctionBreakpointsResponse, args: DebugProtocol.SetFunctionBreakpointsArguments): void {
+    logger.log(`Set function breakpoints request`);
+    // Remove existing
+    for (const ref of this.functionBreakpoints) {
+      logger.log(
+        `Function breakpoint #${ref.id} removed at ${formatHex(ref.address)}`,
+      );
+      this.vAmiga.removeBreakpoint(ref.address);
+    }
+    this.functionBreakpoints = [];
+    response.body = { breakpoints: [] };
+
+    // Add new breakpoints
+    for (const bp of args.breakpoints ?? []) {
+      const id = this.bpId++;
+      const address = this.sourceMap?.getSymbols()?.[bp.name];
+      if (address) {
+        const ignores =
+          bp.hitCondition && isNumeric(bp.hitCondition)
+            ? Number(bp.hitCondition)
+            : 0;
+        this.functionBreakpoints.push({ id, address });
+
+        this.vAmiga.setBreakpoint(address, ignores);
+        logger.log(
+          `Function breakpoint #${id} set at ${address} for ${bp.name}`,
+        );
+      }
+      response.body.breakpoints.push({
+        id,
+        verified: Boolean(address),
+        ...bp,
+      });
+    }
+    this.sendResponse(response);
+  }
+
   protected dataBreakpointInfoRequest(
     response: DebugProtocol.DataBreakpointInfoResponse,
     args: DebugProtocol.DataBreakpointInfoArguments,
@@ -1372,6 +1410,8 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
           "breakpoint",
           VamigaDebugAdapter.THREAD_ID,
         );
+        evt.body.allThreadsStopped = true;
+
         this.isRunning = false;
         this.invalidateCache(); // Cache needs refresh when emulator stops
 
@@ -1384,6 +1424,7 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
           );
         } else if (message.name === "CATCHPOINT_REACHED") {
           evt.body.reason = "exception";
+          evt.body.text = exceptionBreakpointFilters.find(f => Number(f.filter) === message.payload.vector)?.label;
           bpMatch = this.exceptionBreakpoints.find(
             (bp) => bp.address === message.payload.vector,
           );
@@ -1408,8 +1449,16 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
             if (bpMatch) {
               evt.body.reason = "instruction breakpoint";
             } else {
-              // check source breakpoints
-              bpMatch = this.findSourceBreakpoint(message.payload.pc);
+              // check function breakpoints
+              bpMatch = this.functionBreakpoints.find(
+                (bp) => bp.address === message.payload.pc,
+              );
+              if (bpMatch) {
+                evt.body.reason = "function breakpoint";
+              } else {
+                // check source breakpoints
+                bpMatch = this.findSourceBreakpoint(message.payload.pc);
+              }
             }
           }
         }
