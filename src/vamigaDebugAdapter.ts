@@ -46,6 +46,7 @@ import { sourceMapFromDwarf } from "./dwarfSourceMap";
 import { sourceMapFromHunks } from "./amigaHunkSourceMap";
 import { Location, Segment, SourceMap } from "./sourceMap";
 import { formatHex, isNumeric, u32, u16, u8, i32, i16, i8 } from "./helpers";
+import { allFunctions, consoleCommands, functionsText, helpText, initOutput, syntaxText } from "./syntaxHelp";
 
 interface LaunchRequestArguments extends DebugProtocol.LaunchRequestArguments {
   program: string;
@@ -285,6 +286,8 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
       return;
     }
 
+    this.sendEvent(new OutputEvent(initOutput));
+
     // Initialize logger:
     logger.init((e) => this.sendEvent(e));
     logger.setup(args.trace ? LogLevel.Verbose : LogLevel.Warn);
@@ -319,6 +322,7 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
 
     try {
       logger.log(`Starting emulator with program ${this.programPath}`);
+
       // Start the emulator with the specified file
       this.vAmiga.openFile(this.programPath);
 
@@ -354,6 +358,7 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
   protected configurationDoneRequest(
     response: DebugProtocol.ConfigurationDoneResponse,
   ): void {
+    this.sendEvent(new OutputEvent(`Program started\n`));
     this.vAmiga.run();
     this.sendResponse(response);
   }
@@ -1191,6 +1196,22 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
     // 'watch' | 'repl' | 'hover' | 'clipboard' | 'variables' | string;
     const context = args.context;
 
+    // Check for commands first in console
+    if (context === "repl") {
+      const [firstWord, ...cmdArgs] = args.expression.trim().toLowerCase().split(/\s+/g);
+      if (["help", "?", "h"].includes(firstWord)) {
+        if (cmdArgs[0] === 'syntax') {
+          this.sendEvent(new OutputEvent(syntaxText));
+        } else if (cmdArgs[0] === 'functions') {
+          this.sendEvent(new OutputEvent(functionsText));
+        } else {
+          this.sendEvent(new OutputEvent(helpText));
+        }
+        this.sendResponse(response);
+        return;
+      }
+    }
+
     try {
       const {
         value,
@@ -1225,8 +1246,6 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
           memoryReference,
           variablesReference: 0,
         };
-      } else {
-        throw new Error(`Failed to evaluate: ${args.expression}`);
       }
 
       this.sendResponse(response);
@@ -1477,18 +1496,33 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
             type: "variable",
           });
         });
-        const funcMatches = Object.keys(this.parser.functions).filter((name) =>
+
+        const functionMatches = Object.keys(allFunctions).filter((name) =>
           name.toLowerCase().startsWith(prefix.toLowerCase()),
         );
-        funcMatches.forEach((varName) => {
+        functionMatches.forEach((varName) => {
           response.body.targets.push({
             label: varName,
             text: varName + "()",
+            detail: allFunctions[varName as keyof typeof allFunctions][1],
             selectionLength: 0,
             selectionStart: varName.length + 1,
             start: args.text.length - prefix.length + 1,
             length: prefix.length,
             type: "function",
+          });
+        });
+
+        const commandMatches = Object.keys(consoleCommands).filter((name) =>
+          name.toLowerCase().startsWith(prefix.toLowerCase()),
+        );
+        commandMatches.forEach((varName) => {
+          response.body.targets.push({
+            label: varName,
+            detail: consoleCommands[varName as keyof typeof consoleCommands][1],
+            start: args.text.length - prefix.length + 1,
+            length: prefix.length,
+            type: "keyword",
           });
         });
       }
