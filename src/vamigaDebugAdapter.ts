@@ -182,7 +182,7 @@ export enum ErrorCode {
 /**
  * Debug adapter for Vamiga emulator that implements the Debug Adapter Protocol (DAP).
  * Provides debugging capabilities for Amiga programs running in the Vamiga emulator.
- * 
+ *
  * Features:
  * - Source-level debugging with DWARF or Amiga hunk debug symbols
  * - Breakpoints, watchpoints, and exception breakpoints
@@ -229,7 +229,7 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
 
   /**
    * Creates a new VamigaDebugAdapter instance.
-   * 
+   *
    * Initializes the debug adapter with:
    * - Zero-based line and column numbering
    * - VAmiga emulator view for webview communication
@@ -237,12 +237,12 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
    */
   /**
    * Creates a new VamigaDebugAdapter instance.
-   * 
+   *
    * Initializes the debug adapter with:
    * - Zero-based line and column numbering
    * - VAmiga emulator view for webview communication
    * - Expression parser with memory access functions
-   * 
+   *
    * @param vAmiga Optional VAmigaView instance for dependency injection (primarily for testing)
    */
   public constructor(vAmiga?: VAmigaView) {
@@ -1472,12 +1472,12 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
 
   /**
    * Handles messages received from the VAmiga emulator.
-   * 
+   *
    * Processes different message types:
    * - Attached messages: Sets up source mapping when emulator attaches to program
    * - State messages: Updates debug session state (running/paused/stopped)
    * - Output messages: Forwards emulator output to debug console
-   * 
+   *
    * @param message The message received from the emulator
    */
 
@@ -1495,10 +1495,10 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
 
   /**
    * Sets a temporary breakpoint at the specified address.
-   * 
+   *
    * Temporary breakpoints are used for step operations and are automatically
    * removed when hit. They are not visible to the client.
-   * 
+   *
    * @param address Memory address for the temporary breakpoint
    * @param reason Description of why the breakpoint was set (e.g., "step", "entry")
    */
@@ -1517,7 +1517,7 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
 
   /**
    * Finds a source breakpoint at the specified address.
-   * 
+   *
    * @param address Memory address to search for
    * @returns The breakpoint reference if found, undefined otherwise
    */
@@ -1532,11 +1532,11 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
 
   /**
    * Handles emulator attachment to a program.
-   * 
+   *
    * Sets up source mapping based on loaded segments and debug symbol format.
    * Creates source maps from either DWARF debug info or Amiga hunk debug data.
    * Sets entry breakpoint if stopOnEntry is enabled.
-   * 
+   *
    * @param message Attachment message containing segment information
    */
   private attach({ segments }: AttachedMessage) {
@@ -1567,10 +1567,10 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
 
   /**
    * Updates the debug session state based on emulator state changes.
-   * 
+   *
    * Handles transitions between running, paused, and stopped states.
    * Manages cache invalidation and sends appropriate events to VS Code.
-   * 
+   *
    * @param msg State message from the emulator
    */
   private async updateState(msg: EmulatorStateMessage) {
@@ -1599,7 +1599,7 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
 
   /**
    * Handles completion of a step operation.
-   * 
+   *
    * Called when the emulator stops after a step-in operation.
    * Sets appropriate stop reason for disassembly view when no source is available.
    */
@@ -1625,10 +1625,10 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
 
   /**
    * Handles emulator stop events (breakpoints, watchpoints, exceptions).
-   * 
+   *
    * Determines the reason for stopping and matches it to the appropriate
    * breakpoint type. Handles temporary breakpoints specially.
-   * 
+   *
    * @param message Stop message containing stop details
    */
   private handleStop(message: StopMessage) {
@@ -1699,18 +1699,18 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
 
   /**
    * Analyzes stack memory to guess call frames.
-   * 
+   *
    * Since VAmiga doesn't track stack frames, this method examines stack memory
    * looking for patterns that indicate return addresses from JSR/BSR instructions.
-   * 
+   *
    * Made protected to allow testing of the stack analysis algorithm.
-   * 
+   *
    * Algorithm:
    * 1. Reads stack memory from current SP
    * 2. Looks for 32-bit values that could be return addresses
    * 3. Validates by checking if previous instructions are JSR/BSR
    * 4. Builds list of [call_site, return_address] pairs
-   * 
+   *
    * @param maxLength Maximum number of stack frames to return
    * @returns Array of [call instruction address, return address] pairs
    */
@@ -1764,18 +1764,18 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
 
   /**
    * Formats a memory address with optional symbol information.
-   * 
+   *
    * If the address corresponds to a known symbol, includes the symbol name
    * and offset from the symbol start.
-   * 
+   *
    * @param address Memory address to format
    * @returns Formatted string like "0x00001234" or "0x00001234 = main+16"
    */
   /**
    * Formats a memory address with optional symbol information.
-   * 
+   *
    * Made protected to allow direct testing while keeping it internal to the class.
-   * 
+   *
    * @param address Memory address to format
    * @returns Formatted string like "0x00001234" or "0x00001234 = main+16"
    */
@@ -1793,7 +1793,7 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
 
   /**
    * Converts an error to a string representation.
-   * 
+   *
    * @param err Error object or other value
    * @returns String representation, including stack trace if trace mode is enabled
    */
@@ -1806,7 +1806,7 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
 
   /**
    * Sends an error response back to VS Code.
-   * 
+   *
    * @param response The response object to populate with error information
    * @param errorId Categorized error code for the error type
    * @param message Human-readable error message
@@ -1827,7 +1827,7 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
 
   /**
    * Invalidates the CPU state cache.
-   * 
+   *
    * Called when the emulator state changes to ensure fresh data is fetched.
    */
   private invalidateCache(): void {
@@ -1838,7 +1838,7 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
 
   /**
    * Refreshes the CPU state cache if needed.
-   * 
+   *
    * Only fetches new data if cache is invalid and emulator is not running.
    */
   private async refreshCache(): Promise<void> {
@@ -1857,7 +1857,7 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
 
   /**
    * Gets CPU information, using cache when emulator is stopped.
-   * 
+   *
    * @returns Current CPU register state and flags
    */
   private async getCachedCpuInfo(): Promise<CpuInfo> {
@@ -1872,7 +1872,7 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
 
   /**
    * Gets custom chip register information, using cache when emulator is stopped.
-   * 
+   *
    * @returns Current custom chip register values
    */
   private async getCachedCustomRegisters(): Promise<
@@ -1889,17 +1889,17 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
 
   /**
    * Builds a complete variable lookup table for expression evaluation.
-   * 
+   *
    * Combines CPU registers, custom chip registers, and symbols into a single
    * namespace for the expression parser.
-   * 
+   *
    * @returns Record mapping variable names to their numeric values
    */
   /**
    * Builds a complete variable lookup table for expression evaluation.
-   * 
+   *
    * Made protected to allow testing of variable context building.
-   * 
+   *
    * @returns Record mapping variable names to their numeric values
    */
   protected async getVars() {
@@ -1924,22 +1924,22 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
 
   /**
    * Evaluates an expression in the context of the current debug session.
-   * 
+   *
    * Supports:
    * - Numeric literals (decimal and hex)
    * - Memory dereferencing (0x1234 reads value at that address)
    * - CPU registers, custom registers, and symbols
    * - Complex expressions using the expr-eval parser
    * - Custom functions for memory access and type conversion
-   * 
+   *
    * @param expression The expression string to evaluate
    * @returns Evaluation result with value, type, and optional memory reference
    */
   /**
    * Evaluates an expression in the context of the current debug session.
-   * 
+   *
    * Made protected to allow direct testing while keeping it internal to the class.
-   * 
+   *
    * @param expression The expression string to evaluate
    * @returns Evaluation result with value, type, and optional memory reference
    */
