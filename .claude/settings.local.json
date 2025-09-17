@@ -6,7 +6,8 @@
       "Bash(npm run compile:*)",
       "Bash(npm run lint)",
       "mcp__ide__getDiagnostics",
-      "WebSearch"
+      "WebSearch",
+      "Bash(npm test)"
     ],
     "deny": [],
     "ask": []

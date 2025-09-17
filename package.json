@@ -108,6 +108,8 @@
     "pretest": "npm run compile && npm run lint",
     "lint": "eslint src --ext ts",
     "test": "vscode-test",
+    "test:unit": "npm run compile && mocha out/test/**/*.test.js --ui tdd",
+    "test:coverage": "npm run compile && nyc mocha out/test/**/*.test.js --ui tdd",
     "format": "prettier --write src/**/*.ts",
     "format:check": "prettier --check src/**/*.ts"
   },
@@ -119,6 +121,7 @@
     "@eslint/js": "^9.35.0",
     "@types/mocha": "^10.0.6",
     "@types/node": "24.3.1",
+    "@types/sinon": "^17.0.3",
     "@types/vscode": "^1.74.0",
     "@typescript-eslint/eslint-plugin": "8.43.0",
     "@typescript-eslint/parser": "8.43.0",
@@ -126,6 +129,7 @@
     "@vscode/test-electron": "^2.3.8",
     "eslint": "9.35.0",
     "prettier": "^3.6.2",
+    "sinon": "^18.0.1",
     "typescript": "^5.9.2",
     "typescript-eslint": "^8.43.0"
   },

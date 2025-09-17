@@ -108,7 +108,7 @@ interface EvaluateResult {
 /**
  * Classification of expression evaluation results for appropriate formatting.
  */
-enum EvaluateResultType {
+export enum EvaluateResultType {
   /** Empty expression */
   EMPTY,
   /** Unknown or unclassified result */
@@ -129,7 +129,7 @@ enum EvaluateResultType {
  * Categorized error codes for debug adapter operations.
  * Organized by functional area with reserved number ranges.
  */
-enum ErrorCode {
+export enum ErrorCode {
   // Launch/initialization errors (2000-2099)
   /** Program path not specified in launch configuration */
   PROGRAM_NOT_SPECIFIED = 2001,
