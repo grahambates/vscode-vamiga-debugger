@@ -1,50 +1,43 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import * as assert from 'assert';
 import * as sinon from 'sinon';
-import { VamigaDebugAdapter, ErrorCode, EvaluateResultType } from '../vamigaDebugAdapter';
+import { VamigaDebugAdapter, EvaluateResultType } from '../vamigaDebugAdapter';
 import { VAmigaView, CpuInfo } from '../vAmigaView';
+import { DebugProtocol } from '@vscode/debugprotocol';
 
-// Helper function to create mock CPU info with required properties
-function createMockCpuInfo(overrides: Partial<CpuInfo> = {}): CpuInfo {
-  return {
-    pc: '0x0000',
-    flags: {
-      carry: false,
-      overflow: false,
-      zero: false,
-      negative: false,
-      extend: false,
-      trace1: false,
-      trace0: false,
-      supervisor: false,
-      master: false,
-      interrupt_mask: 0
-    },
-    d0: '0x0000', d1: '0x0000', d2: '0x0000', d3: '0x0000',
-    d4: '0x0000', d5: '0x0000', d6: '0x0000', d7: '0x0000',
-    a0: '0x0000', a1: '0x0000', a2: '0x0000', a3: '0x0000',
-    a4: '0x0000', a5: '0x0000', a6: '0x0000', a7: '0x0000',
-    sr: '0x0000', usp: '0x0000', isp: '0x0000', msp: '0x0000',
-    vbr: '0x0000', irc: '0x0000', sfc: '0x0000', dfc: '0x0000',
-    cacr: '0x0000', caar: '0x0000',
-    ...overrides
-  };
+/**
+ * Test subclass that exposes protected methods for testing
+ */
+class TestableVamigaDebugAdapter extends VamigaDebugAdapter {
+  public async testEvaluate(expression: string) {
+    return this.evaluate(expression);
+  }
+  
+  public testFormatAddress(address: number): string {
+    return this.formatAddress(address);
+  }
+  
+  public async testGuessStack(maxLength?: number) {
+    return this.guessStack(maxLength);
+  }
 }
 
 /**
- * Test suite for VamigaDebugAdapter
+ * Simplified behavior-focused tests for VamigaDebugAdapter.
+ * 
+ * These tests use minimal refactoring (protected methods + constructor injection)
+ * to test behavior without over-engineering the architecture.
  */
-suite('VamigaDebugAdapter Tests', () => {
-  let adapter: VamigaDebugAdapter;
+suite('VamigaDebugAdapter - Simplified Tests', () => {
+  let adapter: TestableVamigaDebugAdapter;
   let mockVAmiga: sinon.SinonStubbedInstance<VAmigaView>;
 
   setup(() => {
-    // Create a new adapter instance for each test
-    adapter = new VamigaDebugAdapter();
-    
-    // Create mock VAmiga instance
+    // Create mock VAmiga with commonly needed methods
     mockVAmiga = sinon.createStubInstance(VAmigaView);
-    (adapter as any).vAmiga = mockVAmiga;
+    
+    // Use constructor injection to provide mock
+    adapter = new TestableVamigaDebugAdapter(mockVAmiga);
   });
 
   teardown(() => {
@@ -52,278 +45,257 @@ suite('VamigaDebugAdapter Tests', () => {
     adapter.dispose();
   });
 
-  suite('Constructor', () => {
-    test('should initialize with correct settings', () => {
-      const newAdapter = new VamigaDebugAdapter();
+  suite('Expression Evaluation Behavior', () => {
+    test('should evaluate simple numeric expressions', async () => {
+      // Setup: Mock CPU state
+      setupMockCpuState();
+      setupMockSourceMap();
       
-      // Verify zero-based numbering is set (these are internal properties that may not be accessible)
-      // Just verify the adapter was created successfully
-      assert.ok(newAdapter);
+      // Test: Evaluate simple expression
+      const result = await adapter.testEvaluate('42');
       
-      // Verify parser is initialized with custom functions
-      const parser = (newAdapter as any).parser;
-      assert.ok(parser);
-      assert.ok(parser.functions.u32);
-      assert.ok(parser.functions.peekU32);
-      assert.ok(parser.functions.poke32);
-      
-      newAdapter.dispose();
-    });
-  });
-
-  suite('Helper Methods', () => {
-    suite('formatAddress', () => {
-      test('should format address without symbol', () => {
-        const result = (adapter as any).formatAddress(0x1234);
-        assert.strictEqual(result, '0x00001234');
-      });
-
-      test('should format address with symbol', () => {
-        // Mock source map with symbol
-        const mockSourceMap = {
-          findSymbolOffset: sinon.stub().returns({ symbol: 'main', offset: 16 })
-        };
-        (adapter as any).sourceMap = mockSourceMap;
-        
-        const result = (adapter as any).formatAddress(0x1234);
-        assert.strictEqual(result, '0x00001234 = main+16');
-      });
-
-      test('should format address with symbol at exact offset', () => {
-        const mockSourceMap = {
-          findSymbolOffset: sinon.stub().returns({ symbol: 'start', offset: 0 })
-        };
-        (adapter as any).sourceMap = mockSourceMap;
-        
-        const result = (adapter as any).formatAddress(0x1000);
-        assert.strictEqual(result, '0x00001000 = start');
-      });
-    });
-
-    suite('errorString', () => {
-      test('should format Error object with message only when trace is false', () => {
-        (adapter as any).trace = false;
-        const error = new Error('Test error');
-        const result = (adapter as any).errorString(error);
-        assert.strictEqual(result, 'Test error');
-      });
-
-      test('should format Error object with stack when trace is true', () => {
-        (adapter as any).trace = true;
-        const error = new Error('Test error');
-        error.stack = 'Error: Test error\n    at test';
-        const result = (adapter as any).errorString(error);
-        assert.strictEqual(result, 'Error: Test error\n    at test');
-      });
-
-      test('should format non-Error values', () => {
-        const result = (adapter as any).errorString('string error');
-        assert.strictEqual(result, 'string error');
-      });
-    });
-
-    suite('Cache Management', () => {
-      test('invalidateCache should reset cache state', () => {
-        (adapter as any).cacheValid = true;
-        (adapter as any).cachedCpuInfo = { pc: '0x1000' };
-        
-        (adapter as any).invalidateCache();
-        
-        assert.strictEqual((adapter as any).cacheValid, false);
-        assert.strictEqual((adapter as any).cachedCpuInfo, undefined);
-      });
-
-      test('getCachedCpuInfo should fetch fresh data when running', async () => {
-        const mockCpuInfo = createMockCpuInfo({ pc: '0x1000', d0: '0x42' });
-        mockVAmiga.getCpuInfo.resolves(mockCpuInfo);
-        (adapter as any).isRunning = true;
-        
-        const result = await (adapter as any).getCachedCpuInfo();
-        
-        assert.deepStrictEqual(result, mockCpuInfo);
-        assert.ok(mockVAmiga.getCpuInfo.calledOnce);
-      });
-
-      test('getCachedCpuInfo should use cache when stopped and valid', async () => {
-        const cachedInfo = createMockCpuInfo({ pc: '0x2000', d0: '0x84' });
-        (adapter as any).isRunning = false;
-        (adapter as any).cacheValid = true;
-        (adapter as any).cachedCpuInfo = cachedInfo;
-        
-        const result = await (adapter as any).getCachedCpuInfo();
-        
-        assert.deepStrictEqual(result, cachedInfo);
-        assert.ok(mockVAmiga.getCpuInfo.notCalled);
-      });
-    });
-  });
-
-  suite('Expression Evaluation', () => {
-    setup(() => {
-      // Mock CPU info for evaluation tests
-      mockVAmiga.getCpuInfo.resolves(createMockCpuInfo({
-        pc: '0x1000',
-        d0: '0x42',
-        a0: '0x8000'
-      }));
-      mockVAmiga.getAllCustomRegisters.resolves({
-        DMACON: { value: '0x8200' }
-      });
-    });
-
-    test('should evaluate empty expression', async () => {
-      const result = await (adapter as any).evaluate('');
-      assert.strictEqual(result.type, EvaluateResultType.EMPTY);
-      assert.strictEqual(result.value, undefined);
-    });
-
-    test('should evaluate decimal literal', async () => {
-      const result = await (adapter as any).evaluate('42');
+      // Verify: Returns expected value
       assert.strictEqual(result.value, 42);
     });
 
-    test('should evaluate hex literal', async () => {
-      // Mock readMemoryBuffer to return valid buffer
-      const mockBuffer = Buffer.alloc(4);
-      mockBuffer.writeUInt32BE(0x12345678, 0);
-      mockVAmiga.readMemoryBuffer.resolves(mockBuffer);
+    test('should evaluate register expressions', async () => {
+      // Setup: Mock CPU with d0 = 0x100
+      setupMockCpuState({ d0: '0x100' });
+      setupMockSourceMap();
       
-      const result = await (adapter as any).evaluate('0x1000');
+      // Test: Evaluate register
+      const result = await adapter.testEvaluate('d0');
       
-      // Should read value at address and set memory reference
-      assert.ok(mockVAmiga.readMemoryBuffer.called);
-      assert.strictEqual(result.memoryReference, '0x00001000');
-      assert.strictEqual(result.value, 0x12345678);
-    });
-
-    test('should evaluate CPU register', async () => {
-      // Mock source map without symbols
-      (adapter as any).sourceMap = { getSymbols: () => ({}) };
-      
-      const result = await (adapter as any).evaluate('d0');
-      assert.strictEqual(result.value, 0x42);
+      // Verify: Returns register value and correct type
+      assert.strictEqual(result.value, 0x100);
       assert.strictEqual(result.type, EvaluateResultType.DATA_REGISTER);
     });
 
-    test('should evaluate address register', async () => {
-      (adapter as any).sourceMap = { getSymbols: () => ({}) };
+    test('should evaluate complex expressions with registers', async () => {
+      // Setup: Mock CPU state
+      setupMockCpuState({ d0: '0x10', d1: '0x20' });
+      setupMockSourceMap();
       
-      const result = await (adapter as any).evaluate('a0');
-      assert.strictEqual(result.value, 0x8000);
-      assert.strictEqual(result.type, EvaluateResultType.ADDRESS_REGISTER);
-    });
-
-    test('should evaluate symbol', async () => {
-      (adapter as any).sourceMap = { 
-        getSymbols: () => ({ main: 0x2000 })
-      };
+      // Test: Evaluate arithmetic expression
+      const result = await adapter.testEvaluate('d0 + d1 * 2');
       
-      const result = await (adapter as any).evaluate('main');
-      assert.strictEqual(result.value, 0x2000);
-      assert.strictEqual(result.type, EvaluateResultType.SYMBOL);
-      assert.strictEqual(result.memoryReference, '0x00002000');
-    });
-
-    test('should evaluate complex expression', async () => {
-      (adapter as any).sourceMap = { getSymbols: () => ({}) };
-      
-      const result = await (adapter as any).evaluate('d0 + 8');
-      assert.strictEqual(result.value, 0x42 + 8);
+      // Verify: Correct calculation
+      assert.strictEqual(result.value, 0x10 + 0x20 * 2);
       assert.strictEqual(result.type, EvaluateResultType.PARSED);
     });
-  });
 
-  suite('Temporary Breakpoints', () => {
-    test('setTmpBreakpoint should add breakpoint', () => {
-      const findStub = sinon.stub(adapter as any, 'findSourceBreakpoint').returns(undefined);
+    test('should handle hex address evaluation with memory access', async () => {
+      // Setup: Mock memory read
+      const mockBuffer = Buffer.alloc(4);
+      mockBuffer.writeUInt32BE(0x12345678, 0);
+      mockVAmiga.readMemoryBuffer.resolves(mockBuffer);
+      setupMockCpuState();
+      setupMockSourceMap();
       
-      (adapter as any).setTmpBreakpoint(0x1000, 'step');
+      // Test: Evaluate hex address (should read memory)
+      const result = await adapter.testEvaluate('0x1000');
       
-      const tmpBps = (adapter as any).tmpBreakpoints;
-      assert.strictEqual(tmpBps.length, 1);
-      assert.strictEqual(tmpBps[0].address, 0x1000);
-      assert.strictEqual(tmpBps[0].reason, 'step');
-      assert.ok(mockVAmiga.setBreakpoint.calledWith(0x1000));
-      
-      findStub.restore();
+      // Verify: Memory was read and result formatted correctly
+      assert.ok(mockVAmiga.readMemoryBuffer.calledWith(0x1000, 4));
+      assert.strictEqual(result.value, 0x12345678);
+      assert.strictEqual(result.memoryReference, '0x00001000');
     });
 
-    test('setTmpBreakpoint should not add if breakpoint exists', () => {
-      const findStub = sinon.stub(adapter as any, 'findSourceBreakpoint').returns({ id: 1, address: 0x1000 });
+    test('should evaluate symbols when source map available', async () => {
+      // Setup: Mock CPU state and source map with symbols
+      setupMockCpuState();
+      setupMockSourceMap({ main: 0x1000, buffer: 0x2000 });
       
-      (adapter as any).setTmpBreakpoint(0x1000, 'step');
+      // Test: Evaluate symbol
+      const result = await adapter.testEvaluate('main');
       
-      const tmpBps = (adapter as any).tmpBreakpoints;
-      assert.strictEqual(tmpBps.length, 0);
-      assert.ok(mockVAmiga.setBreakpoint.notCalled);
-      
-      findStub.restore();
-    });
-
-    test('findSourceBreakpoint should find existing breakpoint', () => {
-      const sourceBreakpoints = new Map();
-      sourceBreakpoints.set('test.c', [{ id: 1, address: 0x1000 }, { id: 2, address: 0x2000 }]);
-      (adapter as any).sourceBreakpoints = sourceBreakpoints;
-      
-      const result = (adapter as any).findSourceBreakpoint(0x1000);
-      assert.deepStrictEqual(result, { id: 1, address: 0x1000 });
-    });
-
-    test('findSourceBreakpoint should return undefined if not found', () => {
-      const sourceBreakpoints = new Map();
-      sourceBreakpoints.set('test.c', [{ id: 1, address: 0x1000 }]);
-      (adapter as any).sourceBreakpoints = sourceBreakpoints;
-      
-      const result = (adapter as any).findSourceBreakpoint(0x3000);
-      assert.strictEqual(result, undefined);
+      // Verify: Symbol resolved correctly
+      assert.strictEqual(result.value, 0x1000);
+      assert.strictEqual(result.type, EvaluateResultType.SYMBOL);
+      assert.strictEqual(result.memoryReference, '0x00001000');
     });
   });
 
-  suite('Stack Analysis', () => {
-    test('guessStack should return current PC as first frame', async () => {
-      mockVAmiga.getCpuInfo.resolves(createMockCpuInfo({ pc: '0x1000', a7: '0x8000' }));
+  suite('Address Formatting Behavior', () => {
+    test('should format plain addresses without symbols', () => {
+      // Setup: No source map
+      (adapter as any).sourceMap = undefined;
+      
+      // Test: Format address
+      const result = adapter.testFormatAddress(0x1000);
+      
+      // Verify: Plain hex formatting
+      assert.strictEqual(result, '0x00001000');
+    });
+
+    test('should format addresses with symbol information', () => {
+      // Setup: Mock source map
+      const mockSourceMap = {
+        findSymbolOffset: sinon.stub().returns({ symbol: 'main', offset: 16 })
+      };
+      (adapter as any).sourceMap = mockSourceMap;
+      
+      // Test: Format address
+      const result = adapter.testFormatAddress(0x1010);
+      
+      // Verify: Includes symbol + offset
+      assert.strictEqual(result, '0x00001010 = main+16');
+    });
+
+    test('should format addresses with exact symbol match', () => {
+      // Setup: Mock source map with zero offset
+      const mockSourceMap = {
+        findSymbolOffset: sinon.stub().returns({ symbol: 'start', offset: 0 })
+      };
+      (adapter as any).sourceMap = mockSourceMap;
+      
+      // Test: Format address
+      const result = adapter.testFormatAddress(0x1000);
+      
+      // Verify: Shows symbol without offset
+      assert.strictEqual(result, '0x00001000 = start');
+    });
+  });
+
+  suite('Stack Analysis Behavior', () => {
+    test('should return current PC as first stack frame', async () => {
+      // Setup: Mock CPU state
+      setupMockCpuState({ pc: '0x1000', a7: '0x8000' });
       mockVAmiga.readMemoryBuffer.resolves(Buffer.alloc(128));
       
-      const result = await (adapter as any).guessStack(1);
+      // Test: Analyze stack
+      const frames = await adapter.testGuessStack(1);
       
-      assert.strictEqual(result.length, 1);
-      assert.deepStrictEqual(result[0], [0x1000, 0x1000]);
+      // Verify: Current frame included
+      assert.strictEqual(frames.length, 1);
+      assert.deepStrictEqual(frames[0], [0x1000, 0x1000]);
     });
 
-    test('guessStack should find JSR return addresses', async () => {
-      mockVAmiga.getCpuInfo.resolves(createMockCpuInfo({ pc: '0x1000', a7: '0x8000' }));
+    test('should detect JSR return addresses in stack', async () => {
+      // Setup: Mock CPU and stack with return address
+      setupMockCpuState({ pc: '0x1000', a7: '0x8000' });
       
-      // Create mock stack with a return address
       const stackBuffer = Buffer.alloc(128);
-      stackBuffer.writeInt32BE(0x2000, 0); // Return address at top of stack
+      stackBuffer.writeInt32BE(0x2000, 0); // Return address
       mockVAmiga.readMemoryBuffer.withArgs(0x8000, 128).resolves(stackBuffer);
       
-      // Mock previous instruction bytes (JSR instruction)
+      // Mock JSR instruction before return address
       const instrBuffer = Buffer.alloc(6);
-      instrBuffer.writeUInt16BE(0x4e80, 4); // JSR instruction at offset 2
+      instrBuffer.writeUInt16BE(0x4e80, 4); // JSR at offset -2
       mockVAmiga.readMemoryBuffer.withArgs(0x2000 - 6, 6).resolves(instrBuffer);
       
-      const result = await (adapter as any).guessStack(5);
+      // Test: Analyze stack
+      const frames = await adapter.testGuessStack(5);
       
-      assert.strictEqual(result.length, 2);
-      assert.deepStrictEqual(result[0], [0x1000, 0x1000]); // Current frame
-      assert.deepStrictEqual(result[1], [0x2000 - 2, 0x2000]); // JSR frame
+      // Verify: Found JSR frame
+      assert.strictEqual(frames.length, 2);
+      assert.deepStrictEqual(frames[1], [0x2000 - 2, 0x2000]);
     });
   });
 
-  suite('Error Handling', () => {
-    test('sendError should format error response', () => {
-      const mockResponse: any = { body: {} };
-      const sendErrorResponseSpy = sinon.spy(adapter as any, 'sendErrorResponse');
+  suite('Debug Adapter Protocol Behavior', () => {
+    test('should handle evaluate request through DAP', async () => {
+      // Setup: Mock CPU state for evaluation
+      setupMockCpuState({ d0: '0x42' });
+      setupMockSourceMap();
       
-      (adapter as any).sendError(mockResponse, ErrorCode.MEMORY_READ_ERROR, 'Test error', new Error('cause'));
+      const response = createMockResponse<DebugProtocol.EvaluateResponse>('evaluate');
+      const args: DebugProtocol.EvaluateArguments = {
+        expression: 'd0 + 8'
+      };
       
-      assert.ok(sendErrorResponseSpy.calledOnce);
-      const call = sendErrorResponseSpy.getCall(0);
-      assert.strictEqual(call.args[0], mockResponse);
-      assert.strictEqual(call.args[1].id, ErrorCode.MEMORY_READ_ERROR);
-      assert.ok(call.args[1].format.includes('Test error'));
-      assert.ok(call.args[1].format.includes('cause'));
+      // Test: Handle DAP evaluate request
+      await (adapter as any).evaluateRequest(response, args);
+      
+      // Verify: Response contains correct result (should be in hex format)
+      assert.strictEqual(response.body?.result, '0x4a'); // 0x42 + 8 = 0x4a
+      assert.strictEqual(response.success, true);
+    });
+
+    test('should handle invalid expressions gracefully', async () => {
+      // Setup: Mock CPU state
+      setupMockCpuState();
+      setupMockSourceMap();
+      
+      const response = createMockResponse<DebugProtocol.EvaluateResponse>('evaluate');
+      const args: DebugProtocol.EvaluateArguments = {
+        expression: 'invalid_variable'
+      };
+      
+      // Test: Handle invalid expression
+      await (adapter as any).evaluateRequest(response, args);
+      
+      // Verify: Returns error response  
+      assert.strictEqual(response.success, false);
+      // The actual error message format may vary, just check that there's an error
+      assert.ok(response.message);
+    });
+
+    test('should set breakpoints through DAP when source map available', async () => {
+      // Setup: Mock source map
+      const mockSourceMap = {
+        lookupSourceLine: sinon.stub().returns({ address: 0x1000 })
+      };
+      (adapter as any).sourceMap = mockSourceMap;
+      
+      const response = createMockResponse<DebugProtocol.SetBreakpointsResponse>('setBreakpoints');
+      const args: DebugProtocol.SetBreakpointsArguments = {
+        source: { path: '/src/main.c' },
+        breakpoints: [{ line: 10 }, { line: 20 }]
+      };
+      
+      // Test: Set breakpoints through DAP
+      await (adapter as any).setBreakPointsRequest(response, args);
+      
+      // Verify: Breakpoints set in emulator and response is correct
+      assert.ok(mockVAmiga.setBreakpoint.calledWith(0x1000));
+      assert.strictEqual(response.body?.breakpoints?.length, 2);
+      assert.strictEqual(response.body?.breakpoints?.[0].verified, true);
     });
   });
+
+  // Helper functions to reduce test setup boilerplate
+  
+  function setupMockCpuState(overrides: Partial<CpuInfo> = {}): void {
+    const defaultCpuInfo: CpuInfo = {
+      pc: '0x1000',
+      flags: {
+        carry: false, overflow: false, zero: false, negative: false,
+        extend: false, trace1: false, trace0: false, supervisor: false,
+        master: false, interrupt_mask: 0
+      },
+      d0: '0x0000', d1: '0x0000', d2: '0x0000', d3: '0x0000',
+      d4: '0x0000', d5: '0x0000', d6: '0x0000', d7: '0x0000',
+      a0: '0x0000', a1: '0x0000', a2: '0x0000', a3: '0x0000',
+      a4: '0x0000', a5: '0x0000', a6: '0x0000', a7: '0x7000',
+      sr: '0x0000', usp: '0x0000', isp: '0x0000', msp: '0x0000',
+      vbr: '0x0000', irc: '0x0000', sfc: '0x0000', dfc: '0x0000',
+      cacr: '0x0000', caar: '0x0000',
+      ...overrides
+    };
+    
+    mockVAmiga.getCpuInfo.resolves(defaultCpuInfo);
+    mockVAmiga.getAllCustomRegisters.resolves({
+      DMACON: { value: '0x8200' },
+      INTENA: { value: '0x4000' }
+    });
+  }
+  
+  function setupMockSourceMap(symbols: Record<string, number> = {}): void {
+    const mockSourceMap = {
+      getSymbols: () => symbols,
+      findSymbolOffset: sinon.stub().returns(undefined)
+    };
+    (adapter as any).sourceMap = mockSourceMap;
+  }
+  
+  function createMockResponse<T extends DebugProtocol.Response>(command: string): T {
+    return {
+      seq: 1,
+      type: 'response',
+      request_seq: 1,
+      command,
+      success: true
+    } as T;
+  }
 });

@@ -235,11 +235,21 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
    * - VAmiga emulator view for webview communication
    * - Expression parser with memory access functions
    */
-  public constructor() {
+  /**
+   * Creates a new VamigaDebugAdapter instance.
+   * 
+   * Initializes the debug adapter with:
+   * - Zero-based line and column numbering
+   * - VAmiga emulator view for webview communication
+   * - Expression parser with memory access functions
+   * 
+   * @param vAmiga Optional VAmigaView instance for dependency injection (primarily for testing)
+   */
+  public constructor(vAmiga?: VAmigaView) {
     super();
     this.setDebuggerLinesStartAt1(false);
     this.setDebuggerColumnsStartAt1(false);
-    this.vAmiga = new VAmigaView(vscode.Uri.file(path.dirname(__dirname)));
+    this.vAmiga = vAmiga || new VAmigaView(vscode.Uri.file(path.dirname(__dirname)));
 
     this.parser = new Parser();
     this.parser.functions = {
@@ -1693,6 +1703,8 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
    * Since VAmiga doesn't track stack frames, this method examines stack memory
    * looking for patterns that indicate return addresses from JSR/BSR instructions.
    * 
+   * Made protected to allow testing of the stack analysis algorithm.
+   * 
    * Algorithm:
    * 1. Reads stack memory from current SP
    * 2. Looks for 32-bit values that could be return addresses
@@ -1702,7 +1714,7 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
    * @param maxLength Maximum number of stack frames to return
    * @returns Array of [call instruction address, return address] pairs
    */
-  private async guessStack(maxLength = 16): Promise<[number, number][]> {
+  protected async guessStack(maxLength = 16): Promise<[number, number][]> {
     const cpuInfo = await this.getCachedCpuInfo();
 
     // vAmiga doesn't currently track stack frames, so we'll need to look at the stack data and guess...
@@ -1759,7 +1771,15 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
    * @param address Memory address to format
    * @returns Formatted string like "0x00001234" or "0x00001234 = main+16"
    */
-  private formatAddress(address: number): string {
+  /**
+   * Formats a memory address with optional symbol information.
+   * 
+   * Made protected to allow direct testing while keeping it internal to the class.
+   * 
+   * @param address Memory address to format
+   * @returns Formatted string like "0x00001234" or "0x00001234 = main+16"
+   */
+  protected formatAddress(address: number): string {
     let out = formatHex(address);
     const symbolOffset = this.sourceMap?.findSymbolOffset(address);
     if (symbolOffset) {
@@ -1875,7 +1895,14 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
    * 
    * @returns Record mapping variable names to their numeric values
    */
-  private async getVars() {
+  /**
+   * Builds a complete variable lookup table for expression evaluation.
+   * 
+   * Made protected to allow testing of variable context building.
+   * 
+   * @returns Record mapping variable names to their numeric values
+   */
+  protected async getVars() {
     const variables: Record<string, number> = {};
     const cpuInfo = await this.getCachedCpuInfo();
     const customRegs = await this.getCachedCustomRegisters();
@@ -1908,7 +1935,15 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
    * @param expression The expression string to evaluate
    * @returns Evaluation result with value, type, and optional memory reference
    */
-  private async evaluate(expression: string): Promise<EvaluateResult> {
+  /**
+   * Evaluates an expression in the context of the current debug session.
+   * 
+   * Made protected to allow direct testing while keeping it internal to the class.
+   * 
+   * @param expression The expression string to evaluate
+   * @returns Evaluation result with value, type, and optional memory reference
+   */
+  protected async evaluate(expression: string): Promise<EvaluateResult> {
     expression = expression.trim();
     if (expression === "") {
       return { type: EvaluateResultType.EMPTY };
