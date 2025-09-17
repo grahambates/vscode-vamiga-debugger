@@ -39,14 +39,23 @@ import {
   isEmulatorOutputMessage,
   EmulatorStateMessage,
   AttachedMessage,
+  StopMessage,
 } from "./vAmigaView";
 import { Hunk, parseHunks } from "./amigaHunkParser";
 import { DWARFData, parseDwarf } from "./dwarfParser";
 import { sourceMapFromDwarf } from "./dwarfSourceMap";
 import { sourceMapFromHunks } from "./amigaHunkSourceMap";
-import { Location, Segment, SourceMap } from "./sourceMap";
+import { Location, SourceMap } from "./sourceMap";
 import { formatHex, isNumeric, u32, u16, u8, i32, i16, i8 } from "./helpers";
-import { allFunctions, consoleCommands, functionsText, helpText, initOutput, syntaxText } from "./syntaxHelp";
+import {
+  allFunctions,
+  consoleCommands,
+  functionsText,
+  helpText,
+  initOutput,
+  syntaxText,
+} from "./syntaxHelp";
+import { exceptionBreakpointFilters, vectors } from "./vectors";
 
 interface LaunchRequestArguments extends DebugProtocol.LaunchRequestArguments {
   program: string;
@@ -111,68 +120,6 @@ enum ErrorCode {
   BREAKPOINT_REMOVE_ERROR = 6002,
   SOURCE_LOCATION_ERROR = 6003,
 }
-
-const exceptionBreakpointFilters: DebugProtocol.ExceptionBreakpointsFilter[] = [
-  { filter: "0x8", label: "Bus error", default: true },
-  { filter: "0xC", label: "Address error", default: true },
-  { filter: "0x10", label: "Illegal instruction", default: true },
-  { filter: "0x14", label: "Zero divide", default: true },
-  // { filter: '0x18', label: 'CHK' },
-  // { filter: '0x1C', label: 'TRAPV' },
-  { filter: "0x20", label: "Privilege violation", default: true },
-];
-
-// What's your vector Victor?
-export const vectors = [
-  "Reset:SSP",
-  "EXECBASE",
-  "BUS ERROR",
-  "ADR ERROR",
-  "ILLEG OPC",
-  "DIV BY 0",
-  "CHK",
-  "TRAPV",
-  "PRIVIL VIO",
-  "TRACE",
-  "LINEA EMU",
-  "LINEF EMU",
-  null,
-  null,
-  null,
-  "INT Uninit",
-  null,
-  null,
-  null,
-  null,
-  null,
-  null,
-  null,
-  null,
-  "INT Unjust",
-  "Lvl 1 Int",
-  "Lvl 2 Int",
-  "Lvl 3 Int",
-  "Lvl 4 Int",
-  "Lvl 5 Int",
-  "Lvl 6 Int",
-  "NMI",
-  "TRAP 00",
-  "TRAP 01",
-  "TRAP 02",
-  "TRAP 03",
-  "TRAP 04",
-  "TRAP 05",
-  "TRAP 06",
-  "TRAP 07",
-  "TRAP 08",
-  "TRAP 09",
-  "TRAP 10",
-  "TRAP 11",
-  "TRAP 12",
-  "TRAP 13",
-  "TRAP 14",
-  "TRAP 15",
-];
 
 export class VamigaDebugAdapter extends LoggingDebugSession {
   private static THREAD_ID = 1;
@@ -479,9 +426,13 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
   ): Promise<void> {
     const id = this.variableHandles.get(args.variablesReference);
     let variables: DebugProtocol.Variable[] = [];
-    const readOnly: DebugProtocol.VariablePresentationHint = {
-      attributes: ["readOnly"],
-    };
+
+    const castIntVar = (value: number, fn: (v: number) => number) => ({
+      name: fn.name,
+      value: fn(value).toString(),
+      variablesReference: 0,
+      presentationHint: { attributes: ["readOnly"] },
+    });
 
     try {
       if (id === "registers") {
@@ -518,84 +469,34 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
         const name = id.replace("data_reg_", "");
         const value = Number(info[name as keyof CpuInfo]);
         variables = [
-          {
-            name: `u32`,
-            value: u32(value).toString(),
-            variablesReference: 0,
-            presentationHint: readOnly,
-          },
-          {
-            name: `i32`,
-            value: i32(value).toString(),
-            variablesReference: 0,
-            presentationHint: readOnly,
-          },
-          {
-            name: `u16`,
-            value: u16(value).toString(),
-            variablesReference: 0,
-            presentationHint: readOnly,
-          },
-          {
-            name: `i16`,
-            value: i16(value).toString(),
-            variablesReference: 0,
-            presentationHint: readOnly,
-          },
-          {
-            name: `u8`,
-            value: u8(value).toString(),
-            variablesReference: 0,
-            presentationHint: readOnly,
-          },
-          {
-            name: `i8`,
-            value: i8(value).toString(),
-            variablesReference: 0,
-            presentationHint: readOnly,
-          },
+          castIntVar(value, i32),
+          castIntVar(value, u32),
+          castIntVar(value, i16),
+          castIntVar(value, u16),
+          castIntVar(value, i8),
+          castIntVar(value, u8),
         ];
       } else if (id.startsWith("addr_reg_")) {
         const info = await this.getCachedCpuInfo();
         const name = id.replace("addr_reg_", "");
         const value = Number(info[name as keyof CpuInfo]);
         variables = [
-          {
-            name: `u32`,
-            value: u32(value).toString(),
-            variablesReference: 0,
-            presentationHint: readOnly,
-          },
-          {
-            name: `i32`,
-            value: i32(value).toString(),
-            variablesReference: 0,
-            presentationHint: readOnly,
-          },
-          {
-            name: `u16`,
-            value: u16(value).toString(),
-            variablesReference: 0,
-            presentationHint: readOnly,
-          },
-          {
-            name: `i16`,
-            value: i16(value).toString(),
-            variablesReference: 0,
-            presentationHint: readOnly,
-          },
+          castIntVar(value, i32),
+          castIntVar(value, u32),
+          castIntVar(value, i16),
+          castIntVar(value, u16),
         ];
-        const labelOffset = await this.labelOffset(value);
-        if (labelOffset) {
-          let value = labelOffset.label;
-          if (labelOffset.offset) {
-            value += "+" + labelOffset.offset;
+        const symbolOffset = await this.sourceMap?.findSymbolOffset(value);
+        if (symbolOffset) {
+          let value = symbolOffset.symbol;
+          if (symbolOffset.offset) {
+            value += "+" + symbolOffset.offset;
           }
           variables.unshift({
             name: "offset",
             value,
             variablesReference: 0,
-            presentationHint: readOnly,
+            presentationHint: { attributes: ["readOnly"] },
           });
         }
       } else if (id === "custom") {
@@ -607,67 +508,30 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
         }));
       } else if (id === "sr_flags") {
         const info = await this.getCachedCpuInfo();
-        const flags = info.flags;
         variables = [
-          {
-            name: "carry",
-            value: flags.carry ? "true" : "false",
+          ...[
+            "carry",
+            "overflow",
+            "zero",
+            "negative",
+            "extend",
+            "trace1",
+            "trace0",
+            "supervision",
+            "master",
+          ].map((name) => ({
+            name,
+            value: info.flags[name as keyof typeof info.flags]
+              ? "true"
+              : "false",
             variablesReference: 0,
-            presentationHint: readOnly,
-          },
-          {
-            name: "overflow",
-            value: flags.overflow ? "true" : "false",
-            variablesReference: 0,
-            presentationHint: readOnly,
-          },
-          {
-            name: "zero",
-            value: flags.zero ? "true" : "false",
-            variablesReference: 0,
-            presentationHint: readOnly,
-          },
-          {
-            name: "negative",
-            value: flags.negative ? "true" : "false",
-            variablesReference: 0,
-            presentationHint: readOnly,
-          },
-          {
-            name: "extend",
-            value: flags.extend ? "true" : "false",
-            variablesReference: 0,
-            presentationHint: readOnly,
-          },
-          {
-            name: "trace1",
-            value: flags.trace1 ? "true" : "false",
-            variablesReference: 0,
-            presentationHint: readOnly,
-          },
-          {
-            name: "trace0",
-            value: flags.trace0 ? "true" : "false",
-            variablesReference: 0,
-            presentationHint: readOnly,
-          },
-          {
-            name: "supervisor",
-            value: flags.supervisor ? "true" : "false",
-            variablesReference: 0,
-            presentationHint: readOnly,
-          },
-          {
-            name: "master",
-            value: flags.master ? "true" : "false",
-            variablesReference: 0,
-            presentationHint: readOnly,
-          },
+            presentationHint: { attributes: ["readOnly"] },
+          })),
           {
             name: "interrupt_mask",
-            value: String(flags.interrupt_mask),
+            value: String(info.flags.interrupt_mask),
             variablesReference: 0,
-            presentationHint: readOnly,
+            presentationHint: { attributes: ["readOnly"] },
           },
         ];
       } else if (id === "vectors") {
@@ -689,7 +553,7 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
           }
         }
       } else if (id === "symbols" && this.sourceMap) {
-        const symbolLengths = await this.getSymbolLengths();
+        const symbolLengths = await this.sourceMap.getSymbolLengths();
         const symbols = this.sourceMap.getSymbols();
         variables = await Promise.all(
           Object.keys(symbols).map(
@@ -718,7 +582,7 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
                 name,
                 value,
                 memoryReference,
-                presentationHint: readOnly,
+                presentationHint: { attributes: ["readOnly"] },
                 variablesReference,
               };
               const loc = this.sourceMap?.lookupAddress(symbols[name]);
@@ -740,48 +604,18 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
 
         if (length === 4) {
           variables = [
-            {
-              name: "u32",
-              value: formatHex(u32(value), 8),
-              variablesReference: 0,
-              presentationHint: readOnly,
-            },
-            {
-              name: "i32",
-              value: formatHex(i32(value), 8),
-              variablesReference: 0,
-              presentationHint: readOnly,
-            },
+            castIntVar(value, u32),
+            castIntVar(value, i32),
           ];
         } else if (length === 2) {
           variables = [
-            {
-              name: "u16",
-              value: formatHex(u16(value), 4),
-              variablesReference: 0,
-              presentationHint: readOnly,
-            },
-            {
-              name: "i16",
-              value: formatHex(i16(value), 4),
-              variablesReference: 0,
-              presentationHint: readOnly,
-            },
+            castIntVar(value, u16),
+            castIntVar(value, i16),
           ];
         } else {
           variables = [
-            {
-              name: "u8",
-              value: formatHex(u8(value), 1),
-              variablesReference: 0,
-              presentationHint: readOnly,
-            },
-            {
-              name: "i8",
-              value: formatHex(i8(value), 1),
-              variablesReference: 0,
-              presentationHint: readOnly,
-            },
+            castIntVar(value, u8),
+            castIntVar(value, i8),
           ];
         }
       } else if (id === "segments" && this.sourceMap) {
@@ -793,9 +627,7 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
             value,
             memoryReference: value,
             variablesReference: 0,
-            presentationHint: {
-              attributes: ["readOnly"],
-            },
+            presentationHint: { attributes: ["readOnly"] },
           };
         });
       }
@@ -1198,11 +1030,14 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
 
     // Check for commands first in console
     if (context === "repl") {
-      const [firstWord, ...cmdArgs] = args.expression.trim().toLowerCase().split(/\s+/g);
+      const [firstWord, ...cmdArgs] = args.expression
+        .trim()
+        .toLowerCase()
+        .split(/\s+/g);
       if (["help", "?", "h"].includes(firstWord)) {
-        if (cmdArgs[0] === 'syntax') {
+        if (cmdArgs[0] === "syntax") {
           this.sendEvent(new OutputEvent(syntaxText));
-        } else if (cmdArgs[0] === 'functions') {
+        } else if (cmdArgs[0] === "functions") {
           this.sendEvent(new OutputEvent(functionsText));
         } else {
           this.sendEvent(new OutputEvent(helpText));
@@ -1617,89 +1452,97 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
       }
     } else if (state === "stopped") {
       if (this.stepping) {
-        // Special case for built-in stepIn function. No actual breakpoints used.
-        this.isRunning = false;
-        this.stepping = false;
-        this.invalidateCache(); // Cache needs refresh when emulator stops
-        const evt = new StoppedEvent("step", VamigaDebugAdapter.THREAD_ID);
-
-        // Fake stop reason as 'instruction breakpoint' to allow selecting a stack frame with no source, and open disassembly
-        // Don't need to do this for step with instruction granularity, as this is already handled
-        // see: https://github.com/microsoft/vscode/pull/143649/files
-        if (this.lastStepGranularity !== "instruction") {
-          const cpuInfo = await this.getCachedCpuInfo();
-          if (!this.sourceMap?.lookupAddress(Number(cpuInfo.pc))) {
-            evt.body.reason = "instruction breakpoint";
-          }
-        }
-
-        this.sendEvent(evt);
+        await this.handleStep();
       } else {
-        const evt: DebugProtocol.StoppedEvent = new StoppedEvent(
-          "breakpoint",
-          VamigaDebugAdapter.THREAD_ID,
-        );
-        evt.body.allThreadsStopped = true;
-
-        this.isRunning = false;
-        this.invalidateCache(); // Cache needs refresh when emulator stops
-
-        let bpMatch: { id: number } | undefined;
-
-        if (message.name === "WATCHPOINT_REACHED") {
-          evt.body.reason = "data breakpoint";
-          bpMatch = this.dataBreakpoints.find(
-            (bp) => bp.address === message.payload.pc,
-          );
-        } else if (message.name === "CATCHPOINT_REACHED") {
-          evt.body.reason = "exception";
-          evt.body.text = exceptionBreakpointFilters.find(
-            (f) => Number(f.filter) === message.payload.vector,
-          )?.label;
-          bpMatch = this.exceptionBreakpoints.find(
-            (bp) => bp.address === message.payload.vector,
-          );
-        } else if (message.name === "BREAKPOINT_REACHED") {
-          // First check tmp breakpoints
-          const tmpMatch = this.tmpBreakpoints.find(
-            (bp) => bp.address === message.payload.pc,
-          );
-          if (tmpMatch) {
-            // Client doesn't know about tmp breakpoints - don't set hitBreakpointIds
-            logger.log(`Matched tmp breakpoint at ${message.payload.pc}`);
-            this.vAmiga.removeBreakpoint(tmpMatch.address);
-            evt.body.reason = tmpMatch.reason;
-            this.tmpBreakpoints = this.tmpBreakpoints.filter(
-              (bp) => bp.address !== message.payload.pc,
-            );
-          } else {
-            // check instruction breakpoints
-            bpMatch = this.instructionBreakpoints.find(
-              (bp) => bp.address === message.payload.pc,
-            );
-            if (bpMatch) {
-              evt.body.reason = "instruction breakpoint";
-            } else {
-              // check function breakpoints
-              bpMatch = this.functionBreakpoints.find(
-                (bp) => bp.address === message.payload.pc,
-              );
-              if (bpMatch) {
-                evt.body.reason = "function breakpoint";
-              } else {
-                // check source breakpoints
-                bpMatch = this.findSourceBreakpoint(message.payload.pc);
-              }
-            }
-          }
-        }
-
-        if (bpMatch) {
-          evt.body.hitBreakpointIds = [bpMatch.id];
-        }
-        this.sendEvent(evt);
+        this.handleStop(message);
       }
     }
+  }
+
+  private async handleStep() {
+    // Special case for built-in stepIn function. No actual breakpoints used.
+    this.isRunning = false;
+    this.stepping = false;
+    this.invalidateCache(); // Cache needs refresh when emulator stops
+    const evt = new StoppedEvent("step", VamigaDebugAdapter.THREAD_ID);
+
+    // Fake stop reason as 'instruction breakpoint' to allow selecting a stack frame with no source, and open disassembly
+    // Don't need to do this for step with instruction granularity, as this is already handled
+    // see: https://github.com/microsoft/vscode/pull/143649/files
+    if (this.lastStepGranularity !== "instruction") {
+      const cpuInfo = await this.getCachedCpuInfo();
+      if (!this.sourceMap?.lookupAddress(Number(cpuInfo.pc))) {
+        evt.body.reason = "instruction breakpoint";
+      }
+    }
+
+    this.sendEvent(evt);
+  }
+
+  private handleStop(message: StopMessage) {
+    const evt: DebugProtocol.StoppedEvent = new StoppedEvent(
+      "breakpoint",
+      VamigaDebugAdapter.THREAD_ID,
+    );
+    evt.body.allThreadsStopped = true;
+
+    this.isRunning = false;
+    this.invalidateCache(); // Cache needs refresh when emulator stops
+
+    let bpMatch: { id: number } | undefined;
+
+    if (message.name === "WATCHPOINT_REACHED") {
+      evt.body.reason = "data breakpoint";
+      bpMatch = this.dataBreakpoints.find(
+        (bp) => bp.address === message.payload.pc,
+      );
+    } else if (message.name === "CATCHPOINT_REACHED") {
+      evt.body.reason = "exception";
+      evt.body.text = exceptionBreakpointFilters.find(
+        (f) => Number(f.filter) === message.payload.vector,
+      )?.label;
+      bpMatch = this.exceptionBreakpoints.find(
+        (bp) => bp.address === message.payload.vector,
+      );
+    } else if (message.name === "BREAKPOINT_REACHED") {
+      // First check tmp breakpoints
+      const tmpMatch = this.tmpBreakpoints.find(
+        (bp) => bp.address === message.payload.pc,
+      );
+      if (tmpMatch) {
+        // Client doesn't know about tmp breakpoints - don't set hitBreakpointIds
+        logger.log(`Matched tmp breakpoint at ${message.payload.pc}`);
+        this.vAmiga.removeBreakpoint(tmpMatch.address);
+        evt.body.reason = tmpMatch.reason;
+        this.tmpBreakpoints = this.tmpBreakpoints.filter(
+          (bp) => bp.address !== message.payload.pc,
+        );
+      } else {
+        // check instruction breakpoints
+        bpMatch = this.instructionBreakpoints.find(
+          (bp) => bp.address === message.payload.pc,
+        );
+        if (bpMatch) {
+          evt.body.reason = "instruction breakpoint";
+        } else {
+          // check function breakpoints
+          bpMatch = this.functionBreakpoints.find(
+            (bp) => bp.address === message.payload.pc,
+          );
+          if (bpMatch) {
+            evt.body.reason = "function breakpoint";
+          } else {
+            // check source breakpoints
+            bpMatch = this.findSourceBreakpoint(message.payload.pc);
+          }
+        }
+      }
+    }
+
+    if (bpMatch) {
+      evt.body.hitBreakpointIds = [bpMatch.id];
+    }
+    this.sendEvent(evt);
   }
 
   /**
@@ -1726,9 +1569,9 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
     let offset = 0;
     addresses: while (offset <= maxSize - 4 && addresses.length < maxLength) {
       const addr = stackData.readInt32BE(offset);
-      // TODO: more ways to validate address early e.g. valid range?
       if (
         addr > 0 && // non-zero address
+        addr < 0x1000_0000 && // 24 bit address
         !(addr & 1) // even address
       ) {
         try {
@@ -1756,50 +1599,13 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
     return addresses;
   }
 
-  /**
-   * Find the offset from the previous label in source for a given address
-   *
-   * @param address
-   * @returns
-   */
-  private labelOffset(
-    address: number,
-  ): { label: string; offset: number } | undefined {
-    if (!this.sourceMap) {
-      return;
-    }
-
-    // Find which segment (if any) address is in
-    const segments = this.sourceMap.getSegmentsInfo();
-    const currentSegment = this.findSegmentForAddress(segments, address);
-    // Only care about addresses in our source map
-    if (currentSegment === undefined) {
-      return;
-    }
-
-    let ret: { label: string; offset: number } | undefined;
-    const symbols = this.sourceMap.getSymbols();
-    for (const label in symbols) {
-      const symAddr = symbols[label];
-      const offset = address - symAddr;
-      // Address is after label and in same segment
-      if (
-        offset >= 0 &&
-        currentSegment === this.findSegmentForAddress(segments, symAddr)
-      ) {
-        ret = { label, offset };
-      }
-    }
-    return ret;
-  }
-
   private formatAddress(address: number): string {
     let out = formatHex(address);
-    const labelOffset = this.labelOffset(address);
-    if (labelOffset) {
-      out += " = " + labelOffset.label;
-      if (labelOffset.offset) {
-        out += "+" + labelOffset.offset;
+    const symbolOffset = this.sourceMap?.findSymbolOffset(address);
+    if (symbolOffset) {
+      out += " = " + symbolOffset.symbol;
+      if (symbolOffset.offset) {
+        out += "+" + symbolOffset.offset;
       }
     }
     return out;
@@ -1937,72 +1743,5 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
       }
     }
     return { value, memoryReference, type };
-  }
-
-  /**
-   * Calculate the length of bytes labelled by each symbol
-   *
-   * Assumes symbols are already ordered by address within each segment.
-   * Returns the number of bytes from each symbol to the next symbol or end of segment.
-   * Of course this doesn't guarantee all this code/data is actually related to the label,
-   * if there's other unlabelled code/data, but it's the best we can do.
-   *
-   * @returns length in bytes for each symbol name as an object
-   */
-  private getSymbolLengths(): Record<string, number> | undefined {
-    if (!this.sourceMap) {
-      return;
-    }
-    const symbols = this.sourceMap.getSymbols();
-    const segments = this.sourceMap.getSegmentsInfo();
-
-    // Early return if no symbols
-    if (Object.keys(symbols).length === 0) {
-      return {};
-    }
-
-    const symbolLengths: Record<string, number> = {};
-    let prevSymbolName: string | undefined;
-    let prevSymbolSegment: Segment | undefined;
-    let prevSymbolAddress: number | undefined;
-
-    for (const symbolName in symbols) {
-      const symbolAddress = symbols[symbolName];
-      const symbolSegment = this.findSegmentForAddress(segments, symbolAddress);
-
-      // Calculate length of previous symbol now that we have the current symbol's info
-      if (prevSymbolName && prevSymbolAddress && prevSymbolSegment) {
-        if (symbolSegment === prevSymbolSegment) {
-          // Current symbol is in same segment - use distance between symbols
-          symbolLengths[prevSymbolName] = symbolAddress - prevSymbolAddress;
-        } else {
-          // Current symbol is in different segment - previous symbol extends to end of its segment
-          const segmentEnd = prevSymbolSegment.address + prevSymbolSegment.size;
-          symbolLengths[prevSymbolName] = segmentEnd - prevSymbolAddress;
-        }
-      }
-
-      prevSymbolName = symbolName;
-      prevSymbolAddress = symbolAddress;
-      prevSymbolSegment = symbolSegment;
-    }
-
-    // Handle the last symbol - it extends to the end of its segment
-    if (prevSymbolName && prevSymbolAddress && prevSymbolSegment) {
-      const segmentEnd = prevSymbolSegment.address + prevSymbolSegment.size;
-      symbolLengths[prevSymbolName] = segmentEnd - prevSymbolAddress;
-    }
-
-    return symbolLengths;
-  }
-
-  private findSegmentForAddress(
-    segments: Segment[],
-    address: number,
-  ): Segment | undefined {
-    return segments.find(
-      (segment) =>
-        segment.address <= address && segment.address + segment.size > address,
-    );
   }
 }
