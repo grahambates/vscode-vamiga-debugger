@@ -429,7 +429,9 @@ export class VAmigaView {
    * @returns Promise resolving to unsigned read result
    */
   public async peek32(address: number): Promise<number> {
-    return this.sendRpcCommand("peek32", { address });
+    const res = await this.sendRpcCommand("peek32", { address });
+    // Use unsigned shift to preserve sign
+    return res >>> 0;
   }
 
   /**

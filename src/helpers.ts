@@ -13,14 +13,22 @@ export function isNumeric(value: string): boolean {
 }
 
 export function u32(value: number): number {
-  return value & 0xffff_ffff;
+  // JavaScript's bitwise operations use 32-bit signed integers
+  // Use unsigned shift to preserve sign
+  return (value & 0xffff_ffff) >>> 0;
 }
 
 export function u16(value: number): number {
+  while (value < 0) {
+    value += 0x1_0000;
+  }
   return value & 0xffff;
 }
 
 export function u8(value: number): number {
+  while (value < 0) {
+    value += 0x100;
+  }
   return value & 0xff;
 }
 

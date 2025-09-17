@@ -5,9 +5,6 @@
 //   - help text
 //   - debug
 //   - mem
-// - Pointers in variables list
-// - Register size / sign
-// - Change hex syntax?
 // - constants
 // - Copper debugging
 // - DMA debug layer
@@ -47,7 +44,7 @@ import { Hunk, parseHunks } from "./amigaHunkParser";
 import { DWARFData, parseDwarf } from "./dwarfParser";
 import { sourceMapFromDwarf } from "./dwarfSourceMap";
 import { sourceMapFromHunks } from "./amigaHunkSourceMap";
-import { Location, SourceMap } from "./sourceMap";
+import { Location, Segment, SourceMap } from "./sourceMap";
 import { formatHex, isNumeric, u32, u16, u8, i32, i16, i8 } from "./helpers";
 
 interface LaunchRequestArguments extends DebugProtocol.LaunchRequestArguments {
@@ -687,26 +684,101 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
           }
         }
       } else if (id === "symbols" && this.sourceMap) {
+        const symbolLengths = await this.getSymbolLengths();
         const symbols = this.sourceMap.getSymbols();
-        variables = Object.keys(symbols).map((name): DebugProtocol.Variable => {
-          const value = formatHex(symbols[name]);
-          const variable: DebugProtocol.Variable = {
-            name,
-            value,
-            memoryReference: value,
-            presentationHint: {
-              attributes: ["readOnly"],
+        variables = await Promise.all(
+          Object.keys(symbols).map(
+            async (name): Promise<DebugProtocol.Variable> => {
+              let value = formatHex(symbols[name]);
+              const length = symbolLengths?.[name] ?? 0;
+              let variablesReference = 0;
+              const memoryReference = value;
+
+              if (length === 1 || length === 2 || length === 4) {
+                let ptrVal: number;
+                if (length === 4) {
+                  ptrVal = await this.vAmiga.peek32(symbols[name]);
+                } else if (length === 2) {
+                  ptrVal = await this.vAmiga.peek16(symbols[name]);
+                } else {
+                  ptrVal = await this.vAmiga.peek8(symbols[name]);
+                }
+                value += " = " + formatHex(ptrVal, length * 2);
+                variablesReference = this.variableHandles.create(
+                  `symbol_ptr_${name}:${length}:${ptrVal}`,
+                );
+              }
+
+              const variable: DebugProtocol.Variable = {
+                name,
+                value,
+                memoryReference,
+                presentationHint: readOnly,
+                variablesReference,
+              };
+              const loc = this.sourceMap?.lookupAddress(symbols[name]);
+              if (loc) {
+                variable.declarationLocationReference = loc
+                  ? this.locationHandles.create(loc)
+                  : undefined;
+              }
+              return variable;
             },
-            variablesReference: 0,
-          };
-          const loc = this.sourceMap?.lookupAddress(symbols[name]);
-          if (loc) {
-            variable.declarationLocationReference = loc
-              ? this.locationHandles.create(loc)
-              : undefined;
-          }
-          return variable;
-        });
+          ),
+        );
+      } else if (id.startsWith("symbol_ptr_")) {
+        const [_name, lengthStr, valueStr] = id
+          .replace("symbol_ptr_", "")
+          .split(":");
+        const length = Number(lengthStr);
+        const value = Number(valueStr);
+
+        if (length === 4) {
+          variables = [
+            {
+              name: "u32",
+              value: formatHex(u32(value), 8),
+              variablesReference: 0,
+              presentationHint: readOnly,
+            },
+            {
+              name: "i32",
+              value: formatHex(i32(value), 8),
+              variablesReference: 0,
+              presentationHint: readOnly,
+            },
+          ];
+        } else if (length === 2) {
+          variables = [
+            {
+              name: "u16",
+              value: formatHex(u16(value), 4),
+              variablesReference: 0,
+              presentationHint: readOnly,
+            },
+            {
+              name: "i16",
+              value: formatHex(i16(value), 4),
+              variablesReference: 0,
+              presentationHint: readOnly,
+            },
+          ];
+        } else {
+          variables = [
+            {
+              name: "u8",
+              value: formatHex(u8(value), 1),
+              variablesReference: 0,
+              presentationHint: readOnly,
+            },
+            {
+              name: "i8",
+              value: formatHex(i8(value), 1),
+              variablesReference: 0,
+              presentationHint: readOnly,
+            },
+          ];
+        }
       } else if (id === "segments" && this.sourceMap) {
         const segments = this.sourceMap.getSegmentsInfo();
         variables = segments.map((seg) => {
@@ -1665,11 +1737,9 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
 
     // Find which segment (if any) address is in
     const segments = this.sourceMap.getSegmentsInfo();
-    const findSeg = (addr: number) =>
-      segments.find((s) => s.address <= addr && s.address + s.size > addr);
-    const segId = findSeg(address);
+    const currentSegment = this.findSegmentForAddress(segments, address);
     // Only care about addresses in our source map
-    if (segId === undefined) {
+    if (currentSegment === undefined) {
       return;
     }
 
@@ -1679,7 +1749,10 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
       const symAddr = symbols[label];
       const offset = address - symAddr;
       // Address is after label and in same segment
-      if (offset >= 0 && segId === findSeg(symAddr)) {
+      if (
+        offset >= 0 &&
+        currentSegment === this.findSegmentForAddress(segments, symAddr)
+      ) {
         ret = { label, offset };
       }
     }
@@ -1830,5 +1903,72 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
       }
     }
     return { value, memoryReference, type };
+  }
+
+  /**
+   * Calculate the length of bytes labelled by each symbol
+   *
+   * Assumes symbols are already ordered by address within each segment.
+   * Returns the number of bytes from each symbol to the next symbol or end of segment.
+   * Of course this doesn't guarantee all this code/data is actually related to the label,
+   * if there's other unlabelled code/data, but it's the best we can do.
+   *
+   * @returns length in bytes for each symbol name as an object
+   */
+  private getSymbolLengths(): Record<string, number> | undefined {
+    if (!this.sourceMap) {
+      return;
+    }
+    const symbols = this.sourceMap.getSymbols();
+    const segments = this.sourceMap.getSegmentsInfo();
+
+    // Early return if no symbols
+    if (Object.keys(symbols).length === 0) {
+      return {};
+    }
+
+    const symbolLengths: Record<string, number> = {};
+    let prevSymbolName: string | undefined;
+    let prevSymbolSegment: Segment | undefined;
+    let prevSymbolAddress: number | undefined;
+
+    for (const symbolName in symbols) {
+      const symbolAddress = symbols[symbolName];
+      const symbolSegment = this.findSegmentForAddress(segments, symbolAddress);
+
+      // Calculate length of previous symbol now that we have the current symbol's info
+      if (prevSymbolName && prevSymbolAddress && prevSymbolSegment) {
+        if (symbolSegment === prevSymbolSegment) {
+          // Current symbol is in same segment - use distance between symbols
+          symbolLengths[prevSymbolName] = symbolAddress - prevSymbolAddress;
+        } else {
+          // Current symbol is in different segment - previous symbol extends to end of its segment
+          const segmentEnd = prevSymbolSegment.address + prevSymbolSegment.size;
+          symbolLengths[prevSymbolName] = segmentEnd - prevSymbolAddress;
+        }
+      }
+
+      prevSymbolName = symbolName;
+      prevSymbolAddress = symbolAddress;
+      prevSymbolSegment = symbolSegment;
+    }
+
+    // Handle the last symbol - it extends to the end of its segment
+    if (prevSymbolName && prevSymbolAddress && prevSymbolSegment) {
+      const segmentEnd = prevSymbolSegment.address + prevSymbolSegment.size;
+      symbolLengths[prevSymbolName] = segmentEnd - prevSymbolAddress;
+    }
+
+    return symbolLengths;
+  }
+
+  private findSegmentForAddress(
+    segments: Segment[],
+    address: number,
+  ): Segment | undefined {
+    return segments.find(
+      (segment) =>
+        segment.address <= address && segment.address + segment.size > address,
+    );
   }
 }
