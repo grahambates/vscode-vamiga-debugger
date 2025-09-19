@@ -2,13 +2,11 @@
 
 // TODO:
 // - Console
-//   - help text
-//   - debug
+//   - disasm
 //   - mem
 // - constants
 // - Copper debugging
-// - DMA debug layer
-
+// - Memory address validation
 import {
   logger,
   LoggingDebugSession,
@@ -56,6 +54,7 @@ import {
   syntaxText,
 } from "./syntaxHelp";
 import { exceptionBreakpointFilters, vectors } from "./vectors";
+import { instructionAttrs } from "./instructions";
 
 /**
  * Launch configuration arguments for starting a debug session.
@@ -249,7 +248,8 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
     super();
     this.setDebuggerLinesStartAt1(false);
     this.setDebuggerColumnsStartAt1(false);
-    this.vAmiga = vAmiga || new VAmigaView(vscode.Uri.file(path.dirname(__dirname)));
+    this.vAmiga =
+      vAmiga || new VAmigaView(vscode.Uri.file(path.dirname(__dirname)));
 
     this.parser = new Parser();
     this.parser.functions = {
@@ -549,7 +549,11 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
               variablesReference = this.variableHandles.create(
                 `addr_reg_${name}`,
               );
-              value = this.formatAddress(Number(value));
+              const numVal = Number(value);
+              if (this.isValidAddress(numVal)) {
+                memoryReference = value;
+                value = this.formatAddress(numVal);
+              }
             }
 
             return {
@@ -667,7 +671,7 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
                 } else {
                   ptrVal = await this.vAmiga.peek8(symbols[name]);
                 }
-                value += " = " + formatHex(ptrVal, length * 2);
+                value += " -> " + formatHex(ptrVal, length * 2);
                 variablesReference = this.variableHandles.create(
                   `symbol_ptr_${name}:${length}:${ptrVal}`,
                 );
@@ -698,20 +702,11 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
         const value = Number(valueStr);
 
         if (length === 4) {
-          variables = [
-            castIntVar(value, u32),
-            castIntVar(value, i32),
-          ];
+          variables = [castIntVar(value, u32), castIntVar(value, i32)];
         } else if (length === 2) {
-          variables = [
-            castIntVar(value, u16),
-            castIntVar(value, i16),
-          ];
+          variables = [castIntVar(value, u16), castIntVar(value, i16)];
         } else {
-          variables = [
-            castIntVar(value, u8),
-            castIntVar(value, i8),
-          ];
+          variables = [castIntVar(value, u8), castIntVar(value, i8)];
         }
       } else if (id === "segments" && this.sourceMap) {
         const segments = this.sourceMap.getSegmentsInfo();
@@ -1151,25 +1146,67 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
 
       if (value !== undefined) {
         let result: string | undefined;
+        let byteLength: number | undefined;
+        let signed = false;
+
+        // For hover context we can look at the source to determine how the value is used and get length/sign
+        if (context === "hover" && args.source?.path && args.line) {
+          try {
+            const document = await vscode.workspace.openTextDocument(args.source.path);
+            const line = document.lineAt(args.line - 1);
+            const attrs = instructionAttrs(line.text);
+            signed = attrs.signed;
+            byteLength = attrs.byteLength;
+          } catch(err) {
+            console.error(`Unable to fetch and parse source context: ${this.errorString(err)}`)
+          }
+        }
 
         if (resultType === EvaluateResultType.ADDRESS_REGISTER) {
           result = this.formatAddress(value);
         } else if (resultType === EvaluateResultType.DATA_REGISTER) {
-          if (context === "repl") {
-            result = formatHex(value, 8) + " = " + value;
+          let sizedValue: number;
+          // Length from hover context
+          if (byteLength === 1) {
+            sizedValue = signed ? i8(value) : u8(value);
+          } else if (byteLength === 2) {
+            sizedValue = signed ? i16(value) : u16(value);
           } else {
-            result = formatHex(value, 8);
+            // default to longword
+            sizedValue = signed ? i32(value) : u32(value);
+            byteLength = 4;
           }
+          result = formatHex(sizedValue, byteLength * 2) + " = " + sizedValue;
         } else if (resultType === EvaluateResultType.SYMBOL) {
+          // longword address
           result = formatHex(value, 8);
+
+          // Show value for b/w/l pointer
+          // Get length from hover context or symbol lengths
+          if (!byteLength) {
+            const symbolLengths = this.sourceMap?.getSymbolLengths();
+            byteLength = symbolLengths?.[args.expression] ?? 0;
+          }
+
+          if (byteLength === 1 || byteLength === 2 || byteLength === 4) {
+            let ptrVal: number;
+            if (byteLength === 4) {
+              ptrVal = await this.vAmiga.peek32(value);
+              if (signed) ptrVal = i32(ptrVal);
+            } else if (byteLength === 2) {
+              ptrVal = await this.vAmiga.peek16(value);
+              if (signed) ptrVal = i16(ptrVal);
+            } else {
+              ptrVal = await this.vAmiga.peek8(value);
+              if (signed) ptrVal = i8(ptrVal);
+            }
+            result += " -> " + formatHex(ptrVal, byteLength * 2);
+          }
         } else if (resultType === EvaluateResultType.CUSTOM_REGISTER) {
           result = formatHex(value, 4);
         } else {
-          if (context === "repl") {
-            result = formatHex(value, 0) + " = " + value;
-          } else {
-            result = formatHex(value, 0);
-          }
+          // default - show result as hex and decimal
+          result = formatHex(value, 0) + " = " + value;
         }
         response.body = {
           result,
@@ -1733,8 +1770,7 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
     addresses: while (offset <= maxSize - 4 && addresses.length < maxLength) {
       const addr = stackData.readInt32BE(offset);
       if (
-        addr > 0 && // non-zero address
-        addr < 0x1000_0000 && // 24 bit address
+        this.isValidAddress(addr) &&
         !(addr & 1) // even address
       ) {
         try {
@@ -1993,5 +2029,11 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
       }
     }
     return { value, memoryReference, type };
+  }
+
+  protected isValidAddress(address: number): boolean {
+    // TODO: check memory layout
+    // 24 bit address
+    return address >= 0 && address < 0x1000_0000;
   }
 }

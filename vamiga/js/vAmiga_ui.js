@@ -3381,6 +3381,8 @@ $(`#choose_display a`).click(function ()
 
     // GB: start in warp mode
     wasm_configure('WARP_MODE', 'ALWAYS');
+    // GB: enable audio interpolation
+    wasm_configure('AUD.SAMPLING_METHOD', '2');
 
 
 //----------
@@ -6181,6 +6183,7 @@ function show_activity()
 
 
     wasm_configure("DEBUG_ENABLE","1");
+    wasm_configure("DMA.DEBUG_ENABLE","1");
 
     $("#activity").remove();
     $("body").append(`<div id="activity" class="monitor_grid"></div>`);
@@ -6203,6 +6206,7 @@ function show_activity()
 function hide_activity()
 {
     wasm_configure("DEBUG_ENABLE","0");
+    wasm_configure("DMA.DEBUG_ENABLE","0");
 
     $("#activity").remove();
     clearInterval(activity_intervall);
