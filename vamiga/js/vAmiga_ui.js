@@ -2588,6 +2588,9 @@ postMessage({ type: 'ready' });
                 case 'getCpuInfo':
                     rpcRequest(() => JSON.parse(wasm_get_cpu_info()));
                     break;
+                case 'getMemoryInfo':
+                    rpcRequest(() => JSON.parse(wasm_get_memory_info()));
+                    break;
                 case 'getAllCustomRegisters':
                     rpcRequest(() => JSON.parse(wasm_get_all_custom_registers()));
                     break;

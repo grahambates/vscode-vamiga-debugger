@@ -44,7 +44,7 @@ import { DWARFData, parseDwarf } from "./dwarfParser";
 import { sourceMapFromDwarf } from "./dwarfSourceMap";
 import { sourceMapFromHunks } from "./amigaHunkSourceMap";
 import { Location, SourceMap } from "./sourceMap";
-import { formatHex, isNumeric, u32, u16, u8, i32, i16, i8 } from "./helpers";
+import { formatHex, isNumeric, u32, u16, u8, i32, i16, i8 } from "./numbers";
 import {
   allFunctions,
   consoleCommands,
@@ -52,7 +52,7 @@ import {
   helpText,
   initOutput,
   syntaxText,
-} from "./syntaxHelp";
+} from "./repl";
 import { exceptionBreakpointFilters, vectors } from "./vectors";
 import { instructionAttrs } from "./instructions";
 

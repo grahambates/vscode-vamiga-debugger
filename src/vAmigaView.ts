@@ -49,6 +49,18 @@ export interface CpuInfo {
   caar: string;
 }
 
+export interface MemoryInfo {
+  hasRom: boolean;
+  hasWom: boolean;
+  hasExt: boolean;
+  hasBootRom: boolean;
+  hasKickRom: boolean;
+  womLock: boolean;
+  romMask: string;
+  extMask: string;
+  chipMask: string;
+}
+
 export interface CustomRegisters {
   [name: string]: {
     value: string;
@@ -351,6 +363,14 @@ export class VAmigaView {
    */
   public async getCpuInfo(): Promise<CpuInfo> {
     return this.sendRpcCommand("getCpuInfo");
+  }
+
+  /**
+   * Gets the memory information from emulator
+   * @returns Promise resolving to memory information
+   */
+  public async getMemoryInfo(): Promise<MemoryInfo> {
+    return this.sendRpcCommand("getMemoryInfo");
   }
 
   /**

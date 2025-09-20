@@ -1,5 +1,5 @@
 import * as assert from 'assert';
-import { formatHex, isNumeric, u32, u16, u8, i32, i16, i8 } from '../helpers';
+import { formatHex, isNumeric, u32, u16, u8, i32, i16, i8 } from '../numbers';
 
 /**
  * Tests for helper utility functions
