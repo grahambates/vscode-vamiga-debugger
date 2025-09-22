@@ -41,10 +41,12 @@ import {
 } from "./vAmigaView";
 import { Hunk, parseHunks } from "./amigaHunkParser";
 import { DWARFData, parseDwarf } from "./dwarfParser";
+import { loadAmigaProgram, AmigaHunkLoader } from "./amigaHunkLoader";
+import { LoadedProgram } from "./amigaMemoryManager";
 import { sourceMapFromDwarf } from "./dwarfSourceMap";
 import { sourceMapFromHunks } from "./amigaHunkSourceMap";
 import { Location, SourceMap } from "./sourceMap";
-import { formatHex, isNumeric, u32, u16, u8, i32, i16, i8 } from "./numbers";
+import { formatHex, isNumeric, u32, u16, u8, i32, i16, i8, formatBin } from "./numbers";
 import {
   allFunctions,
   consoleCommands,
@@ -69,6 +71,8 @@ interface LaunchRequestArguments extends DebugProtocol.LaunchRequestArguments {
   stopOnEntry?: boolean;
   /** Enable verbose logging of debug adapter protocol messages */
   trace?: boolean;
+  /** Use fast memory injection instead of floppy disk loading */
+  fastLoad?: boolean;
 }
 
 /**
@@ -201,6 +205,7 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
 
   private isRunning = false;
   private stopOnEntry = false;
+  private loadedProgram: LoadedProgram | null = null;
   private stepping = false;
   private lastStepGranularity: DebugProtocol.SteppingGranularity | undefined;
 
@@ -283,6 +288,15 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
    * Cleans up event listeners and the VAmiga webview.
    */
   public dispose(): void {
+    // Clean up fast-loaded program memory
+    if (this.loadedProgram) {
+      const loader = new AmigaHunkLoader(this.vAmiga);
+      loader.unloadProgram(this.loadedProgram).catch((err) => {
+        logger.error("Failed to unload program: " + String(err));
+      });
+      this.loadedProgram = null;
+    }
+
     this.disposables.forEach((d) => d.dispose());
     this.disposables = [];
     this.vAmiga.dispose();
@@ -365,8 +379,33 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
     try {
       logger.log(`Starting emulator with program ${this.programPath}`);
 
-      // Start the emulator with the specified file
-      this.vAmiga.openFile(this.programPath);
+      if (args.fastLoad && this.hunks) {
+        // Use fast loading - inject program directly into memory
+        logger.log("Using fast memory injection mode");
+
+        // Start emulator without loading the program file
+        this.vAmiga.openFile(""); // Start with empty/no file
+
+        // Wait for emulator to be ready then inject program
+        // Note: In real implementation, you'd want to wait for emulator ready event
+        setTimeout(async () => {
+          try {
+            logger.log("Injecting program into memory");
+            this.loadedProgram = await loadAmigaProgram(
+              this.vAmiga,
+              this.hunks!,
+            );
+            logger.log(
+              `Program injected at entry point $${this.loadedProgram.entryPoint.toString(16)}`,
+            );
+          } catch (err) {
+            logger.error("Failed to inject program: " + String(err));
+          }
+        }, 2000); // 2 second delay for emulator startup
+      } else {
+        // Traditional loading via floppy disk emulation
+        this.vAmiga.openFile(this.programPath);
+      }
 
       // Add listeners to emulator
       const disposeDisposable = this.vAmiga.onDidDispose(() =>
@@ -607,28 +646,19 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
         }));
       } else if (id === "sr_flags") {
         const info = await this.getCachedCpuInfo();
+        const { boolFlags, interruptMask } = this.parseStatusRegister(
+          Number(info.sr),
+        );
         variables = [
-          ...[
-            "carry",
-            "overflow",
-            "zero",
-            "negative",
-            "extend",
-            "trace1",
-            "trace0",
-            "supervision",
-            "master",
-          ].map((name) => ({
+          ...boolFlags.map(({ name, value }) => ({
             name,
-            value: info.flags[name as keyof typeof info.flags]
-              ? "true"
-              : "false",
+            value: String(value),
             variablesReference: 0,
             presentationHint: { attributes: ["readOnly"] },
           })),
           {
-            name: "interrupt_mask",
-            value: String(info.flags.interrupt_mask),
+            name: "interruptMask",
+            value: formatBin(interruptMask),
             variablesReference: 0,
             presentationHint: { attributes: ["readOnly"] },
           },
@@ -1152,13 +1182,17 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
         // For hover context we can look at the source to determine how the value is used and get length/sign
         if (context === "hover" && args.source?.path && args.line) {
           try {
-            const document = await vscode.workspace.openTextDocument(args.source.path);
+            const document = await vscode.workspace.openTextDocument(
+              args.source.path,
+            );
             const line = document.lineAt(args.line - 1);
             const attrs = instructionAttrs(line.text);
             signed = attrs.signed;
             byteLength = attrs.byteLength;
-          } catch(err) {
-            console.error(`Unable to fetch and parse source context: ${this.errorString(err)}`)
+          } catch (err) {
+            console.error(
+              `Unable to fetch and parse source context: ${this.errorString(err)}`,
+            );
           }
         }
 
@@ -2035,5 +2069,22 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
     // TODO: check memory layout
     // 24 bit address
     return address >= 0 && address < 0x1000_0000;
+  }
+
+  protected parseStatusRegister(sr: number) {
+    // Extract individual CPU flags from status register (68000 format)
+    const boolFlags = [
+      { name: "carry", value: (sr & 0x0001) !== 0 }, // C flag (bit 0)
+      { name: "overflow", value: (sr & 0x0002) !== 0 }, // V flag (bit 1)
+      { name: "zero", value: (sr & 0x0004) !== 0 }, // Z flag (bit 2)
+      { name: "negative", value: (sr & 0x0008) !== 0 }, // N flag (bit 3)
+      { name: "extend", value: (sr & 0x0010) !== 0 }, // X flag (bit 4)
+      { name: "trace1", value: (sr & 0x8000) !== 0 }, // T1 flag (bit 15)
+      { name: "trace0", value: (sr & 0x4000) !== 0 }, // T0 flag (bit 14) - 68020+
+      { name: "supervisor", value: (sr & 0x2000) !== 0 }, // S flag (bit 13)
+      { name: "master", value: (sr & 0x1000) !== 0 }, // M flag (bit 12) - 68020+
+    ];
+    const interruptMask = (sr >> 8) & 0x07; // IPL (bits 8-10)
+    return { boolFlags, interruptMask };
   }
 }
