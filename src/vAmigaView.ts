@@ -252,10 +252,10 @@ export class VAmigaView {
         if (pending) {
           clearTimeout(pending.timeout);
           this._pendingRpcs.delete(message.id);
-          if (message.result.error) {
+          if (message.result?.error) {
             pending.reject(new Error(message.result.error));
           } else {
-            pending.resolve(message.result);
+            pending.resolve(message.result ?? 'Unknown error');
           }
         }
       }
@@ -537,7 +537,7 @@ export class VAmigaView {
     if (value < 0 || value >= 0x1_0000_0000) {
       throw new Error('value out of 32 bit range');
     }
-    return this.sendRpcCommand("poke32", { address, value });
+    return await this.sendRpcCommand("poke32", { address, value });
   }
 
   /**

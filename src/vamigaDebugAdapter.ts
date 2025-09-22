@@ -1610,16 +1610,23 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
 
   private async injectProgram() {
     logger.log("Injecting program into memory");
-    await new Promise((resolve) => {
-      setTimeout(() => {
-        loadAmigaProgram(this.vAmiga, this.hunks).then(resolve);
-      }, 3000)
-    })
-    this.loadedProgram = await loadAmigaProgram(this.vAmiga, this.hunks);
-    // logger.log(
-    //   `Program injected at entry point $${this.loadedProgram.entryPoint.toString(16)}`,
-    // );
-    // TODO: attach, jump to start
+    await new Promise((resolve, reject) => {
+      setTimeout(async () => {
+        try {
+          this.loadedProgram = await loadAmigaProgram(this.vAmiga, this.hunks);
+          logger.log(
+            `Program loaded successfully:\n` +
+              `  Entry point: $${this.loadedProgram.entryPoint.toString(16)}\n` +
+              `  Total size: ${this.loadedProgram.totalSize} bytes\n` +
+              `  Hunks loaded: ${this.loadedProgram.allocations.length}`,
+          );
+          // TODO: attach, jump to start
+          resolve(null);
+        } catch (err) {
+          reject(err);
+        }
+      }, 3000);
+    });
   }
 
   /**
