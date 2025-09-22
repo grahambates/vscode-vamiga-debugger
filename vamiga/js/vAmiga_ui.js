@@ -1926,18 +1926,23 @@ function InitWrappers() {
 
     let attached = false;
     let allocMemAddr;
-    let allocBpAdded = false;
+    let execReady = false;
 
-    // Install breakpoint at AllocMem:
-    const tryInstallaAllocBp = function () {
+    // Check if exec vector is set, and install breakpoint at AllocMem if loading program
+    const tryExec = function () {
         // Execbase - _LV0_AllocMem
         allocMemAddr = wasm_peek32(4)-198;
         // Execbase is not immediately available after power on / reset, and could be zero or a bullshit address.
         // Keep trying until the offset actually points to a jmp instruction
         if (allocMemAddr > 0 && wasm_peek16(allocMemAddr) === 0x4ef9) {
-            console.log('Installing AllocMem breakpoint at ' + allocMemAddr);
-            wasm_set_breakpoint(allocMemAddr, 0);
-            allocBpAdded = true;
+            vscode.postMessage({ type: 'exec-ready' });
+            // Turn off warp mode
+            wasm_configure('WARP_MODE', 'NEVER');
+            execReady = true;
+            if (programUri !== '') {
+                console.log('Installing AllocMem breakpoint at ' + allocMemAddr);
+                wasm_set_breakpoint(allocMemAddr, 0);
+            }
         }
     }
 
@@ -1952,8 +1957,6 @@ function InitWrappers() {
             // Can remove the AllocMem breakpoint now
             wasm_remove_breakpoint(allocMemAddr);
             attached = true;
-            // Turn off warp mode
-            wasm_configure('WARP_MODE', 'NEVER');
             // Stop so we can set breakpoints before resuming
             wasm_halt(false);
             vscode.postMessage({ type: 'attached', segments: proc.segments });
@@ -2077,8 +2080,8 @@ postMessage({ type: 'ready' });
                     case 'executeFrame':
                         if (do_animation_frame && !stop_request_animation_frame) {
                             do_animation_frame(timestamp);
-                            if (!allocBpAdded) {
-                                tryInstallaAllocBp();
+                            if (!execReady) {
+                                tryExec();
                             }
                         }
                         break;

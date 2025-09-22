@@ -117,6 +117,9 @@ export interface EmulatorOutputMessage {
   type: "emulator-output";
   data: string;
 }
+export interface ExecReadyMessage {
+  type: "exec-ready";
+}
 
 export interface RpcResponseMessage {
   type: "rpcResponse";
@@ -124,7 +127,7 @@ export interface RpcResponseMessage {
   result: any;
 }
 
-export type EmulatorMessage = AttachedMessage | EmulatorStateMessage | EmulatorOutputMessage | RpcResponseMessage;
+export type EmulatorMessage = AttachedMessage | EmulatorStateMessage | EmulatorOutputMessage | ExecReadyMessage | RpcResponseMessage;
 
 export function isAttachedMessage(message: EmulatorMessage): message is AttachedMessage {
   return message.type === "attached";
@@ -136,6 +139,10 @@ export function isEmulatorStateMessage(message: EmulatorMessage): message is Emu
 
 export function isEmulatorOutputMessage(message: EmulatorMessage): message is EmulatorOutputMessage {
   return message.type === "emulator-output";
+}
+
+export function isExecReadyMessage(message: EmulatorMessage): message is ExecReadyMessage {
+  return message.type === "exec-ready";
 }
 
 export function isRpcResponseMessage(message: EmulatorMessage): message is RpcResponseMessage {
@@ -186,6 +193,52 @@ export class VAmigaView {
 
     const programUri = this.absolutePathToWebviewUri(filePath);
     this._panel.webview.html = this._getHtmlForWebview(programUri);
+
+    // Handle webview lifecycle
+    this._panel.onDidDispose(() => {
+      this._panel = undefined;
+    });
+
+    // Set up RPC response handler
+    this._panel.webview.onDidReceiveMessage((message) => {
+      if (message.type === "rpcResponse") {
+        const pending = this._pendingRpcs.get(message.id);
+        if (pending) {
+          clearTimeout(pending.timeout);
+          this._pendingRpcs.delete(message.id);
+          if (message.result.error) {
+            pending.reject(new Error(message.result.error));
+          } else {
+            pending.resolve(message.result);
+          }
+        }
+      }
+    });
+  }
+
+  /**
+   * Opens the VAmiga emulator webview panel
+   */
+  public open(): void {
+    const column = this.getConfiguredViewColumn();
+
+    // Create new panel
+    this._panel = vscode.window.createWebviewPanel(
+      VAmigaView.viewType,
+      "VAmiga",
+      column,
+      {
+        enableScripts: true,
+        retainContextWhenHidden: true, // Keep webview alive when hidden
+        localResourceRoots: [
+          this._extensionUri,
+          ...(vscode.workspace.workspaceFolders?.map((folder) => folder.uri) ||
+            []),
+        ],
+      },
+    );
+
+    this._panel.webview.html = this._getHtmlForWebview();
 
     // Handle webview lifecycle
     this._panel.onDidDispose(() => {
@@ -562,7 +615,7 @@ export class VAmigaView {
     return this._panel.webview.asWebviewUri(fileUri);
   }
 
-  private _getHtmlForWebview(programUri: vscode.Uri): string {
+  private _getHtmlForWebview(programUri?: vscode.Uri): string {
     if (!this._panel) {
       throw new Error("Panel not initialized");
     }
@@ -583,7 +636,7 @@ export class VAmigaView {
     htmlContent = htmlContent.replace(/\$\{vamigaUri\}/g, vamigaUri.toString());
     htmlContent = htmlContent.replace(
       /\$\{programUri\}/g,
-      programUri.toString(),
+      programUri?.toString() ?? '',
     );
 
     return htmlContent;

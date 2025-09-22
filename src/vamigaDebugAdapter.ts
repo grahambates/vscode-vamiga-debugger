@@ -38,6 +38,7 @@ import {
   EmulatorStateMessage,
   AttachedMessage,
   StopMessage,
+  isExecReadyMessage,
 } from "./vAmigaView";
 import { Hunk, parseHunks } from "./amigaHunkParser";
 import { DWARFData, parseDwarf } from "./dwarfParser";
@@ -46,7 +47,17 @@ import { LoadedProgram } from "./amigaMemoryManager";
 import { sourceMapFromDwarf } from "./dwarfSourceMap";
 import { sourceMapFromHunks } from "./amigaHunkSourceMap";
 import { Location, SourceMap } from "./sourceMap";
-import { formatHex, isNumeric, u32, u16, u8, i32, i16, i8, formatBin } from "./numbers";
+import {
+  formatHex,
+  isNumeric,
+  u32,
+  u16,
+  u8,
+  i32,
+  i16,
+  i8,
+  formatBin,
+} from "./numbers";
 import {
   allFunctions,
   consoleCommands,
@@ -201,6 +212,7 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
   private parser: Parser;
 
   private trace = false;
+  private fastLoad = false;
   private programPath = "";
 
   private isRunning = false;
@@ -349,6 +361,7 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
     logger.setup(args.trace ? LogLevel.Verbose : LogLevel.Warn);
 
     this.trace = args.trace ?? false;
+    this.fastLoad = args.fastLoad ?? false;
 
     const debugProgram = args.debugProgram || this.programPath;
     logger.log(`Reading debug symbols from ${debugProgram}`);
@@ -384,24 +397,7 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
         logger.log("Using fast memory injection mode");
 
         // Start emulator without loading the program file
-        this.vAmiga.openFile(""); // Start with empty/no file
-
-        // Wait for emulator to be ready then inject program
-        // Note: In real implementation, you'd want to wait for emulator ready event
-        setTimeout(async () => {
-          try {
-            logger.log("Injecting program into memory");
-            this.loadedProgram = await loadAmigaProgram(
-              this.vAmiga,
-              this.hunks!,
-            );
-            logger.log(
-              `Program injected at entry point $${this.loadedProgram.entryPoint.toString(16)}`,
-            );
-          } catch (err) {
-            logger.error("Failed to inject program: " + String(err));
-          }
-        }, 2000); // 2 second delay for emulator startup
+        this.vAmiga.open(); // Start with empty/no file
       } else {
         // Traditional loading via floppy disk emulation
         this.vAmiga.openFile(this.programPath);
@@ -411,8 +407,14 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
       const disposeDisposable = this.vAmiga.onDidDispose(() =>
         this.sendEvent(new TerminatedEvent()),
       );
-      const messageDisposable = this.vAmiga.onDidReceiveMessage((message) =>
-        this.handleMessageFromEmulator(message),
+      const messageDisposable = this.vAmiga.onDidReceiveMessage(
+        async (message) => {
+          try {
+            await this.handleMessageFromEmulator(message);
+          } catch (err) {
+            console.error(err);
+          }
+        },
       );
       // Store disposables
       if (disposeDisposable) {
@@ -1552,7 +1554,7 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
    * @param message The message received from the emulator
    */
 
-  private handleMessageFromEmulator(message: EmulatorMessage) {
+  private async handleMessageFromEmulator(message: EmulatorMessage) {
     logger.log(`Recieved message: ${message.type}`);
 
     if (isAttachedMessage(message)) {
@@ -1561,6 +1563,11 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
       return this.updateState(message);
     } else if (isEmulatorOutputMessage(message)) {
       this.sendEvent(new OutputEvent(message.data + "\n"));
+    } else if (isExecReadyMessage(message)) {
+      logger.log("Exec ready");
+      if (this.fastLoad) {
+        await this.injectProgram();
+      }
     }
   }
 
@@ -1599,6 +1606,20 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
         return bpMatch;
       }
     }
+  }
+
+  private async injectProgram() {
+    logger.log("Injecting program into memory");
+    await new Promise((resolve) => {
+      setTimeout(() => {
+        loadAmigaProgram(this.vAmiga, this.hunks).then(resolve);
+      }, 3000)
+    })
+    this.loadedProgram = await loadAmigaProgram(this.vAmiga, this.hunks);
+    // logger.log(
+    //   `Program injected at entry point $${this.loadedProgram.entryPoint.toString(16)}`,
+    // );
+    // TODO: attach, jump to start
   }
 
   /**
