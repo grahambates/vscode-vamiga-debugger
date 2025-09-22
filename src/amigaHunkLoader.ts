@@ -148,9 +148,25 @@ export class AmigaHunkLoader {
           `at $${alloc.address.toString(16)}`
         );
 
-        const base64Data = hunk.data.toString('base64');
-        await this.vAmiga.writeMemory(alloc.address, base64Data);
+        await this.writeMemoryChunked(alloc.address, hunk.data);
       }
+    }
+  }
+
+  /**
+   * Write memory data in chunks to handle size limitations (1-4096 bytes per write)
+   */
+  private async writeMemoryChunked(address: number, data: Buffer): Promise<void> {
+    const CHUNK_SIZE = 4096;
+    let offset = 0;
+    
+    while (offset < data.length) {
+      const chunkSize = Math.min(CHUNK_SIZE, data.length - offset);
+      const chunk = data.subarray(offset, offset + chunkSize);
+      const base64Chunk = chunk.toString('base64');
+      
+      await this.vAmiga.writeMemory(address + offset, base64Chunk);
+      offset += chunkSize;
     }
   }
 
@@ -158,10 +174,9 @@ export class AmigaHunkLoader {
    * Zero out a memory region (for BSS hunks)
    */
   private async zeroMemory(address: number, size: number): Promise<void> {
-    // Create a buffer of zeros
+    // Create a buffer of zeros and write in chunks
     const zeroBuffer = Buffer.alloc(size);
-    const base64Data = zeroBuffer.toString('base64');
-    await this.vAmiga.writeMemory(address, base64Data);
+    await this.writeMemoryChunked(address, zeroBuffer);
   }
 
   /**

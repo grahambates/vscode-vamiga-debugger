@@ -1620,6 +1620,7 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
               `  Total size: ${this.loadedProgram.totalSize} bytes\n` +
               `  Hunks loaded: ${this.loadedProgram.allocations.length}`,
           );
+          this.vAmiga.setRegister('pc', this.loadedProgram.entryPoint);
           // TODO: attach, jump to start
           resolve(null);
         } catch (err) {

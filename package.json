@@ -72,6 +72,11 @@
                 "type": "boolean",
                 "description": "Enable logging of the Debug Adapter Protocol",
                 "default": false
+              },
+              "fastLoad": {
+                "type": "boolean",
+                "description": "Use fast loading mode that bypasses floppy emulation and directly injects program into memory",
+                "default": false
               }
             }
           }
