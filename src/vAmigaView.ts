@@ -571,6 +571,14 @@ export class VAmigaView {
   }
 
   /**
+   * Jump CPU to specified address
+   * @param address Starting memory address
+   */
+  public async jump(address: number): Promise<void> {
+    return this.sendRpcCommand("jump", { address });
+  }
+
+  /**
    * Disassembles instructions starting at the specified address
    * @param address Starting memory address
    * @param count Number of instructions to disassemble

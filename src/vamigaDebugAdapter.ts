@@ -36,7 +36,6 @@ import {
   isEmulatorStateMessage,
   isEmulatorOutputMessage,
   EmulatorStateMessage,
-  AttachedMessage,
   StopMessage,
   isExecReadyMessage,
 } from "./vAmigaView";
@@ -441,8 +440,21 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
   protected configurationDoneRequest(
     response: DebugProtocol.ConfigurationDoneResponse,
   ): void {
-    this.sendEvent(new OutputEvent(`Program started\n`));
-    this.vAmiga.run();
+    // All breakpoints etc are set by client now and we can continue...
+    if (this.stopOnEntry && this.fastLoad) {
+      // Fast load: send stop on entry event - we're already at this address
+      const evt: DebugProtocol.StoppedEvent = new StoppedEvent(
+        "entry",
+        VamigaDebugAdapter.THREAD_ID,
+      );
+      evt.body.allThreadsStopped = true;
+      this.sendEvent(evt);
+    } else {
+      // Resume emulator
+      // even if stopOnEntry is set, we need to run to hit the temporary breakpoin in normal mode
+      this.sendEvent(new OutputEvent(`Program started\n`));
+      this.vAmiga.run();
+    }
     this.sendResponse(response);
   }
 
@@ -1558,13 +1570,12 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
     logger.log(`Recieved message: ${message.type}`);
 
     if (isAttachedMessage(message)) {
-      return this.attach(message);
+      return this.attach(message.segments.map((s) => s.start));
     } else if (isEmulatorStateMessage(message)) {
       return this.updateState(message);
     } else if (isEmulatorOutputMessage(message)) {
       this.sendEvent(new OutputEvent(message.data + "\n"));
     } else if (isExecReadyMessage(message)) {
-      logger.log("Exec ready");
       if (this.fastLoad) {
         await this.injectProgram();
       }
@@ -1615,18 +1626,22 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
         try {
           this.loadedProgram = await loadAmigaProgram(this.vAmiga, this.hunks);
           logger.log(
-            `Program loaded successfully:\n` +
-              `  Entry point: $${this.loadedProgram.entryPoint.toString(16)}\n` +
-              `  Total size: ${this.loadedProgram.totalSize} bytes\n` +
-              `  Hunks loaded: ${this.loadedProgram.allocations.length}`,
+            `Program loaded at ${formatHex(this.loadedProgram.entryPoint)}`,
           );
-          this.vAmiga.setRegister('pc', this.loadedProgram.entryPoint);
-          // TODO: attach, jump to start
+          const offsets = this.loadedProgram.allocations.map((s) => s.address);
+          this.attach(offsets);
           resolve(null);
-        } catch (err) {
-          reject(err);
+        } catch (error) {
+          this.sendEvent(
+            new OutputEvent(
+              `Fatal error during attach: ${this.errorString(error)}\n`,
+              "stderr",
+            ),
+          );
+          reject(error);
         }
-      }, 3000);
+      }, 3000); // Delay until memory structures are in place
+      // TODO: find better way to do this
     });
   }
 
@@ -1636,12 +1651,9 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
    * Sets up source mapping based on loaded segments and debug symbol format.
    * Creates source maps from either DWARF debug info or Amiga hunk debug data.
    * Sets entry breakpoint if stopOnEntry is enabled.
-   *
-   * @param message Attachment message containing segment information
    */
-  private attach({ segments }: AttachedMessage) {
-    const offsets = segments.map((s) => s.start);
-    if (this.stopOnEntry) {
+  private attach(offsets: number[]) {
+    if (this.stopOnEntry && !this.fastLoad) {
       this.setTmpBreakpoint(offsets[0], "entry");
     }
     try {

@@ -36,7 +36,10 @@ export class AmigaHunkLoader {
     await this.writeHunkData(allocations);
 
     const totalSize = allocations.reduce((sum, alloc) => sum + alloc.size, 0);
-    const entryPoint = allocations[0]?.address || 0;
+
+    // Find the first CODE hunk as entry point, fallback to first hunk if no CODE hunk found
+    const codeHunk = allocations.find(alloc => alloc.hunk.hunkType === HunkType.CODE);
+    const entryPoint = codeHunk?.address || allocations[0]?.address || 0;
 
     return {
       entryPoint,
@@ -159,12 +162,12 @@ export class AmigaHunkLoader {
   private async writeMemoryChunked(address: number, data: Buffer): Promise<void> {
     const CHUNK_SIZE = 4096;
     let offset = 0;
-    
+
     while (offset < data.length) {
       const chunkSize = Math.min(CHUNK_SIZE, data.length - offset);
       const chunk = data.subarray(offset, offset + chunkSize);
       const base64Chunk = chunk.toString('base64');
-      
+
       await this.vAmiga.writeMemory(address + offset, base64Chunk);
       offset += chunkSize;
     }
@@ -214,10 +217,9 @@ export class AmigaHunkLoader {
    * Sets up registers and jumps to program start
    */
   async setupProgramEntry(program: LoadedProgram): Promise<void> {
-    // Set program counter to entry point
-    await this.vAmiga.poke32(0x2A, program.entryPoint); // Set PC in CPU context
-
-    // Could also set up initial stack pointer, command line args, etc.
+    // Jump pc to entrypoint
+    await this.vAmiga.jump(program.entryPoint);
+    // TODO: set initial register state, stack etc?
     console.log(`Program entry point set to $${program.entryPoint.toString(16)}`);
   }
 }

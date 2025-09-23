@@ -1924,9 +1924,9 @@ function InitWrappers() {
     // We need to hook into something that happens right before our program starts, in order to install breakpoints using segment offsets.
     // AllocMem is a good candidate for this, even though it's also called quite a few times during boot for other reasons.
 
+    let execReady = false;
     let attached = false;
     let allocMemAddr;
-    let execReady = false;
 
     // Check if exec vector is set, and install breakpoint at AllocMem if loading program
     const tryExec = function () {
@@ -1935,13 +1935,18 @@ function InitWrappers() {
         // Execbase is not immediately available after power on / reset, and could be zero or a bullshit address.
         // Keep trying until the offset actually points to a jmp instruction
         if (allocMemAddr > 0 && wasm_peek16(allocMemAddr) === 0x4ef9) {
-            vscode.postMessage({ type: 'exec-ready' });
-            // Turn off warp mode
-            wasm_configure('WARP_MODE', 'NEVER');
-            execReady = true;
             if (programUri !== '') {
+                // Normal load mode - install breakpoint in AllocMem to wait for our program
                 console.log('Installing AllocMem breakpoint at ' + allocMemAddr);
                 wasm_set_breakpoint(allocMemAddr, 0);
+            } else {
+                // Fast load mode - emulator will inject program into RAM
+                console.log('exec ready - stopping for fastLoad mode');
+                wasm_configure('WARP_MODE', 'NEVER');
+                wasm_halt(false);
+                execReady = true;
+                attached = true;
+                vscode.postMessage({ type: 'exec-ready' });
             }
         }
     }
@@ -2284,6 +2289,7 @@ postMessage({ type: 'ready' });
     wasm_write_memory =  Module.cwrap('wasm_write_memory', 'string', ['number', 'string']); // address, data
     wasm_get_current_message =  Module.cwrap('wasm_get_current_message', 'string');
     wasm_clear_current_message =  Module.cwrap('wasm_clear_current_message', 'undefined');
+    wasm_jump =  Module.cwrap('wasm_jump', 'string', ['number']);
 
     // Initialize worker after all WASM functions are available - failure is fatal
     initEmulationWorker();
@@ -2629,6 +2635,9 @@ postMessage({ type: 'ready' });
                     break;
                 case 'poke8':
                     rpcRequest(() => wasm_poke8(message.args.address, message.args.value));
+                    break;
+                case 'jump':
+                    rpcRequest(() => wasm_jump(message.args.address));
                     break;
                 default:
                     vscode.postMessage({ type: 'error', text: `Unknown command: ${message.command}` });
