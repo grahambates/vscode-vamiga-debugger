@@ -586,7 +586,6 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
       if (id === "registers") {
         const info = await this.getCachedCpuInfo();
         variables = Object.keys(info)
-          .filter((k) => k !== "flags")
           .map((name) => {
             let value = String(info[name as keyof CpuInfo]);
             let variablesReference = 0;
@@ -2019,9 +2018,7 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
     const customRegs = await this.getCachedCustomRegisters();
     const symbols = this.sourceMap?.getSymbols() ?? {};
     for (const k in cpuInfo) {
-      if (k !== "flags") {
-        variables[k] = Number(cpuInfo[k as keyof CpuInfo]);
-      }
+      variables[k] = Number(cpuInfo[k as keyof CpuInfo]);
     }
     for (const k in customRegs) {
       variables[k] = Number(customRegs[k]);

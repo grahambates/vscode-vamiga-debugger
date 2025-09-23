@@ -5,18 +5,6 @@ import { join } from "path";
 
 export interface CpuInfo {
   pc: string;
-  flags: {
-    carry: boolean;
-    overflow: boolean;
-    zero: boolean;
-    negative: boolean;
-    extend: boolean;
-    trace1: boolean;
-    trace0: boolean;
-    supervisor: boolean;
-    master: boolean;
-    interrupt_mask: number;
-  };
   // data regs
   d0: string;
   d1: string;
