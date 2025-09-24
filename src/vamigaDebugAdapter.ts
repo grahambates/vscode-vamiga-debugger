@@ -653,11 +653,21 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
         }
       } else if (id === "custom") {
         const info = await this.getCachedCustomRegisters();
-        variables = Object.keys(info).map((name) => ({
-          name,
-          value: info[name].value,
-          variablesReference: 0,
-        }));
+        variables = Object.keys(info).map((name) => {
+          let value = info[name].value;
+          let memoryReference: string | undefined;
+          // Handle longword values as addresses
+          if  (value.length > 6) {
+            memoryReference = value;
+            value = this.formatAddress(Number(value));
+          }
+          return {
+            name,
+            value,
+            variablesReference: 0,
+            memoryReference,
+          }
+        });
       } else if (id === "sr_flags") {
         const info = await this.getCachedCpuInfo();
         const { boolFlags, interruptMask } = this.parseStatusRegister(
