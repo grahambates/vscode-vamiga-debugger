@@ -1930,23 +1930,28 @@ function InitWrappers() {
 
     // Check if exec vector is set, and install breakpoint at AllocMem if loading program
     const tryExec = function () {
-        // Execbase - _LV0_AllocMem
-        allocMemAddr = wasm_peek32(4)-198;
+        const execBase = wasm_peek32(4);
+        allocMemAddr = execBase - 198; // _LV0_AllocMem
+        const gfxBaseAddr = execBase + 156;
         // Execbase is not immediately available after power on / reset, and could be zero or a bullshit address.
-        // Keep trying until the offset actually points to a jmp instruction
-        if (allocMemAddr > 0 && wasm_peek16(allocMemAddr) === 0x4ef9) {
-            if (programUri !== '') {
+        // Keep trying until the
+        if (allocMemAddr > 0 &&
+            wasm_peek16(allocMemAddr) === 0x4ef9 && // offset actually points to a jmp instruction
+            wasm_peek32(gfxBaseAddr) // graphics lib ptr set
+        ) {
+            execReady = true;
+            const isSnapshot = programUri.match(/\.vAmiga$/i);
+            if (isSnapshot) {
+                // Fast load mode - emulator will inject program into RAM
+                console.log('exec ready - stopping for fastLoad mode');
+                attached = true;
+                wasm_configure('WARP_MODE', 'NEVER');
+                wasm_halt(false);
+                vscode.postMessage({ type: 'exec-ready' });
+            } else {
                 // Normal load mode - install breakpoint in AllocMem to wait for our program
                 console.log('Installing AllocMem breakpoint at ' + allocMemAddr);
                 wasm_set_breakpoint(allocMemAddr, 0);
-            } else {
-                // Fast load mode - emulator will inject program into RAM
-                console.log('exec ready - stopping for fastLoad mode');
-                wasm_configure('WARP_MODE', 'NEVER');
-                wasm_halt(false);
-                execReady = true;
-                attached = true;
-                vscode.postMessage({ type: 'exec-ready' });
             }
         }
     }
@@ -1962,6 +1967,7 @@ function InitWrappers() {
             // Can remove the AllocMem breakpoint now
             wasm_remove_breakpoint(allocMemAddr);
             attached = true;
+            wasm_configure('WARP_MODE', 'NEVER');
             // Stop so we can set breakpoints before resuming
             wasm_halt(false);
             vscode.postMessage({ type: 'attached', segments: proc.segments });

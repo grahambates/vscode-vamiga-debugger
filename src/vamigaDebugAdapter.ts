@@ -81,8 +81,8 @@ interface LaunchRequestArguments extends DebugProtocol.LaunchRequestArguments {
   stopOnEntry?: boolean;
   /** Enable verbose logging of debug adapter protocol messages */
   trace?: boolean;
-  /** Use fast memory injection instead of floppy disk loading */
-  fastLoad?: boolean;
+  /** Inject program directly into memory from starting vAmiga snapshot */
+  snapshot?: string;
 }
 
 /**
@@ -360,7 +360,7 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
     logger.setup(args.trace ? LogLevel.Verbose : LogLevel.Warn);
 
     this.trace = args.trace ?? false;
-    this.fastLoad = args.fastLoad ?? false;
+    this.fastLoad = !!args.snapshot;
 
     const debugProgram = args.debugProgram || this.programPath;
     logger.log(`Reading debug symbols from ${debugProgram}`);
@@ -391,12 +391,12 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
     try {
       logger.log(`Starting emulator with program ${this.programPath}`);
 
-      if (args.fastLoad && this.hunks) {
+      if (args.snapshot && this.hunks) {
         // Use fast loading - inject program directly into memory
         logger.log("Using fast memory injection mode");
 
-        // Start emulator without loading the program file
-        this.vAmiga.open(); // Start with empty/no file
+        // Start emulator with snapshot
+        this.vAmiga.openFile(args.snapshot);
       } else {
         // Traditional loading via floppy disk emulation
         this.vAmiga.openFile(this.programPath);
@@ -1620,28 +1620,21 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
 
   private async injectProgram() {
     logger.log("Injecting program into memory");
-    await new Promise((resolve, reject) => {
-      setTimeout(async () => {
-        try {
-          this.loadedProgram = await loadAmigaProgram(this.vAmiga, this.hunks);
-          logger.log(
-            `Program loaded at ${formatHex(this.loadedProgram.entryPoint)}`,
-          );
-          const offsets = this.loadedProgram.allocations.map((s) => s.address);
-          this.attach(offsets);
-          resolve(null);
-        } catch (error) {
-          this.sendEvent(
-            new OutputEvent(
-              `Fatal error during attach: ${this.errorString(error)}\n`,
-              "stderr",
-            ),
-          );
-          reject(error);
-        }
-      }, 3000); // Delay until memory structures are in place
-      // TODO: find better way to do this
-    });
+    try {
+      this.loadedProgram = await loadAmigaProgram(this.vAmiga, this.hunks);
+      logger.log(
+        `Program loaded at ${formatHex(this.loadedProgram.entryPoint)}`,
+      );
+      const offsets = this.loadedProgram.allocations.map((s) => s.address);
+      this.attach(offsets);
+    } catch (error) {
+      this.sendEvent(
+        new OutputEvent(
+          `Fatal error during attach: ${this.errorString(error)}\n`,
+          "stderr",
+        ),
+      );
+    }
   }
 
   /**

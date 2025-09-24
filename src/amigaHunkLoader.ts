@@ -29,11 +29,11 @@ export class AmigaHunkLoader {
     // Phase 1: Allocate memory for all hunks
     const allocations = await this.allocateHunks(hunks);
 
-    // Phase 2: Apply relocations
-    await this.applyRelocations(hunks, allocations);
-
-    // Phase 3: Write hunk data to allocated memory
+    // Phase 2: Write hunk data to allocated memory
     await this.writeHunkData(allocations);
+
+    // Phase 3: Apply relocations (must be after data is written)
+    await this.applyRelocations(hunks, allocations);
 
     const totalSize = allocations.reduce((sum, alloc) => sum + alloc.size, 0);
 
