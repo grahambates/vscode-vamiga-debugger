@@ -1927,6 +1927,7 @@ function InitWrappers() {
     let execReady = false;
     let attached = false;
     let allocMemAddr;
+    let startSnapshot;
 
     // Check if exec vector is set, and install breakpoint at AllocMem if loading program
     const tryExec = function () {
@@ -1951,6 +1952,11 @@ function InitWrappers() {
                 wasm_configure('WARP_MODE', 'NEVER');
                 wasm_halt(false);
                 vscode.postMessage({ type: 'exec-ready' });
+
+                const snap = JSON.parse(wasm_take_user_snapshot());
+                const buf = new Uint8Array(Module.HEAPU8.buffer, snap.address, snap.size);
+                startSnapshot = buf.slice(0, snap.size);
+                wasm_delete_user_snapshot();
             } else {
                 // Normal load mode - install breakpoint in AllocMem to wait for our program
                 console.log('Installing AllocMem breakpoint at ' + allocMemAddr);
@@ -2653,20 +2659,26 @@ postMessage({ type: 'ready' });
                     break;
                 case 'load':
                     rpcRequest(async () => {
+                        Module._wasm_remove_all_breakpoints();
+                        Module._wasm_remove_all_watchpoints();
+                        Module._wasm_remove_all_catchpoints();
+
                         programUri = message.args?.fileUri || '';
                         if (programUri !== '') {
+                            attached = false;
+                            execReady = false;
                             const res = await fetch(programUri);
                             const data = await res.arrayBuffer();
                             const filename = programUri.split('/').pop();
                             wasm_loadfile(filename, new Uint8Array(data), 0);
+                            wasm_reset();
+                            wasm_configure('WARP_MODE', 'ALWAYS');
+                        } else if (startSnapshot) {
+                            wasm_loadfile('start.vAmiga', startSnapshot);
+                            wasm_halt(false);
+                            wasm_configure('WARP_MODE', 'NEVER');
+                            vscode.postMessage({ type: 'exec-ready' });
                         }
-                        attached = false;
-                        execReady = false;
-                        Module._wasm_remove_all_breakpoints();
-                        Module._wasm_remove_all_watchpoints();
-                        Module._wasm_remove_all_catchpoints();
-                        wasm_reset();
-                        wasm_configure('WARP_MODE', 'ALWAYS');
                     });
                     break;
                 default:
