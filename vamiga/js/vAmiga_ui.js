@@ -1933,15 +1933,18 @@ function InitWrappers() {
         const execBase = wasm_peek32(4);
         allocMemAddr = execBase - 198; // _LV0_AllocMem
         const gfxBaseAddr = execBase + 156;
+        const cpuInfo = wasm_get_cpu_info();
+        const isSupervisor = (Number(cpuInfo.sr) & 0x2000) !== 0;
         // Execbase is not immediately available after power on / reset, and could be zero or a bullshit address.
         // Keep trying until the
         if (allocMemAddr > 0 &&
             wasm_peek16(allocMemAddr) === 0x4ef9 && // offset actually points to a jmp instruction
-            wasm_peek32(gfxBaseAddr) // graphics lib ptr set
+            wasm_peek32(gfxBaseAddr) && // graphics lib ptr set
+            !isSupervisor
         ) {
             execReady = true;
-            const isSnapshot = programUri.match(/\.vAmiga$/i);
-            if (isSnapshot) {
+            const fastLoad = programUri === '';
+            if (fastLoad) {
                 // Fast load mode - emulator will inject program into RAM
                 console.log('exec ready - stopping for fastLoad mode');
                 attached = true;
@@ -2643,25 +2646,27 @@ postMessage({ type: 'ready' });
                     rpcRequest(() => wasm_poke8(message.args.address, message.args.value));
                     break;
                 case 'jump':
-                    rpcRequest(() => wasm_jump(message.args.address));
+                    rpcRequest(() => {
+                        wasm_jump(message.args.address);
+                        wasm_set_register('sr', 0);
+                    });
                     break;
-                case 'loadFile':
+                case 'load':
                     rpcRequest(async () => {
-                        const res = await fetch(message.args.fileUri);
-                        const data = await res.arrayBuffer();
-                        const filename = message.args.fileUri.split('/').pop();
-                        wasm_loadfile(filename, new Uint8Array(data), 0);
-                        if (!filename.match(/\.vAmiga$/i)) {
-                            attached = false;
-                            execReady = false;
-                            wasm_reset();
-                            wasm_configure('WARP_MODE', 'ALWAYS');
-                        } else {
-                            setTimeout(() => {
-                                wasm_halt(false);
-                                vscode.postMessage({ type: 'exec-ready' });
-                            }, 80);
+                        programUri = message.args?.fileUri || '';
+                        if (programUri !== '') {
+                            const res = await fetch(programUri);
+                            const data = await res.arrayBuffer();
+                            const filename = programUri.split('/').pop();
+                            wasm_loadfile(filename, new Uint8Array(data), 0);
                         }
+                        attached = false;
+                        execReady = false;
+                        Module._wasm_remove_all_breakpoints();
+                        Module._wasm_remove_all_watchpoints();
+                        Module._wasm_remove_all_catchpoints();
+                        wasm_reset();
+                        wasm_configure('WARP_MODE', 'ALWAYS');
                     });
                     break;
                 default:

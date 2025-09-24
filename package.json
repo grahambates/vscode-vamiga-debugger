@@ -73,10 +73,10 @@
                 "description": "Enable logging of the Debug Adapter Protocol",
                 "default": false
               },
-              "snapshot": {
-                "type": "string",
-                "description": "Inject program directly into memory from starting vAmiga snapshot",
-                "default": null
+              "fastLoad": {
+                "type": "boolean",
+                "description": "Inject program directly into memory",
+                "default": false
               }
             }
           }

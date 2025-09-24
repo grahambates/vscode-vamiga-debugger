@@ -9,6 +9,9 @@
 // - Memory address validation
 // - mem ref on custom ptrs
 
+// Take snapshot on exec ready and use this for reload?
+// Close emu when not in fast load
+
 import {
   logger,
   LoggingDebugSession,
@@ -83,8 +86,8 @@ interface LaunchRequestArguments extends DebugProtocol.LaunchRequestArguments {
   stopOnEntry?: boolean;
   /** Enable verbose logging of debug adapter protocol messages */
   trace?: boolean;
-  /** Inject program directly into memory from starting vAmiga snapshot */
-  snapshot?: string;
+  /** Inject program directly into memory */
+  fastLoad?: boolean;
 }
 
 /**
@@ -353,7 +356,7 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
     logger.setup(args.trace ? LogLevel.Verbose : LogLevel.Warn);
 
     this.trace = args.trace ?? false;
-    this.fastLoad = !!args.snapshot;
+    this.fastLoad = args.fastLoad ?? false;
 
     const debugProgram = args.debugProgram || this.programPath;
     logger.log(`Reading debug symbols from ${debugProgram}`);
@@ -384,12 +387,11 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
     try {
       logger.log(`Starting emulator with program ${this.programPath}`);
 
-      if (args.snapshot && this.hunks) {
+      if (this.fastLoad) {
         // Use fast loading - inject program directly into memory
         logger.log("Using fast memory injection mode");
-
-        // Start emulator with snapshot
-        this.vAmiga.openFile(args.snapshot);
+        // Start emulator with no program
+        this.vAmiga.open();
       } else {
         // Traditional loading via floppy disk emulation
         this.vAmiga.openFile(this.programPath);

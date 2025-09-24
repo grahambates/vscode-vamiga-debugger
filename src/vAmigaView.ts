@@ -173,12 +173,25 @@ export class VAmigaView {
     if (!this._panel) {
       return this.initPanel(filePath);
     } else {
+      this.reveal();
       const programUri = this.absolutePathToWebviewUri(filePath);
-      this.sendCommand('loadFile', { fileUri: programUri.toString() })
+      this.sendCommand('load', { fileUri: programUri.toString() });
     }
   }
 
-  private initPanel(filePath: string) {
+    /**
+   * Opens the VAmiga emulator webview panel
+   */
+  public open(): void {
+    if (!this._panel) {
+      return this.initPanel();
+    } else {
+      this.reveal();
+      this.sendCommand('load', {});
+    }
+  }
+
+  private initPanel(filePath?: string) {
     const column = this.getConfiguredViewColumn();
 
     // Create new panel
@@ -197,8 +210,7 @@ export class VAmigaView {
       },
     );
 
-    const programUri = this.absolutePathToWebviewUri(filePath);
-    this._panel.webview.html = this._getHtmlForWebview(programUri);
+    this._panel.webview.html = this._getHtmlForWebview(filePath);
 
     // Handle webview lifecycle
     this._panel.onDidDispose(() => {
@@ -583,7 +595,7 @@ export class VAmigaView {
     return this._panel.webview.asWebviewUri(fileUri);
   }
 
-  private _getHtmlForWebview(programUri: vscode.Uri): string {
+  private _getHtmlForWebview(filePath?: string): string {
     if (!this._panel) {
       throw new Error("Panel not initialized");
     }
@@ -599,6 +611,8 @@ export class VAmigaView {
       "vAmiga.html",
     );
     let htmlContent = readFileSync(templatePath, "utf8");
+
+    const programUri = filePath ? this.absolutePathToWebviewUri(filePath) : '';
 
     // Replace template variables
     htmlContent = htmlContent.replace(/\$\{vamigaUri\}/g, vamigaUri.toString());
