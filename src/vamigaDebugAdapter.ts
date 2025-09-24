@@ -6,11 +6,6 @@
 //   - mem
 // - constants
 // - Copper debugging
-// - Memory address validation
-// - mem ref on custom ptrs
-
-// Take snapshot on exec ready and use this for reload?
-// Close emu when not in fast load
 
 import {
   logger,
@@ -43,6 +38,8 @@ import {
   EmulatorStateMessage,
   StopMessage,
   isExecReadyMessage,
+  MemoryInfo,
+  MemSrc,
 } from "./vAmigaView";
 import { Hunk, parseHunks } from "./amigaHunkParser";
 import { DWARFData, parseDwarf } from "./dwarfParser";
@@ -246,15 +243,8 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
   private cachedCpuInfo?: CpuInfo;
   private cachedCustomRegisters?: Record<string, { value: string }>;
   private cacheValid = false;
+  private memoryInfo?: MemoryInfo;
 
-  /**
-   * Creates a new VamigaDebugAdapter instance.
-   *
-   * Initializes the debug adapter with:
-   * - Zero-based line and column numbering
-   * - VAmiga emulator view for webview communication
-   * - Expression parser with memory access functions
-   */
   /**
    * Creates a new VamigaDebugAdapter instance.
    *
@@ -1591,6 +1581,7 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
       if (this.fastLoad) {
         await this.injectProgram();
       }
+      this.memoryInfo = await this.vAmiga.getMemoryInfo();
     }
   }
 
@@ -2110,9 +2101,15 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
   }
 
   protected isValidAddress(address: number): boolean {
-    // TODO: check memory layout
-    // 24 bit address
-    return address >= 0 && address < 0x1000_0000;
+    if (this.memoryInfo) {
+      // Check mem type of bank
+      const bank = address >>> 16;
+      const type = this.memoryInfo.cpuMemSrc[bank];
+      return type !== MemSrc.NONE;
+    } else {
+      // Any 24 bit address
+      return address >= 0 && address < 0x1000_0000;
+    }
   }
 
   protected parseStatusRegister(sr: number) {

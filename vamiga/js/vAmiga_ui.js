@@ -1951,7 +1951,6 @@ function InitWrappers() {
                 attached = true;
                 wasm_configure('WARP_MODE', 'NEVER');
                 wasm_halt(false);
-                vscode.postMessage({ type: 'exec-ready' });
 
                 const snap = JSON.parse(wasm_take_user_snapshot());
                 const buf = new Uint8Array(Module.HEAPU8.buffer, snap.address, snap.size);
@@ -1962,6 +1961,7 @@ function InitWrappers() {
                 console.log('Installing AllocMem breakpoint at ' + allocMemAddr);
                 wasm_set_breakpoint(allocMemAddr, 0);
             }
+            vscode.postMessage({ type: 'exec-ready' });
         }
     }
 

@@ -37,6 +37,26 @@ export interface CpuInfo {
   caar: string;
 }
 
+export enum MemSrc {
+  NONE = 0,
+  CHIP = 1,
+  CHIP_MIRROR = 2,
+  SLOW = 3,
+  SLOW_MIRROR = 4,
+  FAST = 5,
+  CIA = 6,
+  CIA_MIRROR = 7,
+  RTC = 8,
+  CUSTOM = 9,
+  CUSTOM_MIRROR = 10,
+  AUTOCONF = 11,
+  ZOR = 12,
+  ROM = 13,
+  ROM_MIRROR = 14,
+  WOM = 15,
+  EXT = 16,
+}
+
 export interface MemoryInfo {
   hasRom: boolean;
   hasWom: boolean;
@@ -47,6 +67,8 @@ export interface MemoryInfo {
   romMask: string;
   extMask: string;
   chipMask: string;
+  cpuMemSrc: MemSrc[];
+  agnusMemSrc: MemSrc[];
 }
 
 export interface CustomRegisters {
@@ -115,25 +137,40 @@ export interface RpcResponseMessage {
   result: any;
 }
 
-export type EmulatorMessage = AttachedMessage | EmulatorStateMessage | EmulatorOutputMessage | ExecReadyMessage | RpcResponseMessage;
+export type EmulatorMessage =
+  | AttachedMessage
+  | EmulatorStateMessage
+  | EmulatorOutputMessage
+  | ExecReadyMessage
+  | RpcResponseMessage;
 
-export function isAttachedMessage(message: EmulatorMessage): message is AttachedMessage {
+export function isAttachedMessage(
+  message: EmulatorMessage,
+): message is AttachedMessage {
   return message.type === "attached";
 }
 
-export function isEmulatorStateMessage(message: EmulatorMessage): message is EmulatorStateMessage {
+export function isEmulatorStateMessage(
+  message: EmulatorMessage,
+): message is EmulatorStateMessage {
   return message.type === "emulator-state";
 }
 
-export function isEmulatorOutputMessage(message: EmulatorMessage): message is EmulatorOutputMessage {
+export function isEmulatorOutputMessage(
+  message: EmulatorMessage,
+): message is EmulatorOutputMessage {
   return message.type === "emulator-output";
 }
 
-export function isExecReadyMessage(message: EmulatorMessage): message is ExecReadyMessage {
+export function isExecReadyMessage(
+  message: EmulatorMessage,
+): message is ExecReadyMessage {
   return message.type === "exec-ready";
 }
 
-export function isRpcResponseMessage(message: EmulatorMessage): message is RpcResponseMessage {
+export function isRpcResponseMessage(
+  message: EmulatorMessage,
+): message is RpcResponseMessage {
   return message.type === "rpcResponse";
 }
 
@@ -161,6 +198,18 @@ export class VAmigaView {
   constructor(private readonly _extensionUri: vscode.Uri) {}
 
   /**
+   * Opens the VAmiga emulator webview panel
+   */
+  public open(): void {
+    if (!this._panel) {
+      return this.initPanel();
+    } else {
+      this.reveal();
+      this.sendCommand("load", {});
+    }
+  }
+
+  /**
    * Opens a file in the VAmiga emulator webview panel
    * @param filePath Absolute path to the file to open
    * @throws Error if file does not exist
@@ -175,19 +224,7 @@ export class VAmigaView {
     } else {
       this.reveal();
       const programUri = this.absolutePathToWebviewUri(filePath);
-      this.sendCommand('load', { fileUri: programUri.toString() });
-    }
-  }
-
-    /**
-   * Opens the VAmiga emulator webview panel
-   */
-  public open(): void {
-    if (!this._panel) {
-      return this.initPanel();
-    } else {
-      this.reveal();
-      this.sendCommand('load', {});
+      this.sendCommand("load", { fileUri: programUri.toString() });
     }
   }
 
@@ -507,7 +544,7 @@ export class VAmigaView {
       value += 0x1_0000_0000;
     }
     if (value < 0 || value >= 0x1_0000_0000) {
-      throw new Error('value out of 32 bit range');
+      throw new Error("value out of 32 bit range");
     }
     return await this.sendRpcCommand("poke32", { address, value });
   }
@@ -522,7 +559,7 @@ export class VAmigaView {
       value += 0x1_0000;
     }
     if (value < 0 || value >= 0x1_0000) {
-      throw new Error('value out of 16 bit range');
+      throw new Error("value out of 16 bit range");
     }
     return this.sendRpcCommand("poke16", { address, value });
   }
@@ -537,7 +574,7 @@ export class VAmigaView {
       value += 0x100;
     }
     if (value < 0 || value >= 0x100) {
-      throw new Error('value out of 8 bit range');
+      throw new Error("value out of 8 bit range");
     }
     return this.sendRpcCommand("poke8", { address, value });
   }
@@ -612,7 +649,7 @@ export class VAmigaView {
     );
     let htmlContent = readFileSync(templatePath, "utf8");
 
-    const programUri = filePath ? this.absolutePathToWebviewUri(filePath) : '';
+    const programUri = filePath ? this.absolutePathToWebviewUri(filePath) : "";
 
     // Replace template variables
     htmlContent = htmlContent.replace(/\$\{vamigaUri\}/g, vamigaUri.toString());
