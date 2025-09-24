@@ -2647,14 +2647,13 @@ postMessage({ type: 'ready' });
                     break;
                 case 'loadFile':
                     rpcRequest(async () => {
-                        // attached = false;
-                        // execReady = false;
                         const res = await fetch(message.args.fileUri);
                         const data = await res.arrayBuffer();
                         const filename = message.args.fileUri.split('/').pop();
-                        // wasm_run(); // Make sure we're not paused
                         wasm_loadfile(filename, new Uint8Array(data), 0);
                         if (!filename.match(/\.vAmiga$/i)) {
+                            attached = false;
+                            execReady = false;
                             wasm_reset();
                             wasm_configure('WARP_MODE', 'ALWAYS');
                         } else {
