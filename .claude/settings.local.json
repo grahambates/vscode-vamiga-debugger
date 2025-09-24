@@ -8,7 +8,8 @@
       "mcp__ide__getDiagnostics",
       "WebSearch",
       "Bash(npm test)",
-      "WebFetch(domain:amigadev.elowar.com)"
+      "WebFetch(domain:amigadev.elowar.com)",
+      "Bash(node:*)"
     ],
     "deny": [],
     "ask": []

@@ -6,6 +6,7 @@
 //   - mem
 // - constants
 // - Copper debugging
+// - Custom reg bit details
 
 import {
   logger,
@@ -48,6 +49,7 @@ import { LoadedProgram } from "./amigaMemoryManager";
 import { sourceMapFromDwarf } from "./dwarfSourceMap";
 import { sourceMapFromHunks } from "./amigaHunkSourceMap";
 import { Location, SourceMap } from "./sourceMap";
+import * as registerParsers from './amigaRegisterParsers';
 import {
   formatHex,
   isNumeric,
@@ -640,6 +642,13 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
         variables = Object.keys(info).map((name) => {
           let value = info[name].value;
           let memoryReference: string | undefined;
+          let variablesReference = 0;
+
+          // Check if this register has bit breakdown support
+          if (this.hasCustomRegisterBitBreakdown(name)) {
+            variablesReference = this.variableHandles.create(`custom_reg_${name}`);
+          }
+
           // Handle longword values as addresses
           if  (value.length > 6) {
             memoryReference = value;
@@ -648,7 +657,7 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
           return {
             name,
             value,
-            variablesReference: 0,
+            variablesReference,
             memoryReference,
           }
         });
@@ -671,6 +680,20 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
             presentationHint: { attributes: ["readOnly"] },
           },
         ];
+      } else if (id.startsWith("custom_reg_")) {
+        const info = await this.getCachedCustomRegisters();
+        const regName = id.replace("custom_reg_", "");
+        const regValue = Number(info[regName].value);
+        const bits = this.parseCustomRegister(regName, regValue);
+        variables = bits.map(({ name, value, description }) => ({
+          name,
+          value: String(value),
+          variablesReference: 0,
+          presentationHint: {
+            attributes: ["readOnly"],
+            ...(description ? { tooltip: description } : {})
+          },
+        }));
       } else if (id === "vectors") {
         const cpuInfo = await this.getCachedCpuInfo();
         const mem = await this.vAmiga.readMemoryBuffer(
@@ -2128,4 +2151,19 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
     const interruptMask = (sr >> 8) & 0x07; // IPL (bits 8-10)
     return { boolFlags, interruptMask };
   }
+
+  /**
+   * Checks if a custom register supports bit breakdown display
+   */
+  protected hasCustomRegisterBitBreakdown(regName: string): boolean {
+    return registerParsers.hasRegisterBitBreakdown(regName);
+  }
+
+  /**
+   * Parses custom register bits into individual named components
+   */
+  protected parseCustomRegister(regName: string, value: number): Array<{name: string, value: boolean | number | string, description?: string}> {
+    return registerParsers.parseRegister(regName, value);
+  }
+
 }
