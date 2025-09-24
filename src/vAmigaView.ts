@@ -149,6 +149,15 @@ export class VAmigaView {
     }
   >();
 
+  static instance: VAmigaView;
+
+  public static getInstance(extensionUri: vscode.Uri) {
+    if (!VAmigaView.instance) {
+      VAmigaView.instance = new VAmigaView(extensionUri);
+    }
+    return VAmigaView.instance;
+  }
+
   constructor(private readonly _extensionUri: vscode.Uri) {}
 
   /**
@@ -161,6 +170,15 @@ export class VAmigaView {
       throw new Error(`File not found: ${filePath}`);
     }
 
+    if (!this._panel) {
+      return this.initPanel(filePath);
+    } else {
+      const programUri = this.absolutePathToWebviewUri(filePath);
+      this.sendCommand('loadFile', { fileUri: programUri.toString() })
+    }
+  }
+
+  private initPanel(filePath: string) {
     const column = this.getConfiguredViewColumn();
 
     // Create new panel

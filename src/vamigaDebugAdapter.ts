@@ -7,6 +7,8 @@
 // - constants
 // - Copper debugging
 // - Memory address validation
+// - mem ref on custom ptrs
+
 import {
   logger,
   LoggingDebugSession,
@@ -41,7 +43,7 @@ import {
 } from "./vAmigaView";
 import { Hunk, parseHunks } from "./amigaHunkParser";
 import { DWARFData, parseDwarf } from "./dwarfParser";
-import { loadAmigaProgram, AmigaHunkLoader } from "./amigaHunkLoader";
+import { loadAmigaProgram } from "./amigaHunkLoader";
 import { LoadedProgram } from "./amigaMemoryManager";
 import { sourceMapFromDwarf } from "./dwarfSourceMap";
 import { sourceMapFromHunks } from "./amigaHunkSourceMap";
@@ -265,7 +267,7 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
     this.setDebuggerLinesStartAt1(false);
     this.setDebuggerColumnsStartAt1(false);
     this.vAmiga =
-      vAmiga || new VAmigaView(vscode.Uri.file(path.dirname(__dirname)));
+      vAmiga || VAmigaView.getInstance(vscode.Uri.file(path.dirname(__dirname)));
 
     this.parser = new Parser();
     this.parser.functions = {
@@ -300,17 +302,16 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
    */
   public dispose(): void {
     // Clean up fast-loaded program memory
-    if (this.loadedProgram) {
-      const loader = new AmigaHunkLoader(this.vAmiga);
-      loader.unloadProgram(this.loadedProgram).catch((err) => {
-        logger.error("Failed to unload program: " + String(err));
-      });
-      this.loadedProgram = null;
-    }
+    // if (this.loadedProgram) {
+    //   const loader = new AmigaHunkLoader(this.vAmiga);
+    //   loader.unloadProgram(this.loadedProgram).catch((err) => {
+    //     logger.error("Failed to unload program: " + String(err));
+    //   });
+    //   this.loadedProgram = null;
+    // }
 
     this.disposables.forEach((d) => d.dispose());
     this.disposables = [];
-    this.vAmiga.dispose();
   }
 
   // Request handlers:

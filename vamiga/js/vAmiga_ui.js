@@ -1945,9 +1945,11 @@ function InitWrappers() {
                 // Fast load mode - emulator will inject program into RAM
                 console.log('exec ready - stopping for fastLoad mode');
                 attached = true;
-                wasm_configure('WARP_MODE', 'NEVER');
-                wasm_halt(false);
-                vscode.postMessage({ type: 'exec-ready' });
+                // setTimeout(() => {
+                    wasm_configure('WARP_MODE', 'NEVER');
+                    wasm_halt(false);
+                    vscode.postMessage({ type: 'exec-ready' });
+                // }, 100)
             } else {
                 // Normal load mode - install breakpoint in AllocMem to wait for our program
                 console.log('Installing AllocMem breakpoint at ' + allocMemAddr);
@@ -2559,13 +2561,13 @@ postMessage({ type: 'ready' });
         if (event.data.command) {
             const message = event.data;
             console.log('Command recieved', message)
-            const rpcRequest = (resultCb) => {
+            const rpcRequest = async (resultCb) => {
                 const res = {
                     type: 'rpcResponse',
                     id: message.args._rpcId,
                 }
                 try {
-                    res.result = resultCb();
+                    res.result = await resultCb();
                 } catch (error) {
                     res.result = { error: error.message };
                 }
@@ -2644,6 +2646,17 @@ postMessage({ type: 'ready' });
                     break;
                 case 'jump':
                     rpcRequest(() => wasm_jump(message.args.address));
+                    break;
+                case 'loadFile':
+                    rpcRequest(async () => {
+                        attached = false;
+                        execReady = false;
+                        const res = await fetch(message.args.fileUri);
+                        const data = await res.arrayBuffer();
+                        const filename = message.args.fileUri.split('/').pop();
+                        wasm_loadfile(filename, new Uint8Array(data), 0)
+                        return null;
+                    });
                     break;
                 default:
                     vscode.postMessage({ type: 'error', text: `Unknown command: ${message.command}` });
