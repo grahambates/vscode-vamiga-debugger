@@ -725,7 +725,11 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
                 } else {
                   ptrVal = await this.vAmiga.peek8(symbols[name]);
                 }
-                value += " -> " + formatHex(ptrVal, length * 2);
+                if (length === 4) {
+                  value += " -> " + this.formatAddress(ptrVal);
+                } else {
+                  value += " -> " + formatHex(ptrVal, length * 2);
+                }
                 variablesReference = this.variableHandles.create(
                   `symbol_ptr_${name}:${length}:${ptrVal}`,
                 );
@@ -1258,7 +1262,11 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
               ptrVal = await this.vAmiga.peek8(value);
               if (signed) ptrVal = i8(ptrVal);
             }
-            result += " -> " + formatHex(ptrVal, byteLength * 2);
+            if (byteLength === 4) {
+              result += " -> " + this.formatAddress(ptrVal);
+            } else {
+              result += " -> " + formatHex(ptrVal, byteLength * 2);
+            }
           }
         } else if (resultType === EvaluateResultType.CUSTOM_REGISTER) {
           result = formatHex(value, 4);
