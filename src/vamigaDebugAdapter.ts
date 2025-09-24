@@ -298,18 +298,10 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
 
   /**
    * Disposes of all resources used by the debug adapter.
-   * Cleans up event listeners and the VAmiga webview.
    */
   public dispose(): void {
-    // Clean up fast-loaded program memory
-    // if (this.loadedProgram) {
-    //   const loader = new AmigaHunkLoader(this.vAmiga);
-    //   loader.unloadProgram(this.loadedProgram).catch((err) => {
-    //     logger.error("Failed to unload program: " + String(err));
-    //   });
-    //   this.loadedProgram = null;
-    // }
-
+    this.vAmiga.run(); // unpause emulator if we're leaving it open
+    // TODO: clear all breakpoints
     this.disposables.forEach((d) => d.dispose());
     this.disposables = [];
   }

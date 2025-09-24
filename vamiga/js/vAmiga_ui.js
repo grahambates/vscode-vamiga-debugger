@@ -1945,11 +1945,9 @@ function InitWrappers() {
                 // Fast load mode - emulator will inject program into RAM
                 console.log('exec ready - stopping for fastLoad mode');
                 attached = true;
-                // setTimeout(() => {
-                    wasm_configure('WARP_MODE', 'NEVER');
-                    wasm_halt(false);
-                    vscode.postMessage({ type: 'exec-ready' });
-                // }, 100)
+                wasm_configure('WARP_MODE', 'NEVER');
+                wasm_halt(false);
+                vscode.postMessage({ type: 'exec-ready' });
             } else {
                 // Normal load mode - install breakpoint in AllocMem to wait for our program
                 console.log('Installing AllocMem breakpoint at ' + allocMemAddr);
@@ -2649,13 +2647,22 @@ postMessage({ type: 'ready' });
                     break;
                 case 'loadFile':
                     rpcRequest(async () => {
-                        attached = false;
-                        execReady = false;
+                        // attached = false;
+                        // execReady = false;
                         const res = await fetch(message.args.fileUri);
                         const data = await res.arrayBuffer();
                         const filename = message.args.fileUri.split('/').pop();
-                        wasm_loadfile(filename, new Uint8Array(data), 0)
-                        return null;
+                        // wasm_run(); // Make sure we're not paused
+                        wasm_loadfile(filename, new Uint8Array(data), 0);
+                        if (!filename.match(/\.vAmiga$/i)) {
+                            wasm_reset();
+                            wasm_configure('WARP_MODE', 'ALWAYS');
+                        } else {
+                            setTimeout(() => {
+                                wasm_halt(false);
+                                vscode.postMessage({ type: 'exec-ready' });
+                            }, 80);
+                        }
                     });
                     break;
                 default:
