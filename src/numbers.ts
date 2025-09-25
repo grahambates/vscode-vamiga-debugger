@@ -1,3 +1,5 @@
+import { SourceMap } from "./sourceMap";
+
 export function formatHex(value: number, length = 8): string {
   if (isNaN(value)) {
     return "NaN";
@@ -16,6 +18,24 @@ export function formatBin(value: number, length = 8): string {
     return "-0b" + (-value).toString(2).padStart(length, "0");
   }
   return "0b" + value.toString(2).padStart(length, "0");
+}
+
+/**
+ * Formats a memory address with optional symbol information.
+ *
+ * @param address Memory address to format
+ * @returns Formatted string like "0x00001234" or "0x00001234 = main+16"
+ */
+export function formatAddress(address: number, sourceMap?: SourceMap): string {
+  let out = formatHex(address);
+  const symbolOffset = sourceMap?.findSymbolOffset(address);
+  if (symbolOffset) {
+    out += " = " + symbolOffset.symbol;
+    if (symbolOffset.offset) {
+      out += "+" + symbolOffset.offset;
+    }
+  }
+  return out;
 }
 
 export function isNumeric(value: string): boolean {

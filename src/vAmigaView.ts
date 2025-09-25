@@ -186,6 +186,10 @@ export class VAmigaView {
     }
   >();
 
+  memoryInfo?: MemoryInfo;
+  cpuInfo?: CpuInfo;
+  customRegisters?: CustomRegisters;
+
   constructor(private readonly _extensionUri: vscode.Uri) {}
 
   /**
@@ -217,49 +221,6 @@ export class VAmigaView {
       const programUri = this.absolutePathToWebviewUri(filePath);
       this.sendCommand("load", { fileUri: programUri.toString() });
     }
-  }
-
-  private initPanel(filePath?: string) {
-    const column = this.getConfiguredViewColumn();
-
-    // Create new panel
-    this._panel = vscode.window.createWebviewPanel(
-      VAmigaView.viewType,
-      "VAmiga",
-      column,
-      {
-        enableScripts: true,
-        retainContextWhenHidden: true, // Keep webview alive when hidden
-        localResourceRoots: [
-          this._extensionUri,
-          ...(vscode.workspace.workspaceFolders?.map((folder) => folder.uri) ||
-            []),
-        ],
-      },
-    );
-
-    this._panel.webview.html = this._getHtmlForWebview(filePath);
-
-    // Handle webview lifecycle
-    this._panel.onDidDispose(() => {
-      this._panel = undefined;
-    });
-
-    // Set up RPC response handler
-    this._panel.webview.onDidReceiveMessage((message) => {
-      if (message.type === "rpcResponse") {
-        const pending = this._pendingRpcs.get(message.id);
-        if (pending) {
-          clearTimeout(pending.timeout);
-          this._pendingRpcs.delete(message.id);
-          if (message.result?.error) {
-            pending.reject(new Error(message.result.error));
-          } else {
-            pending.resolve(message.result);
-          }
-        }
-      }
-    });
   }
 
   /**
@@ -342,6 +303,7 @@ export class VAmigaView {
    * Pause the emulator
    */
   public pause(): void {
+    this.invalidateCache();
     this.sendCommand("pause");
   }
 
@@ -349,6 +311,7 @@ export class VAmigaView {
    * Resume running the emulator
    */
   public run(): void {
+    this.invalidateCache();
     this.sendCommand("run");
   }
 
@@ -407,6 +370,7 @@ export class VAmigaView {
    * Stop on next executed instruction
    */
   public stepInto(): void {
+    this.invalidateCache();
     this.sendCommand("stepInto");
   }
 
@@ -415,7 +379,10 @@ export class VAmigaView {
    * @returns Promise resolving to CPU information
    */
   public async getCpuInfo(): Promise<CpuInfo> {
-    return this.sendRpcCommand("getCpuInfo");
+    if (!this.cpuInfo) {
+      this.cpuInfo = await this.sendRpcCommand("getCpuInfo");
+    }
+    return this.cpuInfo;
   }
 
   /**
@@ -431,7 +398,10 @@ export class VAmigaView {
    * @returns Promise resolving to custom register values
    */
   public async getAllCustomRegisters(): Promise<CustomRegisters> {
-    return this.sendRpcCommand("getAllCustomRegisters");
+    if (!this.customRegisters) {
+      this.customRegisters = await this.sendRpcCommand("getAllCustomRegisters");
+    }
+    return this.customRegisters;
   }
 
   /**
@@ -444,6 +414,7 @@ export class VAmigaView {
     name: string,
     value: number,
   ): Promise<RegisterSetStatus> {
+    this.cpuInfo = undefined; // Clear cache
     return this.sendRpcCommand("setRegister", { name, value });
   }
 
@@ -457,6 +428,7 @@ export class VAmigaView {
     name: string,
     value: number,
   ): Promise<RegisterSetStatus> {
+    this.customRegisters = undefined; // Clear cache
     return this.sendRpcCommand("setCustomRegister", { name, value });
   }
 
@@ -575,6 +547,7 @@ export class VAmigaView {
    * @param address Starting memory address
    */
   public async jump(address: number): Promise<void> {
+    this.invalidateCache();
     return this.sendRpcCommand("jump", { address });
   }
 
@@ -591,7 +564,67 @@ export class VAmigaView {
     return this.sendRpcCommand("disassemble", { address, count });
   }
 
+  public isValidAddress(address: number): boolean {
+    if (this.memoryInfo) {
+      // Check mem type of bank
+      const bank = address >>> 16;
+      const type = this.memoryInfo.cpuMemSrc[bank];
+      return type !== MemSrc.NONE;
+    } else {
+      // Any 24 bit address
+      return address >= 0 && address < 0x1000_0000;
+    }
+  }
+
   // Helper methods:
+
+  private initPanel(filePath?: string) {
+    const column = this.getConfiguredViewColumn();
+
+    // Create new panel
+    this._panel = vscode.window.createWebviewPanel(
+      VAmigaView.viewType,
+      "VAmiga",
+      column,
+      {
+        enableScripts: true,
+        retainContextWhenHidden: true, // Keep webview alive when hidden
+        localResourceRoots: [
+          this._extensionUri,
+          ...(vscode.workspace.workspaceFolders?.map((folder) => folder.uri) ||
+            []),
+        ],
+      },
+    );
+
+    this._panel.webview.html = this._getHtmlForWebview(filePath);
+
+    // Handle webview lifecycle
+    this._panel.onDidDispose(() => {
+      this._panel = undefined;
+    });
+
+    // Set up RPC response handler
+    this._panel.webview.onDidReceiveMessage((message) => {
+      if (message.type === "rpcResponse") {
+        const pending = this._pendingRpcs.get(message.id);
+        if (pending) {
+          clearTimeout(pending.timeout);
+          this._pendingRpcs.delete(message.id);
+          if (message.result?.error) {
+            pending.reject(new Error(message.result.error));
+          } else {
+            pending.resolve(message.result);
+          }
+        }
+      } else if (message.type === 'exec-ready') {
+        // Only need to fetch memory info once on load
+        this.getMemoryInfo().then((memoryInfo) => {
+          this.memoryInfo = memoryInfo;
+        })
+      }
+    });
+  }
 
   private getConfiguredViewColumn(): vscode.ViewColumn {
     const config = vscode.workspace.getConfiguration("vamiga-debugger");
@@ -650,5 +683,10 @@ export class VAmigaView {
     );
 
     return htmlContent;
+  }
+
+  private invalidateCache() {
+    this.cpuInfo = undefined;
+    this.customRegisters = undefined;
   }
 }
