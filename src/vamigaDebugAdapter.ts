@@ -637,7 +637,7 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
         }
       } else if (id === "custom") {
         const info = await this.getCachedCustomRegisters();
-        variables = Object.keys(info).map((name) => {
+        variables = Object.keys(info).map((name): DebugProtocol.Variable => {
           let value = info[name].value;
           let memoryReference: string | undefined;
           let variablesReference = 0;

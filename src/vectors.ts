@@ -1,14 +1,15 @@
 import { DebugProtocol } from "@vscode/debugprotocol";
 
-export const exceptionBreakpointFilters: DebugProtocol.ExceptionBreakpointsFilter[] = [
-  { filter: "0x8", label: "Bus error", default: true },
-  { filter: "0xC", label: "Address error", default: true },
-  { filter: "0x10", label: "Illegal instruction", default: true },
-  { filter: "0x14", label: "Zero divide", default: true },
-  // { filter: '0x18', label: 'CHK' },
-  // { filter: '0x1C', label: 'TRAPV' },
-  { filter: "0x20", label: "Privilege violation", default: true },
-];
+export const exceptionBreakpointFilters: DebugProtocol.ExceptionBreakpointsFilter[] =
+  [
+    { filter: "0x8", label: "Bus error", default: true },
+    { filter: "0xC", label: "Address error", default: true },
+    { filter: "0x10", label: "Illegal instruction", default: true },
+    { filter: "0x14", label: "Zero divide", default: true },
+    // { filter: '0x18', label: 'CHK' },
+    // { filter: '0x1C', label: 'TRAPV' },
+    { filter: "0x20", label: "Privilege violation", default: true },
+  ];
 
 // What's your vector Victor?
 export const vectors = [
