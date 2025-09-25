@@ -10,7 +10,8 @@
       "Bash(npm test)",
       "WebFetch(domain:amigadev.elowar.com)",
       "Bash(node:*)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(npm run test:*)"
     ],
     "deny": [],
     "ask": []

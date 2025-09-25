@@ -6,8 +6,11 @@
 //   - mem
 // - constants
 // - Copper debugging
-// - Custom reg bit details
-// - bltcon0
+// custom regs eval to NaN
+// custom regs order
+// custom regs offset prefix
+
+// vpos vhpos
 
 import {
   logger,

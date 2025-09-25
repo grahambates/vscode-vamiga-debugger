@@ -15,16 +15,16 @@ suite('Amiga Register Parsers - Comprehensive Tests', () => {
       // All DMA channels enabled, SET=1
       const bits = registerParsers.parseDmaconRegister(0x83FF);
 
-      const enableAllBit = bits.find(b => b.name === 'ENABLE_ALL');
-      const bitplanesBit = bits.find(b => b.name === 'BITPLANES');
-      const copperBit = bits.find(b => b.name === 'COPPER');
-      const blitterBit = bits.find(b => b.name === 'BLITTER');
-      const spritesBit = bits.find(b => b.name === 'SPRITES');
-      const diskBit = bits.find(b => b.name === 'DISK');
-      const aud3Bit = bits.find(b => b.name === 'AUD3');
-      const aud2Bit = bits.find(b => b.name === 'AUD2');
-      const aud1Bit = bits.find(b => b.name === 'AUD1');
-      const aud0Bit = bits.find(b => b.name === 'AUD0');
+      const enableAllBit = bits.find(b => b.name === '09: ENABLE_ALL');
+      const bitplanesBit = bits.find(b => b.name === '08: BITPLANES');
+      const copperBit = bits.find(b => b.name === '07: COPPER');
+      const blitterBit = bits.find(b => b.name === '06: BLITTER');
+      const spritesBit = bits.find(b => b.name === '05: SPRITES');
+      const diskBit = bits.find(b => b.name === '04: DISK');
+      const aud3Bit = bits.find(b => b.name === '03: AUD3');
+      const aud2Bit = bits.find(b => b.name === '02: AUD2');
+      const aud1Bit = bits.find(b => b.name === '01: AUD1');
+      const aud0Bit = bits.find(b => b.name === '00: AUD0');
 
       assert.strictEqual(enableAllBit?.value, true);
       assert.strictEqual(bitplanesBit?.value, true);
@@ -42,7 +42,7 @@ suite('Amiga Register Parsers - Comprehensive Tests', () => {
       // No DMA channels, CLEAR=0 (clear mode)
       const bits = registerParsers.parseDmaconRegister(0x0000);
 
-      const enableAllBit = bits.find(b => b.name === 'ENABLE_ALL');
+      const enableAllBit = bits.find(b => b.name === '09: ENABLE_ALL');
 
       assert.strictEqual(enableAllBit?.value, false);
     });
@@ -52,7 +52,7 @@ suite('Amiga Register Parsers - Comprehensive Tests', () => {
       const bits = registerParsers.parseRegister('DMACONR', 0x0200);
       assert.ok(bits.length > 0);
 
-      const enableAllBit = bits.find(b => b.name === 'ENABLE_ALL');
+      const enableAllBit = bits.find(b => b.name === '09: ENABLE_ALL');
       assert.strictEqual(enableAllBit?.value, true);
     });
   });
@@ -61,14 +61,14 @@ suite('Amiga Register Parsers - Comprehensive Tests', () => {
     test('should handle all interrupt bits set', () => {
       const bits = registerParsers.parseIntenaRegister(0xFFFF);
 
-      const masterEnableBit = bits.find(b => b.name === 'MASTER_ENABLE');
-      const externalBit = bits.find(b => b.name === 'EXTERNAL');
-      const diskSyncBit = bits.find(b => b.name === 'DISK_SYNC');
-      const receiveBufferFullBit = bits.find(b => b.name === 'RECEIVE_BUFFER_FULL');
-      const aud3Bit = bits.find(b => b.name === 'AUD3');
-      const aud2Bit = bits.find(b => b.name === 'AUD2');
-      const aud1Bit = bits.find(b => b.name === 'AUD1');
-      const aud0Bit = bits.find(b => b.name === 'AUD0');
+      const masterEnableBit = bits.find(b => b.name === '14: MASTER_ENABLE');
+      const externalBit = bits.find(b => b.name === '13: EXTERNAL');
+      const diskSyncBit = bits.find(b => b.name === '12: DISK_SYNC');
+      const receiveBufferFullBit = bits.find(b => b.name === '11: RECEIVE_BUFFER_FULL');
+      const aud3Bit = bits.find(b => b.name === '10: AUD3');
+      const aud2Bit = bits.find(b => b.name === '09: AUD2');
+      const aud1Bit = bits.find(b => b.name === '08: AUD1');
+      const aud0Bit = bits.find(b => b.name === '07: AUD0');
 
       assert.strictEqual(masterEnableBit?.value, true);
       assert.strictEqual(externalBit?.value, true);
@@ -85,8 +85,8 @@ suite('Amiga Register Parsers - Comprehensive Tests', () => {
       const intreqBits = registerParsers.parseIntreqRegister(0x4000);
 
       // Compare similar bits but with different descriptions
-      const intenaMasterEnable = intenaList.find(b => b.name === 'MASTER_ENABLE');
-      const intreqExternal = intreqBits.find(b => b.name === 'EXTERNAL');
+      const intenaMasterEnable = intenaList.find(b => b.name === '14: MASTER_ENABLE');
+      const intreqExternal = intreqBits.find(b => b.name === '13: EXTERNAL');
 
       // Note: descriptions were removed from RegisterBitField interface
       assert.ok(intenaMasterEnable);
@@ -99,8 +99,8 @@ suite('Amiga Register Parsers - Comprehensive Tests', () => {
       // 7 bitplanes (maximum normal), HIRES, HOMOD, DBLPF
       const bits = registerParsers.parseBplcon0Register(0xF004); // BPU=7 from bits 14-12
 
-      const bitplanesValue = bits.find(b => b.name === 'BITPLANES');
-      const hiresBit = bits.find(b => b.name === 'HIRES');
+      const bitplanesValue = bits.find(b => b.name === '14-12: BITPLANES');
+      const hiresBit = bits.find(b => b.name === '15: HIRES');
 
       assert.strictEqual(bitplanesValue?.value, 7, 'BITPLANES=7 means 7 bitplanes');
       assert.strictEqual(hiresBit?.value, true);
@@ -110,8 +110,8 @@ suite('Amiga Register Parsers - Comprehensive Tests', () => {
       // Maximum scroll values for AGA (proper bit extraction)
       const bits = registerParsers.parseBplcon1Register(0xFFFF); // All bits set for maximum
 
-      const pf2hValue = bits.find(b => b.name === 'PF2H');
-      const pf1hValue = bits.find(b => b.name === 'PF1H');
+      const pf2hValue = bits.find(b => b.name === '15-14,7-4: PF2H');
+      const pf1hValue = bits.find(b => b.name === '9-8,3-0: PF1H');
 
       assert.strictEqual(pf2hValue?.value, 63, 'PF2H maximum: (0xF | 0x30) = 63');
       assert.strictEqual(pf1hValue?.value, 63, 'PF1H maximum: (0xF | 0x30) = 63');
@@ -121,9 +121,9 @@ suite('Amiga Register Parsers - Comprehensive Tests', () => {
       // All priority bits and PF2PRI set
       const bits = registerParsers.parseBplcon2Register(0x0047);
 
-      const pf2priBit = bits.find(b => b.name === 'PF2PRI');
-      const pf2pValue = bits.find(b => b.name === 'PF2P');
-      const pf1pValue = bits.find(b => b.name === 'PF1P');
+      const pf2priBit = bits.find(b => b.name === '06: PF2PRI');
+      const pf2pValue = bits.find(b => b.name === '05-03: PF2P');
+      const pf1pValue = bits.find(b => b.name === '02-00: PF1P');
 
       assert.strictEqual(pf2priBit?.value, true);
       assert.strictEqual(pf2pValue?.value, 0);
@@ -134,8 +134,8 @@ suite('Amiga Register Parsers - Comprehensive Tests', () => {
       // Full AGA BPLCON3 with all features
       const bits = registerParsers.parseBplcon3Register(0xE0FF);
 
-      const bankValue = bits.find(b => b.name === 'BANK');
-      const spresBit = bits.find(b => b.name === 'SPRITE_RES');
+      const bankValue = bits.find(b => b.name === '15-13: BANK');
+      const spresBit = bits.find(b => b.name === '06: SPRITE_RES');
 
       assert.strictEqual(bankValue?.value, 7, 'Maximum color bank');
       assert.strictEqual(spresBit?.value, true);
@@ -147,8 +147,8 @@ suite('Amiga Register Parsers - Comprehensive Tests', () => {
       // Maximum shift (15), all channels enabled, complex LF
       const bits = registerParsers.parseBltcon0Register(0xFF0A);
 
-      const ashiftValue = bits.find(b => b.name === 'ASHIFT');
-      const mintermValue = bits.find(b => b.name === 'MINTERM');
+      const ashiftValue = bits.find(b => b.name === '15-12: ASHIFT');
+      const mintermValue = bits.find(b => b.name === '07-00: MINTERM');
 
       assert.strictEqual(ashiftValue?.value, 15, 'Maximum shift value');
       assert.strictEqual(mintermValue?.value, '0x0a', 'Logic function value');
@@ -158,12 +158,12 @@ suite('Amiga Register Parsers - Comprehensive Tests', () => {
       // Line mode with all line flags set
       const bits = registerParsers.parseBltcon1Register(0xF07D);
 
-      const modeValue = bits.find(b => b.name === 'MODE');
-      const textureValue = bits.find(b => b.name === 'TEXTURE');
-      const singleBitBit = bits.find(b => b.name === 'SINGLE_BIT');
-      const sudBit = bits.find(b => b.name === 'SUD');
-      const sulBit = bits.find(b => b.name === 'SUL');
-      const aulBit = bits.find(b => b.name === 'AUL');
+      const modeValue = bits.find(b => b.name === '00: MODE');
+      const textureValue = bits.find(b => b.name === '15-12: TEXTURE');
+      const singleBitBit = bits.find(b => b.name === '06: SINGLE_BIT');
+      const sudBit = bits.find(b => b.name === '04: SUD');
+      const sulBit = bits.find(b => b.name === '03: SUL');
+      const aulBit = bits.find(b => b.name === '02: AUL');
 
       assert.strictEqual(modeValue?.value, 'LINE');
       assert.strictEqual(textureValue?.value, '0b1111', 'Maximum texture pattern');
@@ -177,8 +177,8 @@ suite('Amiga Register Parsers - Comprehensive Tests', () => {
       // Maximum blitter size: 1024x1024
       const bits = registerParsers.parseBltSizeRegister(0x0000); // Special case: 0 = 1024
 
-      const heightValue = bits.find(b => b.name === 'HEIGHT');
-      const widthValue = bits.find(b => b.name === 'WIDTH');
+      const heightValue = bits.find(b => b.name === '15-06: HEIGHT');
+      const widthValue = bits.find(b => b.name === '05-00: WIDTH');
 
       assert.strictEqual(heightValue?.value, 1024, '0 encoded as 1024');
       assert.strictEqual(widthValue?.value, 64, '0 encoded as 64 words');
@@ -191,8 +191,8 @@ suite('Amiga Register Parsers - Comprehensive Tests', () => {
       const ecs_vposr = registerParsers.parseVposrRegister(0x2001); // ECS Agnus
       const aga_vposr = registerParsers.parseVposrRegister(0x3001); // AGA Alice
 
-      const ecs_chipId = ecs_vposr.find(b => b.name === 'CHIP_ID');
-      const aga_chipId = aga_vposr.find(b => b.name === 'CHIP_ID');
+      const ecs_chipId = ecs_vposr.find(b => b.name === '14-01: CHIP_ID');
+      const aga_chipId = aga_vposr.find(b => b.name === '14-01: CHIP_ID');
 
       assert.strictEqual(ecs_chipId?.value, '0x1000', 'ECS chip ID from (0x2001 >> 1) & 0x7FFF');
       assert.strictEqual(aga_chipId?.value, '0x1800', 'AGA chip ID from (0x3001 >> 1) & 0x7FFF');
@@ -202,8 +202,8 @@ suite('Amiga Register Parsers - Comprehensive Tests', () => {
       // Maximum VPOS (511) and HPOS (255)
       const bits = registerParsers.parseVhposrRegister(0xFFFF);
 
-      const vposValue = bits.find(b => b.name === 'VPOS');
-      const hposValue = bits.find(b => b.name === 'HPOS');
+      const vposValue = bits.find(b => b.name === '15-08: VPOS');
+      const hposValue = bits.find(b => b.name === '07-00: HPOS');
 
       assert.strictEqual(vposValue?.value, 255, 'VPOS from high byte');
       assert.strictEqual(hposValue?.value, 510, 'Maximum HPOS (2x multiplier)');
@@ -217,8 +217,8 @@ suite('Amiga Register Parsers - Comprehensive Tests', () => {
         const regName = `SPR${i}CTL`;
         const bits = registerParsers.parseRegister(regName, 0x8086);
 
-        const endVValue = bits.find(b => b.name === 'END_V');
-        const attachedBit = bits.find(b => b.name === 'ATTACHED');
+        const endVValue = bits.find(b => b.name === '15-08,01: END_V');
+        const attachedBit = bits.find(b => b.name === '07: ATTACHED');
 
         assert.strictEqual(endVValue?.value, 384, '256 + 0x80 from EV8 and EV bits'); // 256 + 0x80
         assert.strictEqual(attachedBit?.value, true);
@@ -229,8 +229,8 @@ suite('Amiga Register Parsers - Comprehensive Tests', () => {
       // High horizontal position value
       const bits = registerParsers.parseSpritePosRegister(0x80FF);
 
-      const startHValue = bits.find(b => b.name === 'START_H');
-      const startVValue = bits.find(b => b.name === 'START_V');
+      const startHValue = bits.find(b => b.name === '07-01: START_H');
+      const startVValue = bits.find(b => b.name === '15-08: START_V');
 
       assert.strictEqual(startVValue?.value, 128);
       assert.strictEqual(startHValue?.value, 254, '0x7F << 1 from SH bits');
@@ -248,7 +248,7 @@ suite('Amiga Register Parsers - Comprehensive Tests', () => {
 
       precompModes.forEach(({ value, precomp }) => {
         const bits = registerParsers.parseAdkconRegister(value);
-        const precompValue = bits.find(b => b.name === 'PRECOMP');
+        const precompValue = bits.find(b => b.name === '14-13: PRECOMP');
 
         assert.strictEqual(precompValue?.value, precomp);
         // Note: descriptions were removed from RegisterBitField interface
@@ -260,14 +260,14 @@ suite('Amiga Register Parsers - Comprehensive Tests', () => {
       // All audio modulation flags set
       const bits = registerParsers.parseAdkconRegister(0x80FF);
 
-      const use3pn = bits.find(b => b.name === 'USE3PN');
-      const use2p3 = bits.find(b => b.name === 'USE2P3');
-      const use1p2 = bits.find(b => b.name === 'USE1P2');
-      const use0p1 = bits.find(b => b.name === 'USE0P1');
-      const use3vn = bits.find(b => b.name === 'USE3VN');
-      const use2v3 = bits.find(b => b.name === 'USE2V3');
-      const use1v2 = bits.find(b => b.name === 'USE1V2');
-      const use0v1 = bits.find(b => b.name === 'USE0V1');
+      const use3pn = bits.find(b => b.name === '07: USE3PN');
+      const use2p3 = bits.find(b => b.name === '06: USE2P3');
+      const use1p2 = bits.find(b => b.name === '05: USE1P2');
+      const use0p1 = bits.find(b => b.name === '04: USE0P1');
+      const use3vn = bits.find(b => b.name === '03: USE3VN');
+      const use2v3 = bits.find(b => b.name === '02: USE2V3');
+      const use1v2 = bits.find(b => b.name === '01: USE1V2');
+      const use0v1 = bits.find(b => b.name === '00: USE0V1');
 
       assert.strictEqual(use3pn?.value, true);
       assert.strictEqual(use2p3?.value, true);
@@ -336,17 +336,17 @@ suite('Amiga Register Parsers - Comprehensive Tests', () => {
       const dmaconBits = registerParsers.parseDmaconRegister(0x8300);
 
       // Boolean values
-      const enableAllBit = dmaconBits.find(b => b.name === 'ENABLE_ALL');
+      const enableAllBit = dmaconBits.find(b => b.name === '09: ENABLE_ALL');
       assert.strictEqual(typeof enableAllBit?.value, 'boolean');
 
       // Numeric values would be tested if present
       const bltcon0Bits = registerParsers.parseBltcon0Register(0x5000);
-      const ashiftValue = bltcon0Bits.find(b => b.name === 'ASHIFT');
+      const ashiftValue = bltcon0Bits.find(b => b.name === '15-12: ASHIFT');
       assert.strictEqual(typeof ashiftValue?.value, 'number');
 
       // String values
       const bltcon1Bits = registerParsers.parseBltcon1Register(0x0001);
-      const modeValue = bltcon1Bits.find(b => b.name === 'MODE');
+      const modeValue = bltcon1Bits.find(b => b.name === '00: MODE');
       assert.strictEqual(typeof modeValue?.value, 'string');
     });
 

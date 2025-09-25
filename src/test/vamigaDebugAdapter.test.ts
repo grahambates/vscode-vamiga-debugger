@@ -296,8 +296,8 @@ suite('VamigaDebugAdapter - Simplified Tests', () => {
       assert.strictEqual(unknownBits.length, 0, 'Unknown register should return empty array');
 
       // Verify different parsers are called
-      const enableAllBit = dmaconBits.find(b => b.name === 'ENABLE_ALL');
-      const masterBit = intenaBits.find(b => b.name === 'MASTER_ENABLE');
+      const enableAllBit = dmaconBits.find(b => b.name === '09: ENABLE_ALL');
+      const masterBit = intenaBits.find(b => b.name === '14: MASTER_ENABLE');
 
       assert.ok(enableAllBit, 'Should have DMACON-specific bits');
       assert.ok(masterBit, 'Should have INTENA-specific bits');
