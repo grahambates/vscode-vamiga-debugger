@@ -407,7 +407,7 @@ suite('VamigaDebugAdapter Integration Tests', () => {
       (adapter as any).handleMessageFromEmulator(message);
 
       assert.ok(attachSpy.calledOnce);
-      assert.ok(attachSpy.calledWith(message));
+      assert.ok(attachSpy.calledWith([0x1000])); // attach is called with mapped segment starts
 
       attachSpy.restore();
     });

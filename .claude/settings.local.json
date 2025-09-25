@@ -9,7 +9,8 @@
       "WebSearch",
       "Bash(npm test)",
       "WebFetch(domain:amigadev.elowar.com)",
-      "Bash(node:*)"
+      "Bash(node:*)",
+      "Bash(find:*)"
     ],
     "deny": [],
     "ask": []

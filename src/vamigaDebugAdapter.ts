@@ -7,6 +7,7 @@
 // - constants
 // - Copper debugging
 // - Custom reg bit details
+// - bltcon0
 
 import {
   logger,

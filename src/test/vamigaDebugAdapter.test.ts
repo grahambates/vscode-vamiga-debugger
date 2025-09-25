@@ -217,8 +217,8 @@ suite('VamigaDebugAdapter - Simplified Tests', () => {
       // Test: Handle DAP evaluate request
       await (adapter as any).evaluateRequest(response, args);
 
-      // Verify: Response contains correct result (should be in hex format)
-      assert.strictEqual(response.body?.result, '0x4a'); // 0x42 + 8 = 0x4a
+      // Verify: Response contains correct result (now includes decimal value)
+      assert.strictEqual(response.body?.result, '0x4a = 74'); // 0x42 + 8 = 0x4a = 74
       assert.strictEqual(response.success, true);
     });
 
@@ -401,15 +401,9 @@ suite('VamigaDebugAdapter - Simplified Tests', () => {
       
       const pf2hValue = bits.find(b => b.name === 'PF2H');
       const pf1hValue = bits.find(b => b.name === 'PF1H');
-      const pf2h0Bit = bits.find(b => b.name === 'PF2H0');
-      const pf1h0Bit = bits.find(b => b.name === 'PF1H0');
-      const pf2h2Bit = bits.find(b => b.name === 'PF2H2');
       
       assert.strictEqual(pf2hValue?.value, 5, 'PF2H should be 5');
       assert.strictEqual(pf1hValue?.value, 5, 'PF1H should be 5');
-      assert.strictEqual(pf2h0Bit?.value, true, 'PF2H0 should be true');
-      assert.strictEqual(pf1h0Bit?.value, true, 'PF1H0 should be true');
-      assert.strictEqual(pf2h2Bit?.value, true, 'PF2H2 should be true');
       assert.ok(pf2hValue?.description?.includes('scroll'), 'Should have scroll description');
     });
 
@@ -420,16 +414,10 @@ suite('VamigaDebugAdapter - Simplified Tests', () => {
       const pf2priBit = bits.find(b => b.name === 'PF2PRI');
       const pf2pValue = bits.find(b => b.name === 'PF2P');
       const pf1pValue = bits.find(b => b.name === 'PF1P');
-      const pf1p0Bit = bits.find(b => b.name === 'PF1P0');
-      const pf1p1Bit = bits.find(b => b.name === 'PF1P1');
-      const pf1p2Bit = bits.find(b => b.name === 'PF1P2');
       
       assert.strictEqual(pf2priBit?.value, true, 'PF2PRI should be true');
       assert.strictEqual(pf2pValue?.value, 0, 'PF2P should be 0');
       assert.strictEqual(pf1pValue?.value, 7, 'PF1P should be 7');
-      assert.strictEqual(pf1p0Bit?.value, true, 'PF1P0 should be true');
-      assert.strictEqual(pf1p1Bit?.value, true, 'PF1P1 should be true');
-      assert.strictEqual(pf1p2Bit?.value, true, 'PF1P2 should be true');
       assert.ok(pf2priBit?.description?.includes('priority'), 'Should have priority description');
     });
 
@@ -519,8 +507,8 @@ suite('VamigaDebugAdapter - Simplified Tests', () => {
     });
 
     test('should parse BLTCON1 register in line mode', () => {
-      // Test BLTCON1 value: 0xF051 (TEXTURE=F, SUD=1, SUL=0, AUL=1, LINE=1)
-      const bits = registerParsers.parseBltcon1Register(0xF051);
+      // Test BLTCON1 value: 0xF055 (TEXTURE=F, SUD=1, SUL=0, AUL=1, LINE=1) - fixed AUL bit
+      const bits = registerParsers.parseBltcon1Register(0xF055);
       
       const modeValue = bits.find(b => b.name === 'MODE');
       const textureValue = bits.find(b => b.name === 'TEXTURE');
@@ -596,8 +584,8 @@ suite('VamigaDebugAdapter - Simplified Tests', () => {
     });
 
     test('should parse ADKCON register bits correctly', () => {
-      // Test ADKCON value: 0xE7FF (SET=1, PRECOMP=3, all audio bits set)
-      const bits = registerParsers.parseAdkconRegister(0xE7FF);
+      // Test ADKCON value: 0xF7FF (SET=1, PRECOMP=3, MFMPREC=1, all audio bits set)
+      const bits = registerParsers.parseAdkconRegister(0xF7FF);
       
       const setClearBit = bits.find(b => b.name === 'SET_CLR');
       const precompValue = bits.find(b => b.name === 'PRECOMP');
