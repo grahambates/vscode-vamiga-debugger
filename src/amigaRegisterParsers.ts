@@ -8,6 +8,8 @@
  * bit fields with their values and human-readable descriptions.
  */
 
+import { formatBin, formatHex } from "./numbers";
+
 export interface RegisterBitField {
   name: string;
   value: boolean | number | string;
@@ -227,8 +229,7 @@ export function parseBplcon3Register(bplcon3: number): RegisterBitField[] {
  */
 export function parseBltcon0Register(bltcon0: number): RegisterBitField[] {
   const ash = (bltcon0 >> 12) & 0x0F; // ASH3-ASH0 (bits 15-12)
-  const useChannels = (bltcon0 >> 8) & 0x0F; // USEA,USEB,USEC,USED (bits 11-8)
-  const lf = bltcon0 & 0xFF; // Logic function minterm (bits 7-0)
+  const minterm = bltcon0 & 0xFF; // Logic function minterm (bits 7-0)
 
   return [
     { name: "ASH", value: ash, description: `A source shift: ${ash}` },
@@ -236,8 +237,7 @@ export function parseBltcon0Register(bltcon0: number): RegisterBitField[] {
     { name: "USEB", value: (bltcon0 & 0x0400) !== 0, description: "Use B source channel" },
     { name: "USEC", value: (bltcon0 & 0x0200) !== 0, description: "Use C source channel" },
     { name: "USED", value: (bltcon0 & 0x0100) !== 0, description: "Use D destination channel" },
-    { name: "CHANNELS", value: useChannels, description: `Active channels: 0b${useChannels.toString(2).padStart(4, '0')}` },
-    { name: "LF", value: lf, description: `Logic function minterm: 0x${lf.toString(16).padStart(2, '0').toUpperCase()}` },
+    { name: "MINTERM", value: formatHex(minterm, 2), description: `Logic function minterm` },
   ];
 }
 
@@ -252,7 +252,7 @@ export function parseBltcon1Register(bltcon1: number): RegisterBitField[] {
     const texture = (bltcon1 >> 12) & 0x0F; // TEXTURE3-TEXTURE0 (bits 15-12)
     return [
       { name: "MODE", value: "LINE", description: "Line drawing mode" },
-      { name: "TEXTURE", value: texture, description: `Line texture pattern: 0x${texture.toString(16).toUpperCase()}` },
+      { name: "TEXTURE", value: formatBin(texture, 4), description: `Line texture pattern` },
       { name: "SIGN", value: (bltcon1 & 0x0040) !== 0, description: "Sign bit for line drawing" },
       { name: "SUD", value: (bltcon1 & 0x0010) !== 0, description: "Sometimes up or down" },
       { name: "SUL", value: (bltcon1 & 0x0008) !== 0, description: "Sometimes up or left" },
@@ -284,7 +284,7 @@ export function parseVposrRegister(vposr: number): RegisterBitField[] {
 
   return [
     { name: "LOF", value: lof, description: lof ? "Long frame (NTSC)" : "Short frame (PAL)" },
-    { name: "CHIP_ID", value: chipId, description: `Chip identification: 0x${chipId.toString(16).toUpperCase()}` },
+    { name: "CHIP_ID", value: formatHex(chipId, 4), description: `Chip identification` },
     { name: "V8", value: v8, description: "Vertical position bit 8 (MSB)" },
   ];
 }
