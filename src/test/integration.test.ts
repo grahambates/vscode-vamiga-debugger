@@ -29,9 +29,8 @@ suite('VamigaDebugAdapter Integration Tests', () => {
   let mockVAmiga: sinon.SinonStubbedInstance<VAmigaView>;
 
   setup(() => {
-    adapter = new VamigaDebugAdapter();
     mockVAmiga = sinon.createStubInstance(VAmigaView);
-    (adapter as any).vAmiga = mockVAmiga;
+    adapter = new VamigaDebugAdapter(mockVAmiga);
   });
 
   teardown(() => {

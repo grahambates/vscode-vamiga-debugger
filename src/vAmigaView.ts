@@ -186,15 +186,6 @@ export class VAmigaView {
     }
   >();
 
-  static instance: VAmigaView;
-
-  public static getInstance(extensionUri: vscode.Uri) {
-    if (!VAmigaView.instance) {
-      VAmigaView.instance = new VAmigaView(extensionUri);
-    }
-    return VAmigaView.instance;
-  }
-
   constructor(private readonly _extensionUri: vscode.Uri) {}
 
   /**

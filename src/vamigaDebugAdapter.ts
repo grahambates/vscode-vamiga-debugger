@@ -212,7 +212,6 @@ export enum ErrorCode {
 export class VamigaDebugAdapter extends LoggingDebugSession {
   private static THREAD_ID = 1;
 
-  private vAmiga: VAmigaView;
   private parser: Parser;
 
   private trace = false;
@@ -258,12 +257,10 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
    *
    * @param vAmiga Optional VAmigaView instance for dependency injection (primarily for testing)
    */
-  public constructor(vAmiga?: VAmigaView) {
+  public constructor(private vAmiga: VAmigaView) {
     super();
     this.setDebuggerLinesStartAt1(false);
     this.setDebuggerColumnsStartAt1(false);
-    this.vAmiga =
-      vAmiga || VAmigaView.getInstance(vscode.Uri.file(path.dirname(__dirname)));
 
     this.parser = new Parser();
     this.parser.functions = {
