@@ -10,8 +10,6 @@
 // custom regs order
 // custom regs offset prefix
 
-// vpos vhpos
-
 import {
   logger,
   LoggingDebugSession,
@@ -53,7 +51,7 @@ import { LoadedProgram } from "./amigaMemoryManager";
 import { sourceMapFromDwarf } from "./dwarfSourceMap";
 import { sourceMapFromHunks } from "./amigaHunkSourceMap";
 import { Location, SourceMap } from "./sourceMap";
-import * as registerParsers from './amigaRegisterParsers';
+import * as registerParsers from "./amigaRegisterParsers";
 import {
   formatHex,
   isNumeric,
@@ -561,232 +559,8 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
     args: DebugProtocol.VariablesArguments,
   ): Promise<void> {
     const id = this.variableHandles.get(args.variablesReference);
-    let variables: DebugProtocol.Variable[] = [];
-
-    const castIntVar = (value: number, fn: (v: number) => number) => ({
-      name: fn.name,
-      value: fn(value).toString(),
-      variablesReference: 0,
-      presentationHint: { attributes: ["readOnly"] },
-    });
-
     try {
-      if (id === "registers") {
-        const info = await this.getCachedCpuInfo();
-        variables = Object.keys(info)
-          .map((name) => {
-            let value = String(info[name as keyof CpuInfo]);
-            let variablesReference = 0;
-            let memoryReference: string | undefined;
-
-            if (name === "sr") {
-              variablesReference = this.variableHandles.create(`sr_flags`);
-            } else if (name.startsWith("d")) {
-              variablesReference = this.variableHandles.create(
-                `data_reg_${name}`,
-              );
-            } else if (name.match(/(a[0-9]|pc|usp|msp|isp|vbr)/)) {
-              variablesReference = this.variableHandles.create(
-                `addr_reg_${name}`,
-              );
-              const numVal = Number(value);
-              if (this.isValidAddress(numVal)) {
-                memoryReference = value;
-                value = this.formatAddress(numVal);
-              }
-            }
-
-            return {
-              name,
-              value,
-              variablesReference,
-              memoryReference,
-            };
-          });
-      } else if (id.startsWith("data_reg_")) {
-        const info = await this.getCachedCpuInfo();
-        const name = id.replace("data_reg_", "");
-        const value = Number(info[name as keyof CpuInfo]);
-        variables = [
-          castIntVar(value, i32),
-          castIntVar(value, u32),
-          castIntVar(value, i16),
-          castIntVar(value, u16),
-          castIntVar(value, i8),
-          castIntVar(value, u8),
-        ];
-      } else if (id.startsWith("addr_reg_")) {
-        const info = await this.getCachedCpuInfo();
-        const name = id.replace("addr_reg_", "");
-        const value = Number(info[name as keyof CpuInfo]);
-        variables = [
-          castIntVar(value, i32),
-          castIntVar(value, u32),
-          castIntVar(value, i16),
-          castIntVar(value, u16),
-        ];
-        const symbolOffset = this.sourceMap?.findSymbolOffset(value);
-        if (symbolOffset) {
-          let value = symbolOffset.symbol;
-          if (symbolOffset.offset) {
-            value += "+" + symbolOffset.offset;
-          }
-          variables.unshift({
-            name: "offset",
-            value,
-            variablesReference: 0,
-            presentationHint: { attributes: ["readOnly"] },
-          });
-        }
-      } else if (id === "custom") {
-        const info = await this.getCachedCustomRegisters();
-        variables = Object.keys(info).map((name): DebugProtocol.Variable => {
-          let value = info[name].value;
-          let memoryReference: string | undefined;
-          let variablesReference = 0;
-
-          // Check if this register has bit breakdown support
-          if (this.hasCustomRegisterBitBreakdown(name)) {
-            variablesReference = this.variableHandles.create(`custom_reg_${name}`);
-          }
-
-          // Handle longword values as addresses
-          if  (value.length > 6) {
-            memoryReference = value;
-            value = this.formatAddress(Number(value));
-          }
-          return {
-            name,
-            value,
-            variablesReference,
-            memoryReference,
-          }
-        });
-      } else if (id === "sr_flags") {
-        const info = await this.getCachedCpuInfo();
-        const { boolFlags, interruptMask } = this.parseStatusRegister(
-          Number(info.sr),
-        );
-        variables = [
-          ...boolFlags.map(({ name, value }) => ({
-            name,
-            value: String(value),
-            variablesReference: 0,
-            presentationHint: { attributes: ["readOnly"] },
-          })),
-          {
-            name: "interruptMask",
-            value: formatBin(interruptMask),
-            variablesReference: 0,
-            presentationHint: { attributes: ["readOnly"] },
-          },
-        ];
-      } else if (id.startsWith("custom_reg_")) {
-        const info = await this.getCachedCustomRegisters();
-        const regName = id.replace("custom_reg_", "");
-        const regValue = Number(info[regName].value);
-        const bits = this.parseCustomRegister(regName, regValue);
-        variables = bits.map(({ name, value, description }) => ({
-          name,
-          value: String(value),
-          variablesReference: 0,
-          presentationHint: {
-            attributes: ["readOnly"],
-            ...(description ? { tooltip: description } : {})
-          },
-        }));
-      } else if (id === "vectors") {
-        const cpuInfo = await this.getCachedCpuInfo();
-        const mem = await this.vAmiga.readMemoryBuffer(
-          Number(cpuInfo.vbr),
-          vectors.length * 4,
-        );
-        for (let i = 0; i < vectors.length; i++) {
-          const name = vectors[i];
-          if (name) {
-            const value = mem.readInt32BE(i * 4);
-            variables.push({
-              name: `${formatHex(i * 4, 2).replace("0x", "")}: ${name}`,
-              value: this.formatAddress(value),
-              memoryReference: formatHex(value),
-              variablesReference: 0,
-            });
-          }
-        }
-      } else if (id === "symbols" && this.sourceMap) {
-        const symbolLengths = this.sourceMap.getSymbolLengths();
-        const symbols = this.sourceMap.getSymbols();
-        variables = await Promise.all(
-          Object.keys(symbols).map(
-            async (name): Promise<DebugProtocol.Variable> => {
-              let value = formatHex(symbols[name]);
-              const length = symbolLengths?.[name] ?? 0;
-              let variablesReference = 0;
-              const memoryReference = value;
-
-              if (length === 1 || length === 2 || length === 4) {
-                let ptrVal: number;
-                if (length === 4) {
-                  ptrVal = await this.vAmiga.peek32(symbols[name]);
-                } else if (length === 2) {
-                  ptrVal = await this.vAmiga.peek16(symbols[name]);
-                } else {
-                  ptrVal = await this.vAmiga.peek8(symbols[name]);
-                }
-                if (length === 4) {
-                  value += " -> " + this.formatAddress(ptrVal);
-                } else {
-                  value += " -> " + formatHex(ptrVal, length * 2);
-                }
-                variablesReference = this.variableHandles.create(
-                  `symbol_ptr_${name}:${length}:${ptrVal}`,
-                );
-              }
-
-              const variable: DebugProtocol.Variable = {
-                name,
-                value,
-                memoryReference,
-                presentationHint: { attributes: ["readOnly"] },
-                variablesReference,
-              };
-              const loc = this.sourceMap?.lookupAddress(symbols[name]);
-              if (loc) {
-                variable.declarationLocationReference = loc
-                  ? this.locationHandles.create(loc)
-                  : undefined;
-              }
-              return variable;
-            },
-          ),
-        );
-      } else if (id.startsWith("symbol_ptr_")) {
-        const [_name, lengthStr, valueStr] = id
-          .replace("symbol_ptr_", "")
-          .split(":");
-        const length = Number(lengthStr);
-        const value = Number(valueStr);
-
-        if (length === 4) {
-          variables = [castIntVar(value, u32), castIntVar(value, i32)];
-        } else if (length === 2) {
-          variables = [castIntVar(value, u16), castIntVar(value, i16)];
-        } else {
-          variables = [castIntVar(value, u8), castIntVar(value, i8)];
-        }
-      } else if (id === "segments" && this.sourceMap) {
-        const segments = this.sourceMap.getSegmentsInfo();
-        variables = segments.map((seg) => {
-          const value = formatHex(seg.address);
-          return {
-            name: seg.name,
-            value,
-            memoryReference: value,
-            variablesReference: 0,
-            presentationHint: { attributes: ["readOnly"] },
-          };
-        });
-      }
+      const variables = await this.getVariablesById(id);
       response.body = {
         variables,
       };
@@ -799,6 +573,284 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
         err,
       );
     }
+  }
+
+  private async getVariablesById(id: string): Promise<DebugProtocol.Variable[]> {
+      if (id === "registers") {
+        return await this.registerVariables();
+      } else if (id.startsWith("data_reg_")) {
+        return await this.dataRegVariables(id);
+      } else if (id.startsWith("addr_reg_")) {
+        return await this.addressRegVariables(id);
+      } else if (id === "sr_flags") {
+        return await this.srFlagVariables();
+      } else if (id === "custom") {
+        return await this.customVariables();
+      } else if (id.startsWith("custom_reg_")) {
+        return await this.customDetailVariables(id);
+      } else if (id === "vectors") {
+        return await this.vectorVariables();
+      } else if (id === "symbols") {
+        return await this.symbolVariables();
+      } else if (id.startsWith("symbol_ptr_")) {
+        return this.symbolPointerVariables(id);
+      } else if (id === "segments") {
+        return this.segmentVariables();
+      }
+      throw new Error('Unknown variable ID: ' + id)
+  }
+
+  private async registerVariables(): Promise<DebugProtocol.Variable[]> {
+    const info = await this.getCachedCpuInfo();
+    return Object.keys(info).map((name) => {
+      let value = String(info[name as keyof CpuInfo]);
+      let variablesReference = 0;
+      let memoryReference: string | undefined;
+
+      if (name === "sr") {
+        variablesReference = this.variableHandles.create(`sr_flags`);
+      } else if (name.startsWith("d")) {
+        variablesReference = this.variableHandles.create(`data_reg_${name}`);
+      } else if (name.match(/(a[0-9]|pc|usp|msp|isp|vbr)/)) {
+        variablesReference = this.variableHandles.create(`addr_reg_${name}`);
+        const numVal = Number(value);
+        if (this.isValidAddress(numVal)) {
+          memoryReference = value;
+          value = this.formatAddress(numVal);
+        }
+      }
+
+      return {
+        name,
+        value,
+        variablesReference,
+        memoryReference,
+      };
+    });
+  }
+
+  private castIntVar(
+    value: number,
+    fn: (v: number) => number,
+  ): DebugProtocol.Variable {
+    return {
+      name: fn.name,
+      value: fn(value).toString(),
+      variablesReference: 0,
+      presentationHint: { attributes: ["readOnly"] },
+    };
+  }
+
+  private async dataRegVariables(
+    id: string,
+  ): Promise<DebugProtocol.Variable[]> {
+    const info = await this.getCachedCpuInfo();
+    const name = id.replace("data_reg_", "");
+    const value = Number(info[name as keyof CpuInfo]);
+    return [
+      this.castIntVar(value, i32),
+      this.castIntVar(value, u32),
+      this.castIntVar(value, i16),
+      this.castIntVar(value, u16),
+      this.castIntVar(value, i8),
+      this.castIntVar(value, u8),
+    ];
+  }
+
+  private async srFlagVariables(): Promise<DebugProtocol.Variable[]> {
+    const info = await this.getCachedCpuInfo();
+    const { boolFlags, interruptMask } = this.parseStatusRegister(
+      Number(info.sr),
+    );
+    return [
+      ...boolFlags.map(({ name, value }) => ({
+        name,
+        value: String(value),
+        variablesReference: 0,
+        presentationHint: { attributes: ["readOnly"] },
+      })),
+      {
+        name: "interruptMask",
+        value: formatBin(interruptMask),
+        variablesReference: 0,
+        presentationHint: { attributes: ["readOnly"] },
+      },
+    ];
+  }
+
+  private async addressRegVariables(
+    id: string,
+  ): Promise<DebugProtocol.Variable[]> {
+    const info = await this.getCachedCpuInfo();
+    const name = id.replace("addr_reg_", "");
+    const value = Number(info[name as keyof CpuInfo]);
+    const variables = [
+      this.castIntVar(value, i32),
+      this.castIntVar(value, u32),
+      this.castIntVar(value, i16),
+      this.castIntVar(value, u16),
+    ];
+    const symbolOffset = this.sourceMap?.findSymbolOffset(value);
+    if (symbolOffset) {
+      let value = symbolOffset.symbol;
+      if (symbolOffset.offset) {
+        value += "+" + symbolOffset.offset;
+      }
+      variables.unshift({
+        name: "offset",
+        value,
+        variablesReference: 0,
+        presentationHint: { attributes: ["readOnly"] },
+      });
+    }
+    return variables;
+  }
+
+  private async customVariables(): Promise<DebugProtocol.Variable[]> {
+    const info = await this.getCachedCustomRegisters();
+    const variables = Object.keys(info).map((name): DebugProtocol.Variable => {
+      let value = info[name].value;
+      let memoryReference: string | undefined;
+      let variablesReference = 0;
+
+      // Check if this register has bit breakdown support
+      if (this.hasCustomRegisterBitBreakdown(name)) {
+        variablesReference = this.variableHandles.create(`custom_reg_${name}`);
+      }
+
+      // Handle longword values as addresses
+      if (value.length > 6) {
+        memoryReference = value;
+        value = this.formatAddress(Number(value));
+      }
+      return {
+        name,
+        value,
+        variablesReference,
+        memoryReference,
+      };
+    });
+    // Sort by name
+    // TODO: could make this a setting
+    variables.sort((a, b) => (a.name < b.name ? -1 : 1));
+    return variables;
+  }
+
+  private async customDetailVariables(id: string) {
+    const info = await this.getCachedCustomRegisters();
+    const regName = id.replace("custom_reg_", "");
+    const regValue = Number(info[regName].value);
+    const bits = this.parseCustomRegister(regName, regValue);
+    return bits.map(({ name, value }) => ({
+      name,
+      value: String(value),
+      variablesReference: 0,
+      presentationHint: { attributes: ["readOnly"] },
+    }));
+  }
+
+  private async vectorVariables() {
+    const variables: DebugProtocol.Variable[] = [];
+    const cpuInfo = await this.getCachedCpuInfo();
+    const mem = await this.vAmiga.readMemoryBuffer(
+      Number(cpuInfo.vbr),
+      vectors.length * 4,
+    );
+    for (let i = 0; i < vectors.length; i++) {
+      const name = vectors[i];
+      if (name) {
+        const value = mem.readInt32BE(i * 4);
+        variables.push({
+          name: `${formatHex(i * 4, 2).replace("0x", "")}: ${name}`,
+          value: this.formatAddress(value),
+          memoryReference: formatHex(value),
+          variablesReference: 0,
+        });
+      }
+    }
+    return variables;
+  }
+
+  private async symbolVariables(): Promise<DebugProtocol.Variable[]> {
+    if (!this.sourceMap) {
+      return [];
+    }
+    const symbolLengths = this.sourceMap.getSymbolLengths();
+    const symbols = this.sourceMap.getSymbols();
+    return await Promise.all(
+      Object.keys(symbols).map(async (name) => {
+        let value = formatHex(symbols[name]);
+        const length = symbolLengths?.[name] ?? 0;
+        let variablesReference = 0;
+        const memoryReference = value;
+
+        if (length === 1 || length === 2 || length === 4) {
+          let ptrVal: number;
+          if (length === 4) {
+            ptrVal = await this.vAmiga.peek32(symbols[name]);
+          } else if (length === 2) {
+            ptrVal = await this.vAmiga.peek16(symbols[name]);
+          } else {
+            ptrVal = await this.vAmiga.peek8(symbols[name]);
+          }
+          if (length === 4) {
+            value += " -> " + this.formatAddress(ptrVal);
+          } else {
+            value += " -> " + formatHex(ptrVal, length * 2);
+          }
+          variablesReference = this.variableHandles.create(
+            `symbol_ptr_${name}:${length}:${ptrVal}`,
+          );
+        }
+
+        const variable: DebugProtocol.Variable = {
+          name,
+          value,
+          memoryReference,
+          presentationHint: { attributes: ["readOnly"] },
+          variablesReference,
+        };
+        const loc = this.sourceMap?.lookupAddress(symbols[name]);
+        if (loc) {
+          variable.declarationLocationReference = loc
+            ? this.locationHandles.create(loc)
+            : undefined;
+        }
+        return variable;
+      }),
+    );
+  }
+
+  private symbolPointerVariables(
+    id: string,
+  ): DebugProtocol.Variable[] {
+    const [_name, lengthStr, valueStr] = id
+      .replace("symbol_ptr_", "")
+      .split(":");
+    const length = Number(lengthStr);
+    const value = Number(valueStr);
+
+    if (length === 4) {
+      return [this.castIntVar(value, u32), this.castIntVar(value, i32)];
+    } else if (length === 2) {
+      return [this.castIntVar(value, u16), this.castIntVar(value, i16)];
+    } else {
+      return [this.castIntVar(value, u8), this.castIntVar(value, i8)];
+    }
+  }
+
+  private segmentVariables(): DebugProtocol.Variable[] {
+    const segments = this.sourceMap?.getSegmentsInfo() ?? [];
+    return segments.map((seg) => {
+      const value = formatHex(seg.address);
+      return {
+        name: seg.name,
+        value,
+        memoryReference: value,
+        variablesReference: 0,
+        presentationHint: { attributes: ["readOnly"] },
+      };
+    });
   }
 
   protected async setVariableRequest(
@@ -2163,8 +2215,14 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
   /**
    * Parses custom register bits into individual named components
    */
-  protected parseCustomRegister(regName: string, value: number): Array<{name: string, value: boolean | number | string, description?: string}> {
+  protected parseCustomRegister(
+    regName: string,
+    value: number,
+  ): Array<{
+    name: string;
+    value: boolean | number | string;
+    description?: string;
+  }> {
     return registerParsers.parseRegister(regName, value);
   }
-
 }
