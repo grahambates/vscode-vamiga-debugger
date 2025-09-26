@@ -336,6 +336,29 @@ export class VariablesManager {
     });
   }
 
+  /**
+   * Builds a complete variable lookup table for expression evaluation.
+   *
+   * @returns Record mapping variable names to their numeric values
+   */
+  public async getFlatVariables(): Promise<Record<string,number>> {
+    const variables: Record<string, number> = {};
+    const cpuInfo = await this.vAmiga.getCpuInfo();
+    const customRegs = await this.vAmiga.getAllCustomRegisters();
+    const symbols = this.sourceMap?.getSymbols() ?? {};
+    for (const k in cpuInfo) {
+      variables[k] = Number(cpuInfo[k as keyof CpuInfo]);
+    }
+    for (const k in customRegs) {
+      variables[k] = Number(customRegs[k]);
+    }
+    for (const k in symbols) {
+      variables[k] = Number(symbols[k]);
+    }
+    variables.sp = variables.a7;
+    return variables;
+  }
+
   public getVariableReference(variableReference: number): string {
     return this.variableHandles.get(variableReference);
   }

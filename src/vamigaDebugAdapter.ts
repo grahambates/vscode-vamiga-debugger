@@ -1,4 +1,5 @@
 // TODO:
+// Step from break on entry broken
 // - Console
 //   - disasm
 //   - mem
@@ -24,11 +25,9 @@ import { DebugProtocol } from "@vscode/debugprotocol";
 import * as vscode from "vscode";
 import * as path from "path";
 import { readFile } from "fs/promises";
-import { Parser } from "expr-eval";
 
 import {
   VAmiga,
-  CpuInfo,
   EmulatorMessage,
   isAttachedMessage,
   isEmulatorStateMessage,
@@ -46,13 +45,6 @@ import { sourceMapFromHunks } from "./amigaHunkSourceMap";
 import { SourceMap } from "./sourceMap";
 import {
   formatHex,
-  u32,
-  u16,
-  u8,
-  i32,
-  i16,
-  i8,
-  formatAddress,
 } from "./numbers";
 import {
   allFunctions,
@@ -63,11 +55,11 @@ import {
   syntaxText,
 } from "./repl";
 import { exceptionBreakpointFilters } from "./vectors";
-import { instructionAttrs } from "./sourceParsing";
 import { VariablesManager } from "./variablesManager";
 import { BreakpointManager } from "./breakpointManager";
 import { StackManager } from "./stackManager";
 import { DisassemblyManager } from "./disassemblyManager";
+import { EvaluateManager } from "./evaluateManager";
 
 /**
  * Launch configuration arguments for starting a debug session.
@@ -84,38 +76,6 @@ interface LaunchRequestArguments extends DebugProtocol.LaunchRequestArguments {
   trace?: boolean;
   /** Inject program directly into memory */
   fastLoad?: boolean;
-}
-
-/**
- * Result of evaluating an expression in the debug context.
- */
-interface EvaluateResult {
-  /** Numeric value of the expression, if successfully evaluated */
-  value?: number;
-  /** Memory reference string for values that represent addresses */
-  memoryReference?: string;
-  /** Type classification of the result for appropriate formatting */
-  type: EvaluateResultType;
-}
-
-/**
- * Classification of expression evaluation results for appropriate formatting.
- */
-export enum EvaluateResultType {
-  /** Empty expression */
-  EMPTY,
-  /** Unknown or unclassified result */
-  UNKNOWN,
-  /** Result is a symbol address */
-  SYMBOL,
-  /** Result is a CPU data register (d0-d7) */
-  DATA_REGISTER,
-  /** Result is a CPU address register (a0-a7, pc, etc.) */
-  ADDRESS_REGISTER,
-  /** Result is a custom chip register */
-  CUSTOM_REGISTER,
-  /** Result from parsing a complex expression */
-  PARSED,
 }
 
 /**
@@ -187,8 +147,6 @@ export enum ErrorCode {
 export class VamigaDebugAdapter extends LoggingDebugSession {
   private static THREAD_ID = 1;
 
-  private parser: Parser;
-
   private trace = false;
   private fastLoad = false;
   private programPath = "";
@@ -203,6 +161,7 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
   private breakpointManager?: BreakpointManager;
   private stackManager?: StackManager;
   private disassemblyManager?: DisassemblyManager;
+  private evaluateManager?: EvaluateManager;
 
   private hunks: Hunk[] = [];
   private dwarfData?: DWARFData;
@@ -224,25 +183,6 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
     super();
     this.setDebuggerLinesStartAt1(false);
     this.setDebuggerColumnsStartAt1(false);
-
-    this.parser = new Parser();
-    this.parser.functions = {
-      u32,
-      u16,
-      u8,
-      i32,
-      i16,
-      i8,
-      peekU32: (addr: number) => this.vAmiga.peek32(addr),
-      peekU16: (addr: number) => this.vAmiga.peek16(addr),
-      peekU8: (addr: number) => this.vAmiga.peek8(addr),
-      peekI32: (addr: number) => this.vAmiga.peek32(addr).then(i32),
-      peekI16: (addr: number) => this.vAmiga.peek16(addr).then(i16),
-      peekI8: (addr: number) => this.vAmiga.peek8(addr).then(i8),
-      poke32: (addr: number, value: number) => this.vAmiga.poke32(addr, value),
-      poke16: (addr: number, value: number) => this.vAmiga.poke16(addr, value),
-      poke8: (addr: number, value: number) => this.vAmiga.poke8(addr, value),
-    };
   }
 
   /**
@@ -729,91 +669,7 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
     }
 
     try {
-      const {
-        value,
-        memoryReference,
-        type: resultType,
-      } = await this.evaluate(args.expression);
-
-      if (value !== undefined) {
-        let result: string | undefined;
-        let byteLength: number | undefined;
-        let signed = false;
-
-        // For hover context we can look at the source to determine how the value is used and get length/sign
-        if (context === "hover" && args.source?.path && args.line) {
-          try {
-            const document = await vscode.workspace.openTextDocument(
-              args.source.path,
-            );
-            const line = document.lineAt(args.line - 1);
-            const attrs = instructionAttrs(line.text);
-            signed = attrs.signed;
-            byteLength = attrs.byteLength;
-          } catch (err) {
-            console.error(
-              `Unable to fetch and parse source context: ${this.errorString(err)}`,
-            );
-          }
-        }
-
-        if (resultType === EvaluateResultType.ADDRESS_REGISTER) {
-          result = formatAddress(value, this.sourceMap);
-        } else if (resultType === EvaluateResultType.DATA_REGISTER) {
-          let sizedValue: number;
-          // Length from hover context
-          if (byteLength === 1) {
-            sizedValue = signed ? i8(value) : u8(value);
-          } else if (byteLength === 2) {
-            sizedValue = signed ? i16(value) : u16(value);
-          } else {
-            // default to longword
-            sizedValue = signed ? i32(value) : u32(value);
-            byteLength = 4;
-          }
-          result = formatHex(sizedValue, byteLength * 2) + " = " + sizedValue;
-        } else if (resultType === EvaluateResultType.SYMBOL) {
-          // longword address
-          result = formatHex(value, 8);
-
-          // Show value for b/w/l pointer
-          // Get length from hover context or symbol lengths
-          if (!byteLength) {
-            const symbolLengths = this.sourceMap?.getSymbolLengths();
-            byteLength = symbolLengths?.[args.expression] ?? 0;
-          }
-
-          if (byteLength === 1 || byteLength === 2 || byteLength === 4) {
-            let ptrVal: number;
-            if (byteLength === 4) {
-              ptrVal = await this.vAmiga.peek32(value);
-              if (signed) ptrVal = i32(ptrVal);
-            } else if (byteLength === 2) {
-              ptrVal = await this.vAmiga.peek16(value);
-              if (signed) ptrVal = i16(ptrVal);
-            } else {
-              ptrVal = await this.vAmiga.peek8(value);
-              if (signed) ptrVal = i8(ptrVal);
-            }
-            if (byteLength === 4) {
-              result += " -> " + formatAddress(ptrVal, this.sourceMap);
-            } else {
-              result += " -> " + formatHex(ptrVal, byteLength * 2);
-            }
-          }
-        } else if (resultType === EvaluateResultType.CUSTOM_REGISTER) {
-          result = formatHex(value, 4);
-        } else {
-          // default - show result as hex and decimal
-          result = formatHex(value, 0) + " = " + value;
-        }
-        response.body = {
-          result,
-          memoryReference,
-          variablesReference: 0,
-        };
-      }
-
+      response.body = await this.getEvaluateManager().evaluateFormatted(args);
       this.sendResponse(response);
     } catch (err) {
       this.sendError(
@@ -966,7 +822,7 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
 
       if (beforeMatch) {
         const prefix = beforeMatch[0];
-        const vars = await this.getVars();
+        const vars = await this.getVariablesManager().getFlatVariables();
         const varMatches = Object.keys(vars).filter((name) =>
           name.toLowerCase().startsWith(prefix.toLowerCase()),
         );
@@ -1097,13 +953,20 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
       } else {
         throw new Error("No debug symbols");
       }
+
+      // Create managers:
       this.variablesManager = new VariablesManager(this.vAmiga, this.sourceMap);
       this.breakpointManager = new BreakpointManager(
         this.vAmiga,
         this.sourceMap,
       );
       this.stackManager = new StackManager(this.vAmiga, this.sourceMap);
-      this.disassemblyManager = new DisassemblyManager(this.vAmiga, this.sourceMap);
+      this.disassemblyManager = new DisassemblyManager(
+        this.vAmiga,
+        this.sourceMap,
+      );
+      this.evaluateManager = new EvaluateManager(this.vAmiga, this.sourceMap, this.variablesManager);
+
       if (this.stopOnEntry && !this.fastLoad) {
         this.breakpointManager.setTmpBreakpoint(offsets[0], "entry");
       }
@@ -1242,95 +1105,6 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
     });
   }
 
-  /**
-   * Builds a complete variable lookup table for expression evaluation.
-   *
-   * Made protected to allow testing of variable context building.
-   *
-   * @returns Record mapping variable names to their numeric values
-   */
-  protected async getVars() {
-    const variables: Record<string, number> = {};
-    const cpuInfo = await this.vAmiga.getCpuInfo();
-    const customRegs = await this.vAmiga.getAllCustomRegisters();
-    const symbols = this.sourceMap?.getSymbols() ?? {};
-    for (const k in cpuInfo) {
-      variables[k] = Number(cpuInfo[k as keyof CpuInfo]);
-    }
-    for (const k in customRegs) {
-      variables[k] = Number(customRegs[k]);
-    }
-    for (const k in symbols) {
-      variables[k] = Number(symbols[k]);
-    }
-    variables.sp = variables.a7;
-    return variables;
-  }
-
-  /**
-   * Evaluates an expression in the context of the current debug session.
-   *
-   * Supports:
-   * - Numeric literals (decimal and hex)
-   * - Memory dereferencing (0x1234 reads value at that address)
-   * - CPU registers, custom registers, and symbols
-   * - Complex expressions using the expr-eval parser
-   * - Custom functions for memory access and type conversion
-   *
-   * @param expression The expression string to evaluate
-   * @returns Evaluation result with value, type, and optional memory reference
-   */
-  protected async evaluate(expression: string): Promise<EvaluateResult> {
-    expression = expression.trim();
-    if (expression === "") {
-      return { type: EvaluateResultType.EMPTY };
-    }
-    let value: number | undefined;
-    let memoryReference: string | undefined;
-    let type = EvaluateResultType.UNKNOWN;
-
-    if (expression.match(/^-?[0-9]+$/i)) {
-      // Interpret decimal as numeric literal
-      value = Number(expression);
-    } else if (expression.match(/^0x[0-9a-f]+$/i)) {
-      // Interpret hex as address:
-      const address = Number(expression);
-      // Read longword value at address
-      const memData = await this.vAmiga.readMemoryBuffer(address, 4);
-      value = memData.readUInt32BE(0);
-      memoryReference = formatHex(address);
-    } else {
-      const numVars = await this.getVars();
-
-      if (expression in numVars) {
-        // Exact match of variable
-        value = numVars[expression];
-        const cpuInfo = await this.vAmiga.getCpuInfo();
-        const customRegs = await this.vAmiga.getAllCustomRegisters();
-        const symbols = this.sourceMap?.getSymbols() ?? {};
-
-        if (expression in symbols) {
-          memoryReference = formatHex(value);
-          type = EvaluateResultType.SYMBOL;
-        } else if (expression in cpuInfo) {
-          if (expression.match(/^(a[0-7]|pc|usp|msp|vbr)$/)) {
-            type = EvaluateResultType.ADDRESS_REGISTER;
-          } else {
-            type = EvaluateResultType.DATA_REGISTER;
-          }
-        } else if (expression in customRegs) {
-          type = EvaluateResultType.CUSTOM_REGISTER;
-        }
-      } else {
-        // Complex expression
-        const expr = this.parser.parse(expression);
-        value = await expr.evaluate(numVars);
-        type = EvaluateResultType.PARSED;
-      }
-    }
-    return { value, memoryReference, type };
-  }
-
   private getStackManager(): StackManager {
     if (!this.stackManager) {
       throw new Error("Not initialized");
@@ -1357,5 +1131,12 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
       throw new Error("Not initialized");
     }
     return this.disassemblyManager;
+  }
+
+  private getEvaluateManager(): EvaluateManager {
+    if (!this.evaluateManager) {
+      throw new Error("Not initialized");
+    }
+    return this.evaluateManager;
   }
 }

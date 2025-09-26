@@ -1,0 +1,692 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+import * as vscode from "vscode";
+import { existsSync, readFileSync } from "fs";
+import { join } from "path";
+
+export interface CpuInfo {
+  pc: string;
+  // data regs
+  d0: string;
+  d1: string;
+  d2: string;
+  d3: string;
+  d4: string;
+  d5: string;
+  d6: string;
+  d7: string;
+  // address regs
+  a0: string;
+  a1: string;
+  a2: string;
+  a3: string;
+  a4: string;
+  a5: string;
+  a6: string;
+  a7: string;
+  sr: string;
+  // stack pointers
+  usp: string;
+  isp: string;
+  msp: string;
+  vbr: string;
+  irc: string;
+  sfc: string;
+  dfc: string;
+  // cache
+  cacr: string;
+  caar: string;
+}
+
+export enum MemSrc {
+  NONE = 0,
+  CHIP = 1,
+  CHIP_MIRROR = 2,
+  SLOW = 3,
+  SLOW_MIRROR = 4,
+  FAST = 5,
+  CIA = 6,
+  CIA_MIRROR = 7,
+  RTC = 8,
+  CUSTOM = 9,
+  CUSTOM_MIRROR = 10,
+  AUTOCONF = 11,
+  ZOR = 12,
+  ROM = 13,
+  ROM_MIRROR = 14,
+  WOM = 15,
+  EXT = 16,
+}
+
+export interface MemoryInfo {
+  hasRom: boolean;
+  hasWom: boolean;
+  hasExt: boolean;
+  hasBootRom: boolean;
+  hasKickRom: boolean;
+  womLock: boolean;
+  romMask: string;
+  extMask: string;
+  chipMask: string;
+  cpuMemSrc: MemSrc[];
+  agnusMemSrc: MemSrc[];
+}
+
+export interface CustomRegisters {
+  [name: string]: {
+    value: string;
+  };
+}
+
+export interface RegisterSetStatus {
+  value: string;
+}
+
+export interface MemResult {
+  address: string;
+  data: string;
+}
+
+export interface WriteMemResult {
+  bytesWritten: number;
+}
+
+export interface Disassembly {
+  instructions: Array<{
+    addr: string;
+    instruction: string;
+    hex: string;
+  }>;
+}
+
+export interface Segment {
+  start: number;
+  size: number;
+}
+
+export interface StopMessage {
+  hasMessage: boolean;
+  name: "BREAKPOINT_REACHED" | "WATCHPOINT_REACHED" | "CATCHPOINT_REACHED";
+  payload: {
+    pc: number;
+    vector: number;
+  };
+}
+
+export interface AttachedMessage {
+  type: "attached";
+  segments: Segment[];
+}
+
+export interface EmulatorStateMessage {
+  type: "emulator-state";
+  state: string;
+  message: StopMessage;
+}
+
+export interface EmulatorOutputMessage {
+  type: "emulator-output";
+  data: string;
+}
+export interface ExecReadyMessage {
+  type: "exec-ready";
+}
+
+export interface RpcResponseMessage {
+  type: "rpcResponse";
+  id: string;
+  result: any;
+}
+
+export type EmulatorMessage =
+  | AttachedMessage
+  | EmulatorStateMessage
+  | EmulatorOutputMessage
+  | ExecReadyMessage
+  | RpcResponseMessage;
+
+export function isAttachedMessage(
+  message: EmulatorMessage,
+): message is AttachedMessage {
+  return message.type === "attached";
+}
+
+export function isEmulatorStateMessage(
+  message: EmulatorMessage,
+): message is EmulatorStateMessage {
+  return message.type === "emulator-state";
+}
+
+export function isEmulatorOutputMessage(
+  message: EmulatorMessage,
+): message is EmulatorOutputMessage {
+  return message.type === "emulator-output";
+}
+
+export function isExecReadyMessage(
+  message: EmulatorMessage,
+): message is ExecReadyMessage {
+  return message.type === "exec-ready";
+}
+
+export function isRpcResponseMessage(
+  message: EmulatorMessage,
+): message is RpcResponseMessage {
+  return message.type === "rpcResponse";
+}
+
+export class VAmiga {
+  public static readonly viewType = "vamiga-debugger.webview";
+  private _panel?: vscode.WebviewPanel;
+  private _pendingRpcs = new Map<
+    string,
+    {
+      resolve: (result: any) => void;
+      reject: (err: Error) => void;
+      timeout: NodeJS.Timeout;
+    }
+  >();
+
+  memoryInfo?: MemoryInfo;
+  cpuInfo?: CpuInfo;
+  customRegisters?: CustomRegisters;
+
+  constructor(private readonly _extensionUri: vscode.Uri) {}
+
+  /**
+   * Opens the VAmiga emulator webview panel
+   */
+  public open(): void {
+    if (!this._panel) {
+      return this.initPanel();
+    } else {
+      this.reveal();
+      this.sendCommand("load", {});
+    }
+  }
+
+  /**
+   * Opens a file in the VAmiga emulator webview panel
+   * @param filePath Absolute path to the file to open
+   * @throws Error if file does not exist
+   */
+  public openFile(filePath: string): void {
+    if (!existsSync(filePath)) {
+      throw new Error(`File not found: ${filePath}`);
+    }
+
+    if (!this._panel) {
+      return this.initPanel(filePath);
+    } else {
+      this.reveal();
+      const programUri = this.absolutePathToWebviewUri(filePath);
+      this.sendCommand("load", { fileUri: programUri.toString() });
+    }
+  }
+
+  /**
+   * Brings the VAmiga webview panel to the foreground
+   */
+  public reveal(): void {
+    this._panel?.reveal();
+  }
+
+  public onDidReceiveMessage(
+    callback: (data: any) => void,
+  ): vscode.Disposable | undefined {
+    return this._panel?.webview.onDidReceiveMessage(callback);
+  }
+
+  public onDidDispose(callback: () => void): vscode.Disposable | undefined {
+    return this._panel?.onDidDispose(callback);
+  }
+
+  /**
+   * Sends a one-way command to the VAmiga emulator (no response expected)
+   * @param command Command name to send
+   * @param args Optional command arguments
+   */
+  public sendCommand<A = any>(command: string, args?: A): void {
+    if (this._panel) {
+      this._panel.webview.postMessage({ command, args });
+    } else {
+      vscode.window.showErrorMessage("Emulator panel is not open");
+    }
+  }
+
+  /**
+   * Sends an RPC command to the VAmiga emulator and waits for a response
+   * @param command RPC command name
+   * @param args Optional command arguments
+   * @param timeoutMs Timeout in milliseconds (default: 5000)
+   * @returns Promise that resolves with the command response
+   * @throws Error on timeout or if webview is not open
+   */
+  public async sendRpcCommand<T = any, A = any>(
+    command: string,
+    args?: A,
+    timeoutMs = 5000,
+  ): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+      if (!this._panel) {
+        reject(new Error("Emulator panel is not open"));
+        return;
+      }
+
+      const id = Math.random().toString(36).substring(2, 15);
+      const timeout = setTimeout(() => {
+        this._pendingRpcs.delete(id);
+        reject(new Error(`RPC timeout after ${timeoutMs}ms: ${command}`));
+      }, timeoutMs);
+
+      this._pendingRpcs.set(id, { resolve, reject, timeout });
+      this._panel.webview.postMessage({
+        command,
+        args: { ...args, _rpcId: id },
+      });
+    });
+  }
+
+  public dispose(): void {
+    // Clean up any pending RPCs
+    for (const [_, pending] of this._pendingRpcs) {
+      clearTimeout(pending.timeout);
+      pending.reject(new Error("Webview disposed"));
+    }
+    this._pendingRpcs.clear();
+
+    this._panel?.dispose();
+  }
+
+  // Wasm commands:
+
+  /**
+   * Pause the emulator
+   */
+  public pause(): void {
+    this.invalidateCache();
+    this.sendCommand("pause");
+  }
+
+  /**
+   * Resume running the emulator
+   */
+  public run(): void {
+    this.invalidateCache();
+    this.sendCommand("run");
+  }
+
+  /**
+   * Sets a breakpoint at the specified memory address
+   * @param address Memory address for the breakpoint
+   * @param ignores Number of times to ignore the breakpoint before stopping
+   */
+  public setBreakpoint(address: number, ignores = 0): void {
+    this.sendCommand("setBreakpoint", { address, ignores });
+  }
+
+  /**
+   * Removes a breakpoint at the specified memory address
+   * @param address Memory address of the breakpoint to remove
+   */
+  public removeBreakpoint(address: number): void {
+    this.sendCommand("removeBreakpoint", { address });
+  }
+
+  /**
+   * Sets a watchpoint at the specified memory address
+   * @param address Memory address for the watchpoint
+   * @param ignores Number of times to ignore the watchpoint before stopping
+   */
+  public setWatchpoint(address: number, ignores = 0): void {
+    this.sendCommand("setWatchpoint", { address, ignores });
+  }
+
+  /**
+   * Removes a watchpoint at the specified memory address
+   * @param address Memory address of the watchpoint to remove
+   */
+  public removeWatchpoint(address: number): void {
+    this.sendCommand("removeWatchpoint", { address });
+  }
+
+  /**
+   * Sets a catchpoint for the specified exception vector
+   * @param vector Exception vector number (e.g. 0x8 for bus error)
+   * @param ignores Number of times to ignore the exception before stopping
+   */
+  public setCatchpoint(vector: number, ignores = 0): void {
+    this.sendCommand("setCatchpoint", { vector, ignores });
+  }
+
+  /**
+   * Removes a catchpoint for the specified exception vector
+   * @param vector Exception vector number to remove
+   */
+  public removeCatchpoint(vector: number): void {
+    this.sendCommand("removeCatchpoint", { vector });
+  }
+
+  /**
+   * Stop on next executed instruction
+   */
+  public stepInto(): void {
+    this.invalidateCache();
+    this.sendCommand("stepInto");
+  }
+
+  /**
+   * Gets the current CPU state including registers and flags
+   * @returns Promise resolving to CPU information
+   */
+  public async getCpuInfo(): Promise<CpuInfo> {
+    if (!this.cpuInfo) {
+      this.cpuInfo = await this.sendRpcCommand("getCpuInfo");
+    }
+    return this.cpuInfo;
+  }
+
+  /**
+   * Gets the memory information from emulator
+   * @returns Promise resolving to memory information
+   */
+  public async getMemoryInfo(): Promise<MemoryInfo> {
+    return this.sendRpcCommand("getMemoryInfo");
+  }
+
+  /**
+   * Gets all custom chip registers (e.g. DMACON, INTENA, etc.)
+   * @returns Promise resolving to custom register values
+   */
+  public async getAllCustomRegisters(): Promise<CustomRegisters> {
+    if (!this.customRegisters) {
+      this.customRegisters = await this.sendRpcCommand("getAllCustomRegisters");
+    }
+    return this.customRegisters;
+  }
+
+  /**
+   * Sets a CPU register to the specified value
+   * @param name Register name (e.g. 'pc', 'd0', 'a7')
+   * @param value New register value
+   * @returns Promise resolving to set status
+   */
+  public async setRegister(
+    name: string,
+    value: number,
+  ): Promise<RegisterSetStatus> {
+    this.cpuInfo = undefined; // Clear cache
+    return this.sendRpcCommand("setRegister", { name, value });
+  }
+
+  /**
+   * Sets a custom chip register to the specified value
+   * @param name Register name (e.g. 'DMACON', 'INTENA')
+   * @param value New register value
+   * @returns Promise resolving to set status
+   */
+  public async setCustomRegister(
+    name: string,
+    value: number,
+  ): Promise<RegisterSetStatus> {
+    this.customRegisters = undefined; // Clear cache
+    return this.sendRpcCommand("setCustomRegister", { name, value });
+  }
+
+  /**
+   * Reads memory from the specified address
+   * @param address Starting memory address
+   * @param count Number of bytes to read
+   * @returns Promise resolving to memory data (base64 encoded)
+   */
+  public async readMemory(address: number, count: number): Promise<MemResult> {
+    return this.sendRpcCommand("readMemory", { address, count });
+  }
+
+  /**
+   * Reads memory from the specified address to a Buffer
+   * @param address Starting memory address
+   * @param count Number of bytes to read
+   * @returns Promise resolving to memory data (Buffer)
+   */
+  public async readMemoryBuffer(
+    address: number,
+    count: number,
+  ): Promise<Buffer> {
+    return Buffer.from((await this.readMemory(address, count)).data, "base64");
+  }
+
+  /**
+   * Writes memory at the specified address
+   * @param address Starting memory address
+   * @param data Base64 encoded data to write
+   * @returns Promise resolving to write result
+   */
+  public async writeMemory(
+    address: number,
+    data: string,
+  ): Promise<WriteMemResult> {
+    return this.sendRpcCommand("writeMemory", { address, data });
+  }
+
+  /**
+   * Reads longword at specified address
+   * @param address Starting memory address
+   * @returns Promise resolving to unsigned read result
+   */
+  public async peek32(address: number): Promise<number> {
+    const res = await this.sendRpcCommand("peek32", { address });
+    // Use unsigned shift to preserve sign
+    return res >>> 0;
+  }
+
+  /**
+   * Reads word at specified address
+   * @param address Starting memory address
+   * @returns Promise resolving to unsigned read result
+   */
+  public async peek16(address: number): Promise<number> {
+    return this.sendRpcCommand("peek16", { address });
+  }
+
+  /**
+   * Reads byte at specified address
+   * @param address Starting memory address
+   * @returns Promise resolving to unsigned read result
+   */
+  public async peek8(address: number): Promise<number> {
+    return this.sendRpcCommand("peek8", { address });
+  }
+
+  /**
+   * Writes longword at the specified address
+   * @param address Starting memory address
+   * @param value numeric value to write
+   */
+  public async poke32(address: number, value: number): Promise<void> {
+    if (value < 0) {
+      value += 0x1_0000_0000;
+    }
+    if (value < 0 || value >= 0x1_0000_0000) {
+      throw new Error("value out of 32 bit range");
+    }
+    return await this.sendRpcCommand("poke32", { address, value });
+  }
+
+  /**
+   * Writes word at the specified address
+   * @param address Starting memory address
+   * @param value numeric value to write
+   */
+  public async poke16(address: number, value: number): Promise<void> {
+    if (value < 0) {
+      value += 0x1_0000;
+    }
+    if (value < 0 || value >= 0x1_0000) {
+      throw new Error("value out of 16 bit range");
+    }
+    return this.sendRpcCommand("poke16", { address, value });
+  }
+
+  /**
+   * Writes byte at the specified address
+   * @param address Starting memory address
+   * @param value numeric value to write
+   */
+  public async poke8(address: number, value: number): Promise<void> {
+    if (value < 0) {
+      value += 0x100;
+    }
+    if (value < 0 || value >= 0x100) {
+      throw new Error("value out of 8 bit range");
+    }
+    return this.sendRpcCommand("poke8", { address, value });
+  }
+
+  /**
+   * Jump CPU to specified address
+   * @param address Starting memory address
+   */
+  public async jump(address: number): Promise<void> {
+    this.invalidateCache();
+    return this.sendRpcCommand("jump", { address });
+  }
+
+  /**
+   * Disassembles instructions starting at the specified address
+   * @param address Starting memory address
+   * @param count Number of instructions to disassemble
+   * @returns Promise resolving to disassembly result
+   */
+  public async disassemble(
+    address: number,
+    count: number,
+  ): Promise<Disassembly> {
+    return this.sendRpcCommand("disassemble", { address, count });
+  }
+
+  public isValidAddress(address: number): boolean {
+    if (this.memoryInfo) {
+      // Check mem type of bank
+      const bank = address >>> 16;
+      const type = this.memoryInfo.cpuMemSrc[bank];
+      return type !== MemSrc.NONE;
+    } else {
+      // Any 24 bit address
+      return address >= 0 && address < 0x1000_0000;
+    }
+  }
+
+  // Helper methods:
+
+  private initPanel(filePath?: string) {
+    const column = this.getConfiguredViewColumn();
+
+    // Create new panel
+    this._panel = vscode.window.createWebviewPanel(
+      VAmiga.viewType,
+      "VAmiga",
+      column,
+      {
+        enableScripts: true,
+        retainContextWhenHidden: true, // Keep webview alive when hidden
+        localResourceRoots: [
+          this._extensionUri,
+          ...(vscode.workspace.workspaceFolders?.map((folder) => folder.uri) ||
+            []),
+        ],
+      },
+    );
+
+    this._panel.webview.html = this._getHtmlForWebview(filePath);
+
+    // Handle webview lifecycle
+    this._panel.onDidDispose(() => {
+      this._panel = undefined;
+    });
+
+    // Set up RPC response handler
+    this._panel.webview.onDidReceiveMessage((message) => {
+      if (message.type === "rpcResponse") {
+        const pending = this._pendingRpcs.get(message.id);
+        if (pending) {
+          clearTimeout(pending.timeout);
+          this._pendingRpcs.delete(message.id);
+          if (message.result?.error) {
+            pending.reject(new Error(message.result.error));
+          } else {
+            pending.resolve(message.result);
+          }
+        }
+      } else if (message.type === 'exec-ready') {
+        // Only need to fetch memory info once on load
+        this.getMemoryInfo().then((memoryInfo) => {
+          this.memoryInfo = memoryInfo;
+        })
+      }
+    });
+  }
+
+  private getConfiguredViewColumn(): vscode.ViewColumn {
+    const config = vscode.workspace.getConfiguration("vamiga-debugger");
+    const setting = config.get<string>("defaultViewColumn", "beside");
+
+    switch (setting) {
+      case "one":
+        return vscode.ViewColumn.One;
+      case "two":
+        return vscode.ViewColumn.Two;
+      case "three":
+        return vscode.ViewColumn.Three;
+      case "beside":
+        return vscode.ViewColumn.Beside;
+      case "active":
+        return (
+          vscode.window.activeTextEditor?.viewColumn || vscode.ViewColumn.One
+        );
+      default:
+        return vscode.ViewColumn.Beside;
+    }
+  }
+
+  private absolutePathToWebviewUri(absolutePath: string): vscode.Uri {
+    if (!this._panel) {
+      throw new Error("Panel not initialized");
+    }
+    const fileUri = vscode.Uri.file(absolutePath);
+    return this._panel.webview.asWebviewUri(fileUri);
+  }
+
+  private _getHtmlForWebview(filePath?: string): string {
+    if (!this._panel) {
+      throw new Error("Panel not initialized");
+    }
+
+    const vamigaUri = this._panel.webview.asWebviewUri(
+      vscode.Uri.joinPath(this._extensionUri, "vamiga"),
+    );
+
+    // Read the HTML template from the vamiga directory
+    const templatePath = join(
+      this._extensionUri.fsPath,
+      "vamiga",
+      "vAmiga.html",
+    );
+    let htmlContent = readFileSync(templatePath, "utf8");
+
+    const programUri = filePath ? this.absolutePathToWebviewUri(filePath) : "";
+
+    // Replace template variables
+    htmlContent = htmlContent.replace(/\$\{vamigaUri\}/g, vamigaUri.toString());
+    htmlContent = htmlContent.replace(
+      /\$\{programUri\}/g,
+      programUri?.toString(),
+    );
+
+    return htmlContent;
+  }
+
+  private invalidateCache() {
+    this.cpuInfo = undefined;
+    this.customRegisters = undefined;
+  }
+}

@@ -1,7 +1,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import * as assert from 'assert';
 import * as sinon from 'sinon';
-import { VamigaDebugAdapter, EvaluateResultType } from '../vAmigaDebugAdapter';
+import { VamigaDebugAdapter } from '../vAmigaDebugAdapter';
+import { EvaluateManager, EvaluateResultType } from '../evaluateManager';
 import { VAmiga, CpuInfo } from '../vAmiga';
 import { DebugProtocol } from '@vscode/debugprotocol';
 import * as registerParsers from '../amigaRegisterParsers';
@@ -12,8 +13,8 @@ import { BreakpointManager } from '../breakpointManager';
  * Test subclass that exposes protected methods for testing
  */
 class TestableVamigaDebugAdapter extends VamigaDebugAdapter {
-  public async testEvaluate(expression: string) {
-    return this.evaluate(expression);
+  public getTestEvaluateManager(): EvaluateManager | undefined {
+    return (this as any).evaluateManager;
   }
 }
 
@@ -45,12 +46,15 @@ suite('VamigaDebugAdapter - Simplified Tests', () => {
 
   suite('Expression Evaluation Behavior', () => {
     test('should evaluate simple numeric expressions', async () => {
-      // Setup: Mock CPU state
+      // Setup: Mock CPU state and create EvaluateManager
       setupMockCpuState();
-      setupMockSourceMap();
+      const mockSourceMap = setupMockSourceMap();
+      const mockVariablesManager = setupMockVariablesManager();
+      const evaluateManager = new EvaluateManager(mockVAmiga, mockSourceMap, mockVariablesManager);
+      (adapter as any).evaluateManager = evaluateManager;
 
       // Test: Evaluate simple expression
-      const result = await adapter.testEvaluate('42');
+      const result = await evaluateManager.evaluate('42');
 
       // Verify: Returns expected value
       assert.strictEqual(result.value, 42);
@@ -59,10 +63,13 @@ suite('VamigaDebugAdapter - Simplified Tests', () => {
     test('should evaluate register expressions', async () => {
       // Setup: Mock CPU with d0 = 0x100
       setupMockCpuState({ d0: '0x100' });
-      setupMockSourceMap();
+      const mockSourceMap = setupMockSourceMap();
+      const mockVariablesManager = setupMockVariablesManager({ d0: 0x100 });
+      const evaluateManager = new EvaluateManager(mockVAmiga, mockSourceMap, mockVariablesManager);
+      (adapter as any).evaluateManager = evaluateManager;
 
       // Test: Evaluate register
-      const result = await adapter.testEvaluate('d0');
+      const result = await evaluateManager.evaluate('d0');
 
       // Verify: Returns register value and correct type
       assert.strictEqual(result.value, 0x100);
@@ -72,10 +79,13 @@ suite('VamigaDebugAdapter - Simplified Tests', () => {
     test('should evaluate complex expressions with registers', async () => {
       // Setup: Mock CPU state
       setupMockCpuState({ d0: '0x10', d1: '0x20' });
-      setupMockSourceMap();
+      const mockSourceMap = setupMockSourceMap();
+      const mockVariablesManager = setupMockVariablesManager({ d0: 0x10, d1: 0x20 });
+      const evaluateManager = new EvaluateManager(mockVAmiga, mockSourceMap, mockVariablesManager);
+      (adapter as any).evaluateManager = evaluateManager;
 
       // Test: Evaluate arithmetic expression
-      const result = await adapter.testEvaluate('d0 + d1 * 2');
+      const result = await evaluateManager.evaluate('d0 + d1 * 2');
 
       // Verify: Correct calculation
       assert.strictEqual(result.value, 0x10 + 0x20 * 2);
@@ -88,10 +98,13 @@ suite('VamigaDebugAdapter - Simplified Tests', () => {
       mockBuffer.writeUInt32BE(0x12345678, 0);
       mockVAmiga.readMemoryBuffer.resolves(mockBuffer);
       setupMockCpuState();
-      setupMockSourceMap();
+      const mockSourceMap = setupMockSourceMap();
+      const mockVariablesManager = setupMockVariablesManager();
+      const evaluateManager = new EvaluateManager(mockVAmiga, mockSourceMap, mockVariablesManager);
+      (adapter as any).evaluateManager = evaluateManager;
 
       // Test: Evaluate hex address (should read memory)
-      const result = await adapter.testEvaluate('0x1000');
+      const result = await evaluateManager.evaluate('0x1000');
 
       // Verify: Memory was read and result formatted correctly
       assert.ok(mockVAmiga.readMemoryBuffer.calledWith(0x1000, 4));
@@ -102,10 +115,13 @@ suite('VamigaDebugAdapter - Simplified Tests', () => {
     test('should evaluate symbols when source map available', async () => {
       // Setup: Mock CPU state and source map with symbols
       setupMockCpuState();
-      setupMockSourceMap({ main: 0x1000, buffer: 0x2000 });
+      const mockSourceMap = setupMockSourceMap({ main: 0x1000, buffer: 0x2000 });
+      const mockVariablesManager = setupMockVariablesManager({ main: 0x1000 });
+      const evaluateManager = new EvaluateManager(mockVAmiga, mockSourceMap, mockVariablesManager);
+      (adapter as any).evaluateManager = evaluateManager;
 
       // Test: Evaluate symbol
-      const result = await adapter.testEvaluate('main');
+      const result = await evaluateManager.evaluate('main');
 
       // Verify: Symbol resolved correctly
       assert.strictEqual(result.value, 0x1000);
@@ -119,9 +135,12 @@ suite('VamigaDebugAdapter - Simplified Tests', () => {
 
   suite('Debug Adapter Protocol Integration', () => {
     test('should handle evaluate request through DAP', async () => {
-      // Setup: Mock CPU state for evaluation
+      // Setup: Mock CPU state and create EvaluateManager
       setupMockCpuState({ d0: '0x42' });
-      setupMockSourceMap();
+      const mockSourceMap = setupMockSourceMap();
+      const mockVariablesManager = setupMockVariablesManager({ d0: 0x42 });
+      const evaluateManager = new EvaluateManager(mockVAmiga, mockSourceMap, mockVariablesManager);
+      (adapter as any).evaluateManager = evaluateManager;
 
       const response = createMockResponse<DebugProtocol.EvaluateResponse>('evaluate');
       const args: DebugProtocol.EvaluateArguments = {
@@ -137,9 +156,12 @@ suite('VamigaDebugAdapter - Simplified Tests', () => {
     });
 
     test('should handle invalid expressions gracefully', async () => {
-      // Setup: Mock CPU state
+      // Setup: Mock CPU state and create EvaluateManager
       setupMockCpuState();
-      setupMockSourceMap();
+      const mockSourceMap = setupMockSourceMap();
+      const mockVariablesManager = setupMockVariablesManager();
+      const evaluateManager = new EvaluateManager(mockVAmiga, mockSourceMap, mockVariablesManager);
+      (adapter as any).evaluateManager = evaluateManager;
 
       const response = createMockResponse<DebugProtocol.EvaluateResponse>('evaluate');
       const args: DebugProtocol.EvaluateArguments = {
@@ -269,12 +291,19 @@ suite('VamigaDebugAdapter - Simplified Tests', () => {
     });
   }
 
-  function setupMockSourceMap(symbols: Record<string, number> = {}): void {
+  function setupMockSourceMap(symbols: Record<string, number> = {}) {
     const mockSourceMap = createMockSourceMap({
       getSymbols: sinon.stub().returns(symbols),
       findSymbolOffset: sinon.stub().returns(undefined)
     });
     (adapter as any).sourceMap = mockSourceMap;
+    return mockSourceMap;
+  }
+
+  function setupMockVariablesManager(flatVariables: Record<string, number> = {}) {
+    const mockVariablesManager = sinon.createStubInstance(VariablesManager);
+    mockVariablesManager.getFlatVariables.resolves(flatVariables);
+    return mockVariablesManager;
   }
 
   function createMockSourceMap(overrides: any = {}) {
