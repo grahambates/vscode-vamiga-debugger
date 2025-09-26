@@ -8,10 +8,10 @@
 import * as assert from 'assert';
 import * as registerParsers from '../amigaRegisterParsers';
 
-suite('Amiga Register Parsers - Comprehensive Tests', () => {
+describe('Amiga Register Parsers - Comprehensive Tests', () => {
 
-  suite('DMACON Register Edge Cases', () => {
-    test('should handle all DMA control bits set', () => {
+  describe('DMACON Register Edge Cases', () => {
+    it('should handle all DMA control bits set', () => {
       // All DMA channels enabled, SET=1
       const bits = registerParsers.parseDmaconRegister(0x83FF);
 
@@ -38,7 +38,7 @@ suite('Amiga Register Parsers - Comprehensive Tests', () => {
       assert.strictEqual(aud0Bit?.value, true);
     });
 
-    test('should handle no DMA channels enabled', () => {
+    it('should handle no DMA channels enabled', () => {
       // No DMA channels, CLEAR=0 (clear mode)
       const bits = registerParsers.parseDmaconRegister(0x0000);
 
@@ -47,7 +47,7 @@ suite('Amiga Register Parsers - Comprehensive Tests', () => {
       assert.strictEqual(enableAllBit?.value, false);
     });
 
-    test('should handle DMACONR read register', () => {
+    it('should handle DMACONR read register', () => {
       // Test read-only version
       const bits = registerParsers.parseRegister('DMACONR', 0x0200);
       assert.ok(bits.length > 0);
@@ -57,8 +57,8 @@ suite('Amiga Register Parsers - Comprehensive Tests', () => {
     });
   });
 
-  suite('INTENA/INTREQ Register Edge Cases', () => {
-    test('should handle all interrupt bits set', () => {
+  describe('INTENA/INTREQ Register Edge Cases', () => {
+    it('should handle all interrupt bits set', () => {
       const bits = registerParsers.parseIntenaRegister(0xFFFF);
 
       const masterEnableBit = bits.find(b => b.name === '14: MASTER_ENABLE');
@@ -80,7 +80,7 @@ suite('Amiga Register Parsers - Comprehensive Tests', () => {
       assert.strictEqual(aud0Bit?.value, true);
     });
 
-    test('should differentiate INTREQ vs INTENA', () => {
+    it('should differentiate INTREQ vs INTENA', () => {
       const intenaList = registerParsers.parseIntenaRegister(0x4000);
       const intreqBits = registerParsers.parseIntreqRegister(0x4000);
 
@@ -94,8 +94,8 @@ suite('Amiga Register Parsers - Comprehensive Tests', () => {
     });
   });
 
-  suite('BPLCON Complex Scenarios', () => {
-    test('should handle BPLCON0 maximum bitplanes', () => {
+  describe('BPLCON Complex Scenarios', () => {
+    it('should handle BPLCON0 maximum bitplanes', () => {
       // 7 bitplanes (maximum normal), HIRES, HOMOD, DBLPF
       const bits = registerParsers.parseBplcon0Register(0xF004); // BPU=7 from bits 14-12
 
@@ -106,7 +106,7 @@ suite('Amiga Register Parsers - Comprehensive Tests', () => {
       assert.strictEqual(hiresBit?.value, true);
     });
 
-    test('should handle BPLCON1 maximum scroll values', () => {
+    it('should handle BPLCON1 maximum scroll values', () => {
       // Maximum scroll values for AGA (proper bit extraction)
       const bits = registerParsers.parseBplcon1Register(0xFFFF); // All bits set for maximum
 
@@ -117,7 +117,7 @@ suite('Amiga Register Parsers - Comprehensive Tests', () => {
       assert.strictEqual(pf1hValue?.value, 63, 'PF1H maximum: (0xF | 0x30) = 63');
     });
 
-    test('should handle BPLCON2 priority combinations', () => {
+    it('should handle BPLCON2 priority combinations', () => {
       // All priority bits and PF2PRI set
       const bits = registerParsers.parseBplcon2Register(0x0047);
 
@@ -130,7 +130,7 @@ suite('Amiga Register Parsers - Comprehensive Tests', () => {
       assert.strictEqual(pf1pValue?.value, 7, 'Maximum priority value');
     });
 
-    test('should handle BPLCON3 AGA features', () => {
+    it('should handle BPLCON3 AGA features', () => {
       // Full AGA BPLCON3 with all features
       const bits = registerParsers.parseBplcon3Register(0xE0FF);
 
@@ -142,8 +142,8 @@ suite('Amiga Register Parsers - Comprehensive Tests', () => {
     });
   });
 
-  suite('Blitter Register Edge Cases', () => {
-    test('should handle BLTCON0 maximum shift and all channels', () => {
+  describe('Blitter Register Edge Cases', () => {
+    it('should handle BLTCON0 maximum shift and all channels', () => {
       // Maximum shift (15), all channels enabled, complex LF
       const bits = registerParsers.parseBltcon0Register(0xFF0A);
 
@@ -154,7 +154,7 @@ suite('Amiga Register Parsers - Comprehensive Tests', () => {
       assert.strictEqual(mintermValue?.value, '0x0a', 'Logic function value');
     });
 
-    test('should handle BLTCON1 line mode with all flags', () => {
+    it('should handle BLTCON1 line mode with all flags', () => {
       // Line mode with all line flags set
       const bits = registerParsers.parseBltcon1Register(0xF07D);
 
@@ -173,7 +173,7 @@ suite('Amiga Register Parsers - Comprehensive Tests', () => {
       assert.strictEqual(aulBit?.value, true);
     });
 
-    test('should handle BLTSIZE maximum dimensions', () => {
+    it('should handle BLTSIZE maximum dimensions', () => {
       // Maximum blitter size: 1024x1024
       const bits = registerParsers.parseBltSizeRegister(0x0000); // Special case: 0 = 1024
 
@@ -185,8 +185,8 @@ suite('Amiga Register Parsers - Comprehensive Tests', () => {
     });
   });
 
-  suite('Display Position Registers', () => {
-    test('should handle VPOSR with different chip IDs', () => {
+  describe('Display Position Registers', () => {
+    it('should handle VPOSR with different chip IDs', () => {
       // Test different Agnus chip versions
       const ecs_vposr = registerParsers.parseVposrRegister(0x2001); // ECS Agnus
       const aga_vposr = registerParsers.parseVposrRegister(0x3001); // AGA Alice
@@ -198,7 +198,7 @@ suite('Amiga Register Parsers - Comprehensive Tests', () => {
       assert.strictEqual(aga_chipId?.value, '0x1800', 'AGA chip ID from (0x3001 >> 1) & 0x7FFF');
     });
 
-    test('should handle VHPOSR boundary values', () => {
+    it('should handle VHPOSR boundary values', () => {
       // Maximum VPOS (511) and HPOS (255)
       const bits = registerParsers.parseVhposrRegister(0xFFFF);
 
@@ -210,8 +210,8 @@ suite('Amiga Register Parsers - Comprehensive Tests', () => {
     });
   });
 
-  suite('Sprite Register Complex Cases', () => {
-    test('should handle all sprite control registers', () => {
+  describe('Sprite Register Complex Cases', () => {
+    it('should handle all sprite control registers', () => {
       // Test all 8 sprite control registers
       for (let i = 0; i < 8; i++) {
         const regName = `SPR${i}CTL`;
@@ -225,7 +225,7 @@ suite('Amiga Register Parsers - Comprehensive Tests', () => {
       }
     });
 
-    test('should handle sprite position with high resolution', () => {
+    it('should handle sprite position with high resolution', () => {
       // High horizontal position value
       const bits = registerParsers.parseSpritePosRegister(0x80FF);
 
@@ -237,8 +237,8 @@ suite('Amiga Register Parsers - Comprehensive Tests', () => {
     });
   });
 
-  suite('ADKCON Audio Control', () => {
-    test('should handle all precompensation modes', () => {
+  describe('ADKCON Audio Control', () => {
+    it('should handle all precompensation modes', () => {
       const precompModes = [
         { value: 0x0000, precomp: 0, desc: 'None' },
         { value: 0x2000, precomp: 1, desc: '140ns' },
@@ -256,7 +256,7 @@ suite('Amiga Register Parsers - Comprehensive Tests', () => {
       });
     });
 
-    test('should handle all audio modulation combinations', () => {
+    it('should handle all audio modulation combinations', () => {
       // All audio modulation flags set
       const bits = registerParsers.parseAdkconRegister(0x80FF);
 
@@ -280,8 +280,8 @@ suite('Amiga Register Parsers - Comprehensive Tests', () => {
     });
   });
 
-  suite('Register Detection and Routing', () => {
-    test('should correctly identify all supported registers', () => {
+  describe('Register Detection and Routing', () => {
+    it('should correctly identify all supported registers', () => {
       const supportedRegs = [
         'DMACON', 'DMACONR', 'INTENA', 'INTENAR', 'INTREQ', 'INTREQR',
         'BPLCON0', 'BPLCON1', 'BPLCON2', 'BPLCON3',
@@ -300,7 +300,7 @@ suite('Amiga Register Parsers - Comprehensive Tests', () => {
       });
     });
 
-    test('should reject unsupported registers', () => {
+    it('should reject unsupported registers', () => {
       const unsupportedRegs = ['INVALID', 'NOTAREG', 'FAKECON', ''];
 
       unsupportedRegs.forEach(regName => {
@@ -311,7 +311,7 @@ suite('Amiga Register Parsers - Comprehensive Tests', () => {
       });
     });
 
-    test('should handle case insensitive register names', () => {
+    it('should handle case insensitive register names', () => {
       const testCases = [
         ['dmacon', 'DMACON'],
         ['intena', 'INTENA'],
@@ -331,8 +331,8 @@ suite('Amiga Register Parsers - Comprehensive Tests', () => {
     });
   });
 
-  suite('Bit Field Value Types', () => {
-    test('should return correct value types', () => {
+  describe('Bit Field Value Types', () => {
+    it('should return correct value types', () => {
       const dmaconBits = registerParsers.parseDmaconRegister(0x8300);
 
       // Boolean values
@@ -350,7 +350,7 @@ suite('Amiga Register Parsers - Comprehensive Tests', () => {
       assert.strictEqual(typeof modeValue?.value, 'string');
     });
 
-    test('should have valid bit field structure', () => {
+    it('should have valid bit field structure', () => {
       const intreqBits = registerParsers.parseIntreqRegister(0x4000);
 
       intreqBits.forEach(bit => {

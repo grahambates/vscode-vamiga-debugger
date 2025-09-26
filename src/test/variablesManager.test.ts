@@ -9,24 +9,24 @@ import { MemoryType } from '../amigaHunkParser';
  * Comprehensive test suite for VariablesManager
  * Tests all variable types: CPU registers, custom registers, vectors, symbols, segments
  */
-suite('VariablesManager - Comprehensive Tests', () => {
+describe('VariablesManager - Comprehensive Tests', () => {
   let variablesManager: VariablesManager;
   let mockVAmiga: sinon.SinonStubbedInstance<VAmiga>;
   let mockSourceMap: sinon.SinonStubbedInstance<SourceMap>;
 
-  setup(() => {
+  beforeEach(() => {
     mockVAmiga = sinon.createStubInstance(VAmiga);
     mockSourceMap = sinon.createStubInstance(SourceMap);
     variablesManager = new VariablesManager(mockVAmiga, mockSourceMap);
   });
 
-  teardown(() => {
+  afterEach(() => {
     sinon.restore();
   });
 
-  suite('Scopes Management', () => {
+  describe('Scopes Management', () => {
 
-    test('should return all scopes', () => {
+    it('should return all scopes', () => {
       const scopes = variablesManager.getScopes();
 
       assert.strictEqual(scopes.length, 5);
@@ -37,7 +37,7 @@ suite('VariablesManager - Comprehensive Tests', () => {
       assert.strictEqual(scopes[4].name, 'Segments');
     });
 
-    test('should create unique variable handles for each scope', () => {
+    it('should create unique variable handles for each scope', () => {
       const scopes = variablesManager.getScopes();
 
       const references = scopes.map(s => s.variablesReference);
@@ -47,8 +47,8 @@ suite('VariablesManager - Comprehensive Tests', () => {
     });
   });
 
-  suite('CPU Register Variables', () => {
-    test('should return all CPU register variables', async () => {
+  describe('CPU Register Variables', () => {
+    it('should return all CPU register variables', async () => {
       const mockCpuInfo: CpuInfo = {
         pc: '0x1000',
         d0: '0x42', d1: '0x84', d2: '0x100', d3: '0x200',
@@ -84,7 +84,7 @@ suite('VariablesManager - Comprehensive Tests', () => {
       assert.ok(srVar.variablesReference > 0);
     });
 
-    test('should format address registers with symbol information', async () => {
+    it('should format address registers with symbol information', async () => {
       const mockCpuInfo: CpuInfo = {
         pc: '0x1000', a0: '0x2000',
         d0: '0x0', d1: '0x0', d2: '0x0', d3: '0x0', d4: '0x0', d5: '0x0', d6: '0x0', d7: '0x0',
@@ -103,7 +103,7 @@ suite('VariablesManager - Comprehensive Tests', () => {
       assert.strictEqual(a0Var.value, '0x00002000 = main+16');
     });
 
-    test('should handle invalid addresses without memory reference', async () => {
+    it('should handle invalid addresses without memory reference', async () => {
       const mockCpuInfo: CpuInfo = {
         pc: '0x1000', a0: '0xFFFFFFFF',
         d0: '0x0', d1: '0x0', d2: '0x0', d3: '0x0', d4: '0x0', d5: '0x0', d6: '0x0', d7: '0x0',
@@ -122,8 +122,8 @@ suite('VariablesManager - Comprehensive Tests', () => {
     });
   });
 
-  suite('Data Register Detail Variables', () => {
-    test('should return cast variations of data register value', async () => {
+  describe('Data Register Detail Variables', () => {
+    it('should return cast variations of data register value', async () => {
       const mockCpuInfo: CpuInfo = {
         d0: '0x80000042', // Negative 32-bit, positive others
         pc: '0x0', d1: '0x0', d2: '0x0', d3: '0x0', d4: '0x0', d5: '0x0', d6: '0x0', d7: '0x0',
@@ -156,8 +156,8 @@ suite('VariablesManager - Comprehensive Tests', () => {
     });
   });
 
-  suite('Status Register Flag Variables', () => {
-    test('should extract all CPU flags from status register', async () => {
+  describe('Status Register Flag Variables', () => {
+    it('should extract all CPU flags from status register', async () => {
       const mockCpuInfo: CpuInfo = {
         sr: '0xF71F', // All flags set + interrupt mask 7
         pc: '0x0', d0: '0x0', d1: '0x0', d2: '0x0', d3: '0x0', d4: '0x0', d5: '0x0', d6: '0x0', d7: '0x0',
@@ -198,7 +198,7 @@ suite('VariablesManager - Comprehensive Tests', () => {
       });
     });
 
-    test('should handle status register with no flags set', async () => {
+    it('should handle status register with no flags set', async () => {
       const mockCpuInfo: CpuInfo = {
         sr: '0x0000',
         pc: '0x0', d0: '0x0', d1: '0x0', d2: '0x0', d3: '0x0', d4: '0x0', d5: '0x0', d6: '0x0', d7: '0x0',
@@ -220,8 +220,8 @@ suite('VariablesManager - Comprehensive Tests', () => {
     });
   });
 
-  suite('Address Register Detail Variables', () => {
-    test('should return cast variations and symbol offset for address register', async () => {
+  describe('Address Register Detail Variables', () => {
+    it('should return cast variations and symbol offset for address register', async () => {
       const mockCpuInfo: CpuInfo = {
         a0: '0x00002010',
         pc: '0x0', d0: '0x0', d1: '0x0', d2: '0x0', d3: '0x0', d4: '0x0', d5: '0x0', d6: '0x0', d7: '0x0',
@@ -246,7 +246,7 @@ suite('VariablesManager - Comprehensive Tests', () => {
       assert.strictEqual(u32Var.value, '8208');
     });
 
-    test('should return only cast variations when no symbol found', async () => {
+    it('should return only cast variations when no symbol found', async () => {
       const mockCpuInfo: CpuInfo = {
         a0: '0x00002010',
         pc: '0x0', d0: '0x0', d1: '0x0', d2: '0x0', d3: '0x0', d4: '0x0', d5: '0x0', d6: '0x0', d7: '0x0',
@@ -265,8 +265,8 @@ suite('VariablesManager - Comprehensive Tests', () => {
     });
   });
 
-  suite('Custom Register Variables', () => {
-    test('should return all custom registers with bit breakdown support', async () => {
+  describe('Custom Register Variables', () => {
+    it('should return all custom registers with bit breakdown support', async () => {
       const mockCustomRegs = {
         DMACON: { value: '0x8200' },
         INTENA: { value: '0x4000' },
@@ -294,7 +294,7 @@ suite('VariablesManager - Comprehensive Tests', () => {
       assert.strictEqual(unknownVar.variablesReference, 0);
     });
 
-    test('should handle longword values as memory addresses', async () => {
+    it('should handle longword values as memory addresses', async () => {
       const mockCustomRegs = {
         BPL1PTH: { value: '0x00020000' }, // Longword value
         DMACON: { value: '0x8200' }        // Word value
@@ -314,8 +314,8 @@ suite('VariablesManager - Comprehensive Tests', () => {
     });
   });
 
-  suite('Custom Register Detail Variables', () => {
-    test('should return bit breakdown for supported registers', async () => {
+  describe('Custom Register Detail Variables', () => {
+    it('should return bit breakdown for supported registers', async () => {
       const mockCustomRegs = {
         DMACON: { value: '0x8200' }
       };
@@ -340,8 +340,8 @@ suite('VariablesManager - Comprehensive Tests', () => {
     });
   });
 
-  suite('Vector Variables', () => {
-    test('should return interrupt vectors with addresses', async () => {
+  describe('Vector Variables', () => {
+    it('should return interrupt vectors with addresses', async () => {
       const mockCpuInfo: CpuInfo = {
         vbr: '0x00000000',
         pc: '0x0', d0: '0x0', d1: '0x0', d2: '0x0', d3: '0x0', d4: '0x0', d5: '0x0', d6: '0x0', d7: '0x0',
@@ -377,8 +377,8 @@ suite('VariablesManager - Comprehensive Tests', () => {
     });
   });
 
-  suite('Symbol Variables', () => {
-    test('should return symbols with pointer dereferencing for known sizes', async () => {
+  describe('Symbol Variables', () => {
+    it('should return symbols with pointer dereferencing for known sizes', async () => {
       const mockSymbols = {
         'main': 0x1000,
         'data_byte': 0x2000,
@@ -439,8 +439,8 @@ suite('VariablesManager - Comprehensive Tests', () => {
     });
   });
 
-  suite('Symbol Pointer Detail Variables', () => {
-    test('should return cast variations for different pointer sizes', async () => {
+  describe('Symbol Pointer Detail Variables', () => {
+    it('should return cast variations for different pointer sizes', async () => {
       // Test 32-bit pointer
       let variables = variablesManager.symbolPointerVariables('symbol_ptr_data_long:4:0x80000042');
       assert.strictEqual(variables.length, 2);
@@ -473,8 +473,8 @@ suite('VariablesManager - Comprehensive Tests', () => {
     });
   });
 
-  suite('Segment Variables', () => {
-    test('should return segment information', () => {
+  describe('Segment Variables', () => {
+    it('should return segment information', () => {
       const mockSegments = [
         { name: 'CODE', address: 0x1000, size: 0x800, memType: MemoryType.CHIP },
         { name: 'DATA', address: 0x8000, size: 0x400, memType: MemoryType.FAST },
@@ -503,8 +503,8 @@ suite('VariablesManager - Comprehensive Tests', () => {
     });
   });
 
-  suite('Variable Setting', () => {
-    test('should set CPU register values', async () => {
+  describe('Variable Setting', () => {
+    it('should set CPU register values', async () => {
       // Setup: Get a valid registers reference from scopes
       const scopes = variablesManager.getScopes();
       const registersScope = scopes.find(s => s.name === 'CPU Registers');
@@ -518,7 +518,7 @@ suite('VariablesManager - Comprehensive Tests', () => {
       assert.ok(mockVAmiga.setRegister.calledWith('d0', 0x1234));
     });
 
-    test('should set custom register values', async () => {
+    it('should set custom register values', async () => {
       // Setup: Get a valid custom reference from scopes
       const scopes = variablesManager.getScopes();
       const customScope = scopes.find(s => s.name === 'Custom Registers');
@@ -532,7 +532,7 @@ suite('VariablesManager - Comprehensive Tests', () => {
       assert.ok(mockVAmiga.setCustomRegister.calledWith('DMACON', 0x8200));
     });
 
-    test('should throw error for non-writable variables', async () => {
+    it('should throw error for non-writable variables', async () => {
       try {
         await variablesManager.setVariable(125, 'readonly', 0x1234);
         assert.fail('Should have thrown error');
@@ -542,8 +542,8 @@ suite('VariablesManager - Comprehensive Tests', () => {
     });
   });
 
-  suite('Variable Reference Management', () => {
-    test('should get unknown variable reference', async () => {
+  describe('Variable Reference Management', () => {
+    it('should get unknown variable reference', async () => {
       try {
         await variablesManager.getVariables(999);
         assert.fail('Should have thrown error');
@@ -554,7 +554,7 @@ suite('VariablesManager - Comprehensive Tests', () => {
       }
     });
 
-    test('should manage variable and location handles', () => {
+    it('should manage variable and location handles', () => {
       const scopes = variablesManager.getScopes();
       const registerRef = scopes[0].variablesReference;
 
@@ -563,15 +563,15 @@ suite('VariablesManager - Comprehensive Tests', () => {
     });
   });
 
-  suite('Edge Cases and Error Handling', () => {
-    test('should handle empty custom registers', async () => {
+  describe('Edge Cases and Error Handling', () => {
+    it('should handle empty custom registers', async () => {
       mockVAmiga.getAllCustomRegisters.resolves({});
 
       const variables = await variablesManager.customVariables();
       assert.strictEqual(variables.length, 0);
     });
 
-    test('should handle memory read errors gracefully', async () => {
+    it('should handle memory read errors gracefully', async () => {
       const mockCpuInfo: CpuInfo = {
         vbr: '0x00000000',
         pc: '0x0', d0: '0x0', d1: '0x0', d2: '0x0', d3: '0x0', d4: '0x0', d5: '0x0', d6: '0x0', d7: '0x0',
@@ -590,7 +590,7 @@ suite('VariablesManager - Comprehensive Tests', () => {
       }
     });
 
-    test('should handle empty symbol table', async () => {
+    it('should handle empty symbol table', async () => {
       mockSourceMap.getSymbols.returns({});
       mockSourceMap.getSymbolLengths.returns({});
 

@@ -9,12 +9,12 @@ import { Source } from '@vscode/debugadapter';
  * Comprehensive tests for DisassemblyManager
  * Tests disassembly functionality with various offset scenarios and source map integration
  */
-suite('DisassemblyManager - Comprehensive Tests', () => {
+describe('DisassemblyManager - Comprehensive Tests', () => {
   let disassemblyManager: DisassemblyManager;
   let mockVAmiga: sinon.SinonStubbedInstance<VAmiga>;
   let mockSourceMap: any;
 
-  setup(() => {
+  beforeEach(() => {
     mockVAmiga = sinon.createStubInstance(VAmiga);
     mockSourceMap = {
       lookupAddress: sinon.stub(),
@@ -28,12 +28,12 @@ suite('DisassemblyManager - Comprehensive Tests', () => {
     disassemblyManager = new DisassemblyManager(mockVAmiga, mockSourceMap);
   });
 
-  teardown(() => {
+  afterEach(() => {
     sinon.restore();
   });
 
-  suite('Basic Disassembly', () => {
-    test('should disassemble instructions at base address', async () => {
+  describe('Basic Disassembly', () => {
+    it('should disassemble instructions at base address', async () => {
       // Setup: Mock disassembly result
       const mockDisasmResult = {
         instructions: [
@@ -56,7 +56,7 @@ suite('DisassemblyManager - Comprehensive Tests', () => {
       assert.strictEqual(result[1].instruction, 'add.l #4,d0');
     });
 
-    test('should handle invalid instructions with presentation hint', async () => {
+    it('should handle invalid instructions with presentation hint', async () => {
       // Setup: Mock with invalid instructions
       const mockDisasmResult = {
         instructions: [
@@ -76,7 +76,7 @@ suite('DisassemblyManager - Comprehensive Tests', () => {
       assert.strictEqual(result[2].presentationHint, 'invalid'); // 0000 0000 pattern
     });
 
-    test('should throw error when no instructions returned', async () => {
+    it('should throw error when no instructions returned', async () => {
       // Setup: Mock empty result
       mockVAmiga.disassemble.resolves({ instructions: [] });
 
@@ -87,7 +87,7 @@ suite('DisassemblyManager - Comprehensive Tests', () => {
       );
     });
 
-    test('should throw error when start instruction not found', async () => {
+    it('should throw error when start instruction not found', async () => {
       // Setup: Mock result without requested base address
       const mockDisasmResult = {
         instructions: [
@@ -105,8 +105,8 @@ suite('DisassemblyManager - Comprehensive Tests', () => {
     });
   });
 
-  suite('Positive Instruction Offset', () => {
-    test('should handle positive instruction offset', async () => {
+  describe('Positive Instruction Offset', () => {
+    it('should handle positive instruction offset', async () => {
       // Setup: Mock with multiple instructions
       const mockDisasmResult = {
         instructions: [
@@ -133,8 +133,8 @@ suite('DisassemblyManager - Comprehensive Tests', () => {
     });
   });
 
-  suite('Negative Instruction Offset', () => {
-    test('should handle negative instruction offset', async () => {
+  describe('Negative Instruction Offset', () => {
+    it('should handle negative instruction offset', async () => {
       // Setup: Mock with instructions before and after base address
       const mockDisasmResult = {
         instructions: [
@@ -159,7 +159,7 @@ suite('DisassemblyManager - Comprehensive Tests', () => {
       assert.strictEqual(result[1].instruction, 'bsr.w sub2');
     });
 
-    test('should pad with invalid instructions when negative offset exceeds available', async () => {
+    it('should pad with invalid instructions when negative offset exceeds available', async () => {
       // Setup: Mock with limited instructions before base
       const mockDisasmResult = {
         instructions: [
@@ -176,21 +176,21 @@ suite('DisassemblyManager - Comprehensive Tests', () => {
       // Verify: The algorithm adds padding + requested instructions
       // With offset -3 and count 3: it needs 2 padding + 1 available + 2 more = 5 total
       assert.strictEqual(result.length, 5);
-      
-      // First two should be padding because we asked for 3 instructions back 
+
+      // First two should be padding because we asked for 3 instructions back
       // from 0x1000 but only had 1 before it (at 0xffc)
       assert.strictEqual(result[0].address, '0x00000000');
       assert.strictEqual(result[0].instruction, 'invalid');
       assert.strictEqual(result[0].instructionBytes, '0000 0000');
       assert.strictEqual(result[1].address, '0x00000000');
       assert.strictEqual(result[1].instruction, 'invalid');
-      
+
       // Third should be the actual instruction available before base
       assert.strictEqual(result[2].address, '0xffc');
       assert.strictEqual(result[2].instruction, 'move.l d1,d0');
     });
 
-    test('should clamp start address to zero for large negative offsets', async () => {
+    it('should clamp start address to zero for large negative offsets', async () => {
       // Setup: Mock disassembly from address 0
       const mockDisasmResult = {
         instructions: [
@@ -204,21 +204,21 @@ suite('DisassemblyManager - Comprehensive Tests', () => {
       // Test: Large negative offset that would cause negative address
       const result = await disassemblyManager.disassemble(0x4, -10, 1);
 
-      // Verify: Start address was clamped and padded  
+      // Verify: Start address was clamped and padded
       assert.ok(mockVAmiga.disassemble.calledWith(0, sinon.match.number)); // Start from 0
-      
+
       // The algorithm will add padding for the negative offset that can't be satisfied,
       // then add the requested instruction count, so we get more than just 1
       assert.ok(result.length >= 1);
-      
+
       // The result should include padding since we can't go back 10 instructions from 0x4
       const paddingCount = result.filter(r => r.instruction === 'invalid').length;
       assert.ok(paddingCount > 0);
     });
   });
 
-  suite('Source Map Integration', () => {
-    test('should add source information when available', async () => {
+  describe('Source Map Integration', () => {
+    it('should add source information when available', async () => {
       // Setup: Mock disassembly and source map
       const mockDisasmResult = {
         instructions: [
@@ -234,7 +234,7 @@ suite('DisassemblyManager - Comprehensive Tests', () => {
         line: 42
       });
       mockSourceMap.lookupAddress.withArgs(0x1002).returns({
-        path: '/project/src/main.c', 
+        path: '/project/src/main.c',
         line: 43
       });
 
@@ -243,7 +243,7 @@ suite('DisassemblyManager - Comprehensive Tests', () => {
 
       // Verify: Source information added
       assert.strictEqual(result.length, 2);
-      
+
       // First instruction
       assert.strictEqual(result[0].symbol, 'main.c:42');
       assert.ok(result[0].location instanceof Source);
@@ -251,12 +251,12 @@ suite('DisassemblyManager - Comprehensive Tests', () => {
       assert.strictEqual(result[0].location!.path, '/project/src/main.c');
       assert.strictEqual(result[0].line, 42);
 
-      // Second instruction  
+      // Second instruction
       assert.strictEqual(result[1].symbol, 'main.c:43');
       assert.strictEqual(result[1].line, 43);
     });
 
-    test('should handle missing source information gracefully', async () => {
+    it('should handle missing source information gracefully', async () => {
       // Setup: Mock disassembly
       const mockDisasmResult = {
         instructions: [
@@ -282,10 +282,10 @@ suite('DisassemblyManager - Comprehensive Tests', () => {
       assert.strictEqual(result[1].line, undefined);
     });
 
-    test('should work without source map', async () => {
+    it('should work without source map', async () => {
       // Setup: Create DisassemblyManager without source map
       const disasmManagerNoSrc = new DisassemblyManager(mockVAmiga, null as any);
-      
+
       const mockDisasmResult = {
         instructions: [
           { addr: '1000', instruction: 'move.l d0,d1', hex: '2200' }
@@ -306,8 +306,8 @@ suite('DisassemblyManager - Comprehensive Tests', () => {
     });
   });
 
-  suite('Address Handling', () => {
-    test('should correctly parse hex addresses', async () => {
+  describe('Address Handling', () => {
+    it('should correctly parse hex addresses', async () => {
       // Setup: Mock with various address formats
       const mockDisasmResult = {
         instructions: [
@@ -323,7 +323,7 @@ suite('DisassemblyManager - Comprehensive Tests', () => {
 
       // Verify: Addresses formatted correctly
       assert.strictEqual(result[0].address, '0xabcd');
-      assert.strictEqual(result[1].address, '0xABCD'); 
+      assert.strictEqual(result[1].address, '0xABCD');
       assert.strictEqual(result[2].address, '0x10000');
 
       // Verify: Source map called with parsed addresses
@@ -332,7 +332,7 @@ suite('DisassemblyManager - Comprehensive Tests', () => {
       assert.ok(mockSourceMap.lookupAddress.calledWith(0x10000));
     });
 
-    test('should handle edge case addresses', async () => {
+    it('should handle edge case addresses', async () => {
       // Setup: Mock with edge case addresses
       const mockDisasmResult = {
         instructions: [
@@ -351,8 +351,8 @@ suite('DisassemblyManager - Comprehensive Tests', () => {
     });
   });
 
-  suite('Complex Scenarios', () => {
-    test('should handle mixed valid/invalid instructions with offsets', async () => {
+  describe('Complex Scenarios', () => {
+    it('should handle mixed valid/invalid instructions with offsets', async () => {
       // Setup: Mock with mix of valid and invalid instructions
       const mockDisasmResult = {
         instructions: [
@@ -371,15 +371,15 @@ suite('DisassemblyManager - Comprehensive Tests', () => {
       assert.strictEqual(result.length, 3);
       assert.strictEqual(result[0].instruction, 'move.l d1,d0');
       assert.strictEqual(result[0].presentationHint, undefined); // Valid
-      
+
       assert.strictEqual(result[1].instruction, 'dc.w $0000');
       assert.strictEqual(result[1].presentationHint, 'invalid'); // dc. directive
-      
+
       assert.strictEqual(result[2].instruction, 'move.l d0,d1');
       assert.strictEqual(result[2].presentationHint, undefined); // Valid
     });
 
-    test('should calculate instruction counts correctly for negative offsets', async () => {
+    it('should calculate instruction counts correctly for negative offsets', async () => {
       // Setup: Mock to verify calculation
       const mockDisasmResult = {
         instructions: [
@@ -395,21 +395,21 @@ suite('DisassemblyManager - Comprehensive Tests', () => {
       // The algorithm calls with specific calculations - let's check what it actually called
       const call = mockVAmiga.disassemble.getCall(0);
       assert.ok(call, 'disassemble should have been called');
-      
+
       // The start address should be adjusted for negative offset
       const startAddress = call.args[0];
       const requestCount = call.args[1];
-      
+
       // startAddress should be less than 0x1000 due to negative offset
       assert.ok(startAddress < 0x1000, `Start address ${startAddress.toString(16)} should be less than 0x1000`);
-      
+
       // requestCount should be greater than 1 due to negative offset compensation
       assert.ok(requestCount > 1, `Request count ${requestCount} should be greater than 1`);
     });
   });
 
-  suite('Error Handling', () => {
-    test('should handle vAmiga disassemble errors', async () => {
+  describe('Error Handling', () => {
+    it('should handle vAmiga disassemble errors', async () => {
       // Setup: Mock vAmiga to throw error
       mockVAmiga.disassemble.rejects(new Error('Memory access error'));
 
@@ -420,7 +420,7 @@ suite('DisassemblyManager - Comprehensive Tests', () => {
       );
     });
 
-    test('should handle unusual instruction data', async () => {
+    it('should handle unusual instruction data', async () => {
       // Setup: Mock with unusual but valid data
       const mockDisasmResult = {
         instructions: [

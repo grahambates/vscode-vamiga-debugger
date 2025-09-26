@@ -4,35 +4,35 @@ import { formatHex, isNumeric, u32, u16, u8, i32, i16, i8 } from '../numbers';
 /**
  * Tests for helper utility functions
  */
-suite('Helper Functions', () => {
-  suite('formatHex', () => {
-    test('should format positive numbers with default length', () => {
+describe('Helper Functions', () => {
+  describe('formatHex', () => {
+    it('should format positive numbers with default length', () => {
       assert.strictEqual(formatHex(255), '0x000000ff');
       assert.strictEqual(formatHex(4096), '0x00001000');
     });
 
-    test('should format with custom length', () => {
+    it('should format with custom length', () => {
       assert.strictEqual(formatHex(255, 2), '0xff');
       assert.strictEqual(formatHex(4096, 4), '0x1000');
     });
 
-    test('should format negative numbers', () => {
+    it('should format negative numbers', () => {
       assert.strictEqual(formatHex(-1), '-0x00000001');
       assert.strictEqual(formatHex(-255, 2), '-0xff');
     });
 
-    test('should handle NaN', () => {
+    it('should handle NaN', () => {
       assert.strictEqual(formatHex(NaN), 'NaN');
     });
 
-    test('should handle zero', () => {
+    it('should handle zero', () => {
       assert.strictEqual(formatHex(0), '0x00000000');
       assert.strictEqual(formatHex(0, 2), '0x00');
     });
   });
 
-  suite('isNumeric', () => {
-    test('should return true for valid numbers', () => {
+  describe('isNumeric', () => {
+    it('should return true for valid numbers', () => {
       assert.strictEqual(isNumeric('123'), true);
       assert.strictEqual(isNumeric('-456'), true);
       assert.strictEqual(isNumeric('0'), true);
@@ -40,7 +40,7 @@ suite('Helper Functions', () => {
       assert.strictEqual(isNumeric('-3.14'), true);
     });
 
-    test('should return false for non-numeric strings', () => {
+    it('should return false for non-numeric strings', () => {
       assert.strictEqual(isNumeric('abc'), false);
       // Note: Number('') returns 0, so empty string is considered numeric by this implementation
       assert.strictEqual(isNumeric('123abc'), false);
@@ -48,22 +48,22 @@ suite('Helper Functions', () => {
       assert.strictEqual(isNumeric('not-a-number'), false);
     });
 
-    test('should handle edge cases', () => {
+    it('should handle edge cases', () => {
       assert.strictEqual(isNumeric('Infinity'), true);
       assert.strictEqual(isNumeric('-Infinity'), true);
       assert.strictEqual(isNumeric(' 123 '), true); // Number() trims whitespace
     });
   });
 
-  suite('Unsigned integer conversions', () => {
-    test('u32 should convert to 32-bit unsigned', () => {
+  describe('Unsigned integer conversions', () => {
+    it('u32 should convert to 32-bit unsigned', () => {
       assert.strictEqual(u32(0), 0);
       assert.strictEqual(u32(0xFFFFFFFF), 0xFFFFFFFF);
       assert.strictEqual(u32(-1), 0xFFFFFFFF);
       assert.strictEqual(u32(0x100000000), 0); // Overflow
     });
 
-    test('u16 should convert to 16-bit unsigned', () => {
+    it('u16 should convert to 16-bit unsigned', () => {
       assert.strictEqual(u16(0), 0);
       assert.strictEqual(u16(0xFFFF), 0xFFFF);
       assert.strictEqual(u16(-1), 0xFFFF);
@@ -71,7 +71,7 @@ suite('Helper Functions', () => {
       assert.strictEqual(u16(-256), 0xFF00); // Multiple wraps
     });
 
-    test('u8 should convert to 8-bit unsigned', () => {
+    it('u8 should convert to 8-bit unsigned', () => {
       assert.strictEqual(u8(0), 0);
       assert.strictEqual(u8(255), 255);
       assert.strictEqual(u8(-1), 255);
@@ -80,22 +80,22 @@ suite('Helper Functions', () => {
     });
   });
 
-  suite('Signed integer conversions', () => {
-    test('i32 should convert to 32-bit signed', () => {
+  describe('Signed integer conversions', () => {
+    it('i32 should convert to 32-bit signed', () => {
       assert.strictEqual(i32(0), 0);
       assert.strictEqual(i32(0x7FFFFFFF), 0x7FFFFFFF);
       assert.strictEqual(i32(0x80000000), -0x80000000);
       assert.strictEqual(i32(0xFFFFFFFF), -1);
     });
 
-    test('i16 should convert to 16-bit signed', () => {
+    it('i16 should convert to 16-bit signed', () => {
       assert.strictEqual(i16(0), 0);
       assert.strictEqual(i16(0x7FFF), 0x7FFF);
       assert.strictEqual(i16(0x8000), -0x8000);
       assert.strictEqual(i16(0xFFFF), -1);
     });
 
-    test('i8 should convert to 8-bit signed', () => {
+    it('i8 should convert to 8-bit signed', () => {
       assert.strictEqual(i8(0), 0);
       assert.strictEqual(i8(127), 127);
       assert.strictEqual(i8(128), -128);
@@ -103,22 +103,22 @@ suite('Helper Functions', () => {
     });
   });
 
-  suite('Round-trip conversions', () => {
-    test('u32/i32 round trip', () => {
+  describe('Round-trip conversions', () => {
+    it('u32/i32 round trip', () => {
       const testValues = [0, 1, -1, 0x7FFFFFFF, -0x80000000, 0x12345678];
       for (const val of testValues) {
         assert.strictEqual(i32(u32(val)), i32(val));
       }
     });
 
-    test('u16/i16 round trip', () => {
+    it('u16/i16 round trip', () => {
       const testValues = [0, 1, -1, 0x7FFF, -0x8000, 0x1234];
       for (const val of testValues) {
         assert.strictEqual(i16(u16(val)), i16(val));
       }
     });
 
-    test('u8/i8 round trip', () => {
+    it('u8/i8 round trip', () => {
       const testValues = [0, 1, -1, 127, -128, 0x42];
       for (const val of testValues) {
         assert.strictEqual(i8(u8(val)), i8(val));

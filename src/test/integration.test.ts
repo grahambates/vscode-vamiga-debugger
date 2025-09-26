@@ -43,22 +43,22 @@ function createMockSourceMap(overrides: any = {}) {
  * Integration tests for VamigaDebugAdapter
  * Tests the full debug adapter protocol flow
  */
-suite('VamigaDebugAdapter Integration Tests', () => {
+describe('VamigaDebugAdapter Integration Tests', () => {
   let adapter: VamigaDebugAdapter;
   let mockVAmiga: sinon.SinonStubbedInstance<VAmiga>;
 
-  setup(() => {
+  beforeEach(() => {
     mockVAmiga = sinon.createStubInstance(VAmiga);
     adapter = new VamigaDebugAdapter(mockVAmiga);
   });
 
-  teardown(() => {
+  afterEach(() => {
     sinon.restore();
     adapter.dispose();
   });
 
-  suite('Debug Session Lifecycle', () => {
-    test('initialize request should set capabilities', () => {
+  describe('Debug Session Lifecycle', () => {
+    it('initialize request should set capabilities', () => {
       const response: DebugProtocol.InitializeResponse = {
         seq: 1,
         type: 'response',
@@ -81,7 +81,7 @@ suite('VamigaDebugAdapter Integration Tests', () => {
       assert.ok(response.body.exceptionBreakpointFilters);
     });
 
-    test('threads request should return single thread', async () => {
+    it('threads request should return single thread', async () => {
       const response: DebugProtocol.ThreadsResponse = {
         seq: 1,
         type: 'response',
@@ -98,7 +98,7 @@ suite('VamigaDebugAdapter Integration Tests', () => {
       assert.strictEqual(response.body.threads[0].name, 'Main');
     });
 
-    test('scopes request should return all scopes', () => {
+    it('scopes request should return all scopes', () => {
       const response: DebugProtocol.ScopesResponse = {
         seq: 1,
         type: 'response',
@@ -120,8 +120,8 @@ suite('VamigaDebugAdapter Integration Tests', () => {
   // Variable inspection tests have been moved to VariablesManager test suite
   // These integration tests focus on core debugger functionality
 
-  suite('Stepping Operations', () => {
-    test('step in should call vAmiga stepInto', async () => {
+  describe('Stepping Operations', () => {
+    it('step in should call vAmiga stepInto', async () => {
       const response: DebugProtocol.StepInResponse = {
         seq: 1,
         type: 'response',
@@ -137,7 +137,7 @@ suite('VamigaDebugAdapter Integration Tests', () => {
       assert.strictEqual((adapter as any).isRunning, true);
     });
 
-    test('next should handle JSR instruction with temporary breakpoint', async () => {
+    it('next should handle JSR instruction with temporary breakpoint', async () => {
       // Setup: Create proper mock instances instead of bypassing type system
       const mockSourceMap = createMockSourceMap({
         lookupSourceLine: sinon.stub().returns({ address: 0x1000 })
@@ -185,7 +185,7 @@ suite('VamigaDebugAdapter Integration Tests', () => {
       assert.ok(mockVAmiga.run.calledOnce);
     });
 
-    test('next should step into for non-branch instruction', async () => {
+    it('next should step into for non-branch instruction', async () => {
       const mockCpuInfo = createMockCpuInfo({ pc: '0x1000' });
       mockVAmiga.getCpuInfo.resolves(mockCpuInfo);
 
@@ -213,8 +213,8 @@ suite('VamigaDebugAdapter Integration Tests', () => {
     });
   });
 
-  suite('Breakpoint Management', () => {
-    test('setBreakPointsRequest should handle source breakpoints', async () => {
+  describe('Breakpoint Management', () => {
+    it('setBreakPointsRequest should handle source breakpoints', async () => {
       // Setup: Create proper mock instances instead of bypassing type system
       const mockSourceMap = createMockSourceMap({
         lookupSourceLine: sinon.stub().returns({ address: 0x1000 })
@@ -267,7 +267,7 @@ suite('VamigaDebugAdapter Integration Tests', () => {
       assert.strictEqual(response.body.breakpoints[1].line, 20);
     });
 
-    test('setInstructionBreakpointsRequest should set address breakpoints', async () => {
+    it('setInstructionBreakpointsRequest should set address breakpoints', async () => {
       // Setup: Create proper mock instances instead of bypassing type system
       const mockSourceMap = createMockSourceMap();
       const mockBreakpointManager = sinon.createStubInstance(BreakpointManager);
@@ -311,8 +311,8 @@ suite('VamigaDebugAdapter Integration Tests', () => {
     });
   });
 
-  suite('Memory Operations', () => {
-    test('readMemoryRequest should read memory from emulator', async () => {
+  describe('Memory Operations', () => {
+    it('readMemoryRequest should read memory from emulator', async () => {
       const mockMemResult = {
         address: '0x1000',
         data: Buffer.from('hello').toString('base64')
@@ -341,7 +341,7 @@ suite('VamigaDebugAdapter Integration Tests', () => {
       assert.ok(mockVAmiga.readMemory.calledWith(0x1000, 5));
     });
 
-    test('writeMemoryRequest should write memory to emulator', async () => {
+    it('writeMemoryRequest should write memory to emulator', async () => {
       const mockWriteResult = { bytesWritten: 5 };
       mockVAmiga.writeMemory.resolves(mockWriteResult);
 
@@ -367,14 +367,14 @@ suite('VamigaDebugAdapter Integration Tests', () => {
     });
   });
 
-  suite('Disassembly', () => {
-    test('disassembleRequest should return instructions', async () => {
+  describe('Disassembly', () => {
+    it('disassembleRequest should return instructions', async () => {
       // Setup: Create proper mock instances for DisassemblyManager
       const mockSourceMap = createMockSourceMap();
       const mockBreakpointManager = sinon.createStubInstance(BreakpointManager);
       const mockVariablesManager = sinon.createStubInstance(VariablesManager);
       const mockDisassemblyManager = new DisassemblyManager(mockVAmiga, mockSourceMap);
-      
+
       // Inject dependencies
       (adapter as any).sourceMap = mockSourceMap;
       (adapter as any).variablesManager = mockVariablesManager;
@@ -411,8 +411,8 @@ suite('VamigaDebugAdapter Integration Tests', () => {
     });
   });
 
-  suite('State Management', () => {
-    test('handleMessageFromEmulator should process attached message', () => {
+  describe('State Management', () => {
+    it('handleMessageFromEmulator should process attached message', () => {
       const message = {
         type: 'attached' as const,
         segments: [{ start: 0x1000, size: 0x1000 }]
@@ -428,7 +428,7 @@ suite('VamigaDebugAdapter Integration Tests', () => {
       attachSpy.restore();
     });
 
-    test('handleMessageFromEmulator should process state message', () => {
+    it('handleMessageFromEmulator should process state message', () => {
       const message = {
         type: 'emulator-state' as const,
         state: 'paused',

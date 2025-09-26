@@ -27,11 +27,11 @@ class TestableVamigaDebugAdapter extends VamigaDebugAdapter {
  * Note: Comprehensive variable management tests are now in VariablesManager test suite.
  * This test suite focuses on core debugger behavior, evaluation, and integration.
  */
-suite('VamigaDebugAdapter - Simplified Tests', () => {
+describe('VamigaDebugAdapter - Simplified Tests', () => {
   let adapter: TestableVamigaDebugAdapter;
   let mockVAmiga: sinon.SinonStubbedInstance<VAmiga>;
 
-  setup(() => {
+  beforeEach(() => {
     // Create mock VAmiga with commonly needed methods
     mockVAmiga = sinon.createStubInstance(VAmiga);
 
@@ -39,13 +39,13 @@ suite('VamigaDebugAdapter - Simplified Tests', () => {
     adapter = new TestableVamigaDebugAdapter(mockVAmiga);
   });
 
-  teardown(() => {
+  afterEach(() => {
     sinon.restore();
     adapter.dispose();
   });
 
-  suite('Expression Evaluation Behavior', () => {
-    test('should evaluate simple numeric expressions', async () => {
+  describe('Expression Evaluation Behavior', () => {
+    it('should evaluate simple numeric expressions', async () => {
       // Setup: Mock CPU state and create EvaluateManager
       setupMockCpuState();
       const mockSourceMap = setupMockSourceMap();
@@ -60,7 +60,7 @@ suite('VamigaDebugAdapter - Simplified Tests', () => {
       assert.strictEqual(result.value, 42);
     });
 
-    test('should evaluate register expressions', async () => {
+    it('should evaluate register expressions', async () => {
       // Setup: Mock CPU with d0 = 0x100
       setupMockCpuState({ d0: '0x100' });
       const mockSourceMap = setupMockSourceMap();
@@ -76,7 +76,7 @@ suite('VamigaDebugAdapter - Simplified Tests', () => {
       assert.strictEqual(result.type, EvaluateResultType.DATA_REGISTER);
     });
 
-    test('should evaluate complex expressions with registers', async () => {
+    it('should evaluate complex expressions with registers', async () => {
       // Setup: Mock CPU state
       setupMockCpuState({ d0: '0x10', d1: '0x20' });
       const mockSourceMap = setupMockSourceMap();
@@ -92,7 +92,7 @@ suite('VamigaDebugAdapter - Simplified Tests', () => {
       assert.strictEqual(result.type, EvaluateResultType.PARSED);
     });
 
-    test('should handle hex address evaluation with memory access', async () => {
+    it('should handle hex address evaluation with memory access', async () => {
       // Setup: Mock memory read
       const mockBuffer = Buffer.alloc(4);
       mockBuffer.writeUInt32BE(0x12345678, 0);
@@ -112,7 +112,7 @@ suite('VamigaDebugAdapter - Simplified Tests', () => {
       assert.strictEqual(result.memoryReference, '0x00001000');
     });
 
-    test('should evaluate symbols when source map available', async () => {
+    it('should evaluate symbols when source map available', async () => {
       // Setup: Mock CPU state and source map with symbols
       setupMockCpuState();
       const mockSourceMap = setupMockSourceMap({ main: 0x1000, buffer: 0x2000 });
@@ -133,8 +133,8 @@ suite('VamigaDebugAdapter - Simplified Tests', () => {
 
   // Stack analysis tests have been moved to StackManager test suite
 
-  suite('Debug Adapter Protocol Integration', () => {
-    test('should handle evaluate request through DAP', async () => {
+  describe('Debug Adapter Protocol Integration', () => {
+    it('should handle evaluate request through DAP', async () => {
       // Setup: Mock CPU state and create EvaluateManager
       setupMockCpuState({ d0: '0x42' });
       const mockSourceMap = setupMockSourceMap();
@@ -155,7 +155,7 @@ suite('VamigaDebugAdapter - Simplified Tests', () => {
       assert.strictEqual(response.success, true);
     });
 
-    test('should handle invalid expressions gracefully', async () => {
+    it('should handle invalid expressions gracefully', async () => {
       // Setup: Mock CPU state and create EvaluateManager
       setupMockCpuState();
       const mockSourceMap = setupMockSourceMap();
@@ -177,7 +177,7 @@ suite('VamigaDebugAdapter - Simplified Tests', () => {
       assert.ok(response.message);
     });
 
-    test('should set breakpoints through DAP when source map available', async () => {
+    it('should set breakpoints through DAP when source map available', async () => {
       // Setup: Create proper mock instances instead of bypassing type system
       const mockSourceMap = createMockSourceMap({
         lookupSourceLine: sinon.stub().returns({ address: 0x1000 })
@@ -212,7 +212,7 @@ suite('VamigaDebugAdapter - Simplified Tests', () => {
       assert.strictEqual(response.body?.breakpoints?.[0].verified, true);
     });
 
-    test('should integrate with VariablesManager for variable requests', async () => {
+    it('should integrate with VariablesManager for variable requests', async () => {
       // Setup: Mock CPU state
       setupMockCpuState({ d0: '0x42' });
 
@@ -229,8 +229,8 @@ suite('VamigaDebugAdapter - Simplified Tests', () => {
     });
   });
 
-  suite('Custom Register Bit Breakdown Behavior', () => {
-    test('should detect supported custom registers', () => {
+  describe('Custom Register Bit Breakdown Behavior', () => {
+    it('should detect supported custom registers', () => {
       assert.ok(registerParsers.hasRegisterBitBreakdown('DMACON'));
       assert.ok(registerParsers.hasRegisterBitBreakdown('DMACONR'));
       assert.ok(registerParsers.hasRegisterBitBreakdown('INTENA'));
@@ -251,7 +251,7 @@ suite('VamigaDebugAdapter - Simplified Tests', () => {
       assert.ok(!registerParsers.hasRegisterBitBreakdown('UNKNOWN_REG'));
     });
 
-    test('should route to correct parser based on register name', () => {
+    it('should route to correct parser based on register name', () => {
       const dmaconBits = registerParsers.parseRegister('DMACON', 0x0200);
       const intenaBits = registerParsers.parseRegister('INTENA', 0x4000);
       const unknownBits = registerParsers.parseRegister('UNKNOWN', 0x1234);

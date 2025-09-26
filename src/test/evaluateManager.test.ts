@@ -9,13 +9,13 @@ import { VariablesManager } from '../variablesManager';
  * Comprehensive tests for EvaluateManager
  * Tests expression evaluation, formatting, and type classification
  */
-suite('EvaluateManager - Comprehensive Tests', () => {
+describe('EvaluateManager - Comprehensive Tests', () => {
   let evaluateManager: EvaluateManager;
   let mockVAmiga: sinon.SinonStubbedInstance<VAmiga>;
   let mockVariablesManager: sinon.SinonStubbedInstance<VariablesManager>;
   let mockSourceMap: any;
 
-  setup(() => {
+  beforeEach(() => {
     mockVAmiga = sinon.createStubInstance(VAmiga);
     mockVariablesManager = sinon.createStubInstance(VariablesManager);
     mockSourceMap = createMockSourceMap();
@@ -31,12 +31,12 @@ suite('EvaluateManager - Comprehensive Tests', () => {
     mockVariablesManager.getFlatVariables.resolves({});
   });
 
-  teardown(() => {
+  afterEach(() => {
     sinon.restore();
   });
 
-  suite('Basic Expression Evaluation', () => {
-    test('should evaluate decimal literals', async () => {
+  describe('Basic Expression Evaluation', () => {
+    it('should evaluate decimal literals', async () => {
       const result = await evaluateManager.evaluate('42');
 
       assert.strictEqual(result.value, 42);
@@ -44,21 +44,21 @@ suite('EvaluateManager - Comprehensive Tests', () => {
       assert.strictEqual(result.memoryReference, undefined);
     });
 
-    test('should evaluate negative decimal literals', async () => {
+    it('should evaluate negative decimal literals', async () => {
       const result = await evaluateManager.evaluate('-123');
 
       assert.strictEqual(result.value, -123);
       assert.strictEqual(result.type, EvaluateResultType.UNKNOWN);
     });
 
-    test('should handle empty expressions', async () => {
+    it('should handle empty expressions', async () => {
       const result = await evaluateManager.evaluate('');
 
       assert.strictEqual(result.value, undefined);
       assert.strictEqual(result.type, EvaluateResultType.EMPTY);
     });
 
-    test('should handle whitespace-only expressions', async () => {
+    it('should handle whitespace-only expressions', async () => {
       const result = await evaluateManager.evaluate('   ');
 
       assert.strictEqual(result.value, undefined);
@@ -66,8 +66,8 @@ suite('EvaluateManager - Comprehensive Tests', () => {
     });
   });
 
-  suite('Hexadecimal Address Evaluation', () => {
-    test('should read memory at hex addresses', async () => {
+  describe('Hexadecimal Address Evaluation', () => {
+    it('should read memory at hex addresses', async () => {
       // Setup: Mock memory read
       const mockBuffer = Buffer.alloc(4);
       mockBuffer.writeUInt32BE(0x12345678, 0);
@@ -82,7 +82,7 @@ suite('EvaluateManager - Comprehensive Tests', () => {
       assert.strictEqual(result.type, EvaluateResultType.UNKNOWN);
     });
 
-    test('should handle uppercase hex addresses', async () => {
+    it('should handle uppercase hex addresses', async () => {
       const mockBuffer = Buffer.alloc(4);
       mockBuffer.writeUInt32BE(0xABCDEF01, 0);
       mockVAmiga.readMemoryBuffer.resolves(mockBuffer);
@@ -94,7 +94,7 @@ suite('EvaluateManager - Comprehensive Tests', () => {
       assert.strictEqual(result.memoryReference, '0x0000abcd');
     });
 
-    test('should handle mixed case hex addresses', async () => {
+    it('should handle mixed case hex addresses', async () => {
       const mockBuffer = Buffer.alloc(4);
       mockBuffer.writeUInt32BE(0x00000042, 0);
       mockVAmiga.readMemoryBuffer.resolves(mockBuffer);
@@ -106,8 +106,8 @@ suite('EvaluateManager - Comprehensive Tests', () => {
     });
   });
 
-  suite('CPU Register Evaluation', () => {
-    test('should evaluate data registers', async () => {
+  describe('CPU Register Evaluation', () => {
+    it('should evaluate data registers', async () => {
       mockVariablesManager.getFlatVariables.resolves({ d0: 0x123, d7: 0x456 });
       mockVAmiga.getCpuInfo.resolves(createMockCpuInfo({ d0: '0x123', d7: '0x456' }));
 
@@ -120,7 +120,7 @@ suite('EvaluateManager - Comprehensive Tests', () => {
       assert.strictEqual(resultD7.type, EvaluateResultType.DATA_REGISTER);
     });
 
-    test('should evaluate address registers', async () => {
+    it('should evaluate address registers', async () => {
       mockVariablesManager.getFlatVariables.resolves({ a0: 0x2000, a7: 0x7000, pc: 0x1000 });
       mockVAmiga.getCpuInfo.resolves(createMockCpuInfo({ a0: '0x2000', a7: '0x7000', pc: '0x1000' }));
 
@@ -133,7 +133,7 @@ suite('EvaluateManager - Comprehensive Tests', () => {
       assert.strictEqual(resultPC.type, EvaluateResultType.ADDRESS_REGISTER);
     });
 
-    test('should evaluate special address registers', async () => {
+    it('should evaluate special address registers', async () => {
       mockVariablesManager.getFlatVariables.resolves({ usp: 0x8000, vbr: 0x9000 });
       mockVAmiga.getCpuInfo.resolves(createMockCpuInfo({ usp: '0x8000', vbr: '0x9000' }));
 
@@ -147,8 +147,8 @@ suite('EvaluateManager - Comprehensive Tests', () => {
     });
   });
 
-  suite('Custom Register Evaluation', () => {
-    test('should evaluate custom registers', async () => {
+  describe('Custom Register Evaluation', () => {
+    it('should evaluate custom registers', async () => {
       mockVariablesManager.getFlatVariables.resolves({ DMACON: 0x8200, INTENA: 0x4000 });
 
       const resultDMACON = await evaluateManager.evaluate('DMACON');
@@ -161,8 +161,8 @@ suite('EvaluateManager - Comprehensive Tests', () => {
     });
   });
 
-  suite('Symbol Evaluation', () => {
-    test('should evaluate symbols from source map', async () => {
+  describe('Symbol Evaluation', () => {
+    it('should evaluate symbols from source map', async () => {
       mockSourceMap.getSymbols.returns({ main: 0x1000, buffer: 0x2000, end: 0x3000 });
       mockVariablesManager.getFlatVariables.resolves({ main: 0x1000, buffer: 0x2000 });
 
@@ -177,7 +177,7 @@ suite('EvaluateManager - Comprehensive Tests', () => {
       assert.strictEqual(resultBuffer.memoryReference, '0x00002000');
     });
 
-    test('should handle symbols not in variables but in source map', async () => {
+    it('should handle symbols not in variables but in source map', async () => {
       mockSourceMap.getSymbols.returns({ main: 0x1000 });
       mockVariablesManager.getFlatVariables.resolves({}); // Symbol not in flat variables
 
@@ -192,8 +192,8 @@ suite('EvaluateManager - Comprehensive Tests', () => {
     });
   });
 
-  suite('Complex Expression Evaluation', () => {
-    test('should evaluate arithmetic expressions', async () => {
+  describe('Complex Expression Evaluation', () => {
+    it('should evaluate arithmetic expressions', async () => {
       mockVariablesManager.getFlatVariables.resolves({ d0: 10, d1: 20 });
 
       const result = await evaluateManager.evaluate('d0 + d1 * 2');
@@ -202,7 +202,7 @@ suite('EvaluateManager - Comprehensive Tests', () => {
       assert.strictEqual(result.type, EvaluateResultType.PARSED);
     });
 
-    test('should evaluate expressions with parentheses', async () => {
+    it('should evaluate expressions with parentheses', async () => {
       mockVariablesManager.getFlatVariables.resolves({ a: 5, b: 3 });
 
       const result = await evaluateManager.evaluate('(a + b) * 2');
@@ -211,7 +211,7 @@ suite('EvaluateManager - Comprehensive Tests', () => {
       assert.strictEqual(result.type, EvaluateResultType.PARSED);
     });
 
-    test('should evaluate expressions with hex literals', async () => {
+    it('should evaluate expressions with hex literals', async () => {
       mockVariablesManager.getFlatVariables.resolves({ d0: 0x10 });
 
       const result = await evaluateManager.evaluate('d0 + 0x20');
@@ -220,7 +220,7 @@ suite('EvaluateManager - Comprehensive Tests', () => {
       assert.strictEqual(result.type, EvaluateResultType.PARSED);
     });
 
-    test('should handle division and modulo', async () => {
+    it('should handle division and modulo', async () => {
       mockVariablesManager.getFlatVariables.resolves({ val: 100 });
 
       const divResult = await evaluateManager.evaluate('val / 4');
@@ -231,8 +231,8 @@ suite('EvaluateManager - Comprehensive Tests', () => {
     });
   });
 
-  suite('Memory Access Functions', () => {
-    test('should support peekU32 function', async () => {
+  describe('Memory Access Functions', () => {
+    it('should support peekU32 function', async () => {
       mockVAmiga.peek32.resolves(0x12345678);
       mockVariablesManager.getFlatVariables.resolves({ addr: 0x1000 });
 
@@ -243,7 +243,7 @@ suite('EvaluateManager - Comprehensive Tests', () => {
       assert.strictEqual(result.type, EvaluateResultType.PARSED);
     });
 
-    test('should support peekU16 function', async () => {
+    it('should support peekU16 function', async () => {
       mockVAmiga.peek16.resolves(0x1234);
       mockVariablesManager.getFlatVariables.resolves({ addr: 0x1000 });
 
@@ -253,7 +253,7 @@ suite('EvaluateManager - Comprehensive Tests', () => {
       assert.strictEqual(result.value, 0x1234);
     });
 
-    test('should support peekU8 function', async () => {
+    it('should support peekU8 function', async () => {
       mockVAmiga.peek8.resolves(0x42);
       mockVariablesManager.getFlatVariables.resolves({});
 
@@ -263,7 +263,7 @@ suite('EvaluateManager - Comprehensive Tests', () => {
       assert.strictEqual(result.value, 0x42);
     });
 
-    test('should support peekI32 function with signed conversion', async () => {
+    it('should support peekI32 function with signed conversion', async () => {
       mockVAmiga.peek32.resolves(0xFFFFFFFF); // -1 when signed
       mockVariablesManager.getFlatVariables.resolves({});
 
@@ -277,8 +277,8 @@ suite('EvaluateManager - Comprehensive Tests', () => {
     });
   });
 
-  suite('Type Conversion Functions', () => {
-    test('should support u32 function', async () => {
+  describe('Type Conversion Functions', () => {
+    it('should support u32 function', async () => {
       mockVariablesManager.getFlatVariables.resolves({ val: -1 });
 
       const result = await evaluateManager.evaluate('u32(val)');
@@ -287,7 +287,7 @@ suite('EvaluateManager - Comprehensive Tests', () => {
       assert.strictEqual(result.type, EvaluateResultType.PARSED);
     });
 
-    test('should support i16 function', async () => {
+    it('should support i16 function', async () => {
       mockVariablesManager.getFlatVariables.resolves({ val: 0xFFFF });
 
       const result = await evaluateManager.evaluate('i16(val)');
@@ -295,7 +295,7 @@ suite('EvaluateManager - Comprehensive Tests', () => {
       assert.strictEqual(result.value, -1); // 0xFFFF as signed 16-bit
     });
 
-    test('should support u8 function', async () => {
+    it('should support u8 function', async () => {
       mockVariablesManager.getFlatVariables.resolves({ val: 0x1FF });
 
       const result = await evaluateManager.evaluate('u8(val)');
@@ -304,8 +304,8 @@ suite('EvaluateManager - Comprehensive Tests', () => {
     });
   });
 
-  suite('Formatted Evaluation', () => {
-    test('should format data register results', async () => {
+  describe('Formatted Evaluation', () => {
+    it('should format data register results', async () => {
       mockVariablesManager.getFlatVariables.resolves({ d0: 0x42 });
       mockVAmiga.getCpuInfo.resolves(createMockCpuInfo({ d0: '0x42' }));
 
@@ -315,7 +315,7 @@ suite('EvaluateManager - Comprehensive Tests', () => {
       assert.strictEqual(result.variablesReference, 0);
     });
 
-    test('should format address register results', async () => {
+    it('should format address register results', async () => {
       mockVariablesManager.getFlatVariables.resolves({ a0: 0x1000 });
       mockVAmiga.getCpuInfo.resolves(createMockCpuInfo({ a0: '0x1000' }));
 
@@ -325,7 +325,7 @@ suite('EvaluateManager - Comprehensive Tests', () => {
       assert.strictEqual(result.variablesReference, 0);
     });
 
-    test('should format symbol results with memory reference', async () => {
+    it('should format symbol results with memory reference', async () => {
       mockSourceMap.getSymbols.returns({ main: 0x1000 });
       mockSourceMap.getSymbolLengths.returns({ main: 4 }); // Set symbol length for pointer dereferencing
       mockSourceMap.findSymbolOffset.returns(null); // No symbol found for the dereferenced value
@@ -338,7 +338,7 @@ suite('EvaluateManager - Comprehensive Tests', () => {
       assert.strictEqual(result.memoryReference, '0x00001000');
     });
 
-    test('should format custom register results', async () => {
+    it('should format custom register results', async () => {
       mockVariablesManager.getFlatVariables.resolves({ DMACON: 0x8200 });
 
       const result = await evaluateManager.evaluateFormatted({ expression: 'DMACON' });
@@ -347,7 +347,7 @@ suite('EvaluateManager - Comprehensive Tests', () => {
       assert.strictEqual(result.variablesReference, 0);
     });
 
-    test('should format parsed expression results', async () => {
+    it('should format parsed expression results', async () => {
       mockVariablesManager.getFlatVariables.resolves({ d0: 10, d1: 5 });
 
       const result = await evaluateManager.evaluateFormatted({ expression: 'd0 + d1' });
@@ -356,7 +356,7 @@ suite('EvaluateManager - Comprehensive Tests', () => {
       assert.strictEqual(result.variablesReference, 0);
     });
 
-    test('should handle empty expressions', async () => {
+    it('should handle empty expressions', async () => {
       const result = await evaluateManager.evaluateFormatted({ expression: '' });
 
       assert.strictEqual(result.result, '');
@@ -364,8 +364,8 @@ suite('EvaluateManager - Comprehensive Tests', () => {
     });
   });
 
-  suite('Error Handling', () => {
-    test('should handle invalid variable references', async () => {
+  describe('Error Handling', () => {
+    it('should handle invalid variable references', async () => {
       mockVariablesManager.getFlatVariables.resolves({});
 
       try {
@@ -377,7 +377,7 @@ suite('EvaluateManager - Comprehensive Tests', () => {
       }
     });
 
-    test('should handle memory read errors', async () => {
+    it('should handle memory read errors', async () => {
       mockVAmiga.readMemoryBuffer.rejects(new Error('Memory access error'));
 
       try {
@@ -389,7 +389,7 @@ suite('EvaluateManager - Comprehensive Tests', () => {
       }
     });
 
-    test('should handle invalid arithmetic expressions', async () => {
+    it('should handle invalid arithmetic expressions', async () => {
       mockVariablesManager.getFlatVariables.resolves({ d0: 10 });
 
       try {

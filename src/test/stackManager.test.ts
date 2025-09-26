@@ -23,12 +23,12 @@ function createMockCpuInfo(overrides: Partial<CpuInfo> = {}): CpuInfo {
  * Comprehensive tests for StackManager
  * Tests the stack frame analysis and DAP integration
  */
-suite('StackManager - Comprehensive Tests', () => {
+describe('StackManager - Comprehensive Tests', () => {
   let stackManager: StackManager;
   let mockVAmiga: sinon.SinonStubbedInstance<VAmiga>;
   let mockSourceMap: any;
 
-  setup(() => {
+  beforeEach(() => {
     mockVAmiga = sinon.createStubInstance(VAmiga);
     mockSourceMap = {
       lookupAddress: sinon.stub(),
@@ -42,12 +42,12 @@ suite('StackManager - Comprehensive Tests', () => {
     stackManager = new StackManager(mockVAmiga, mockSourceMap);
   });
 
-  teardown(() => {
+  afterEach(() => {
     sinon.restore();
   });
 
-  suite('Stack Frame Generation', () => {
-    test('should return current PC as first stack frame', async () => {
+  describe('Stack Frame Generation', () => {
+    it('should return current PC as first stack frame', async () => {
       // Setup: Mock CPU state and empty stack
       const mockCpuInfo = createMockCpuInfo({ pc: '0x1000', a7: '0x8000' });
       mockVAmiga.getCpuInfo.resolves(mockCpuInfo);
@@ -62,7 +62,7 @@ suite('StackManager - Comprehensive Tests', () => {
       assert.strictEqual(frames[0].instructionPointerReference, '0x00001000');
     });
 
-    test('should create source-based frames when debug info available', async () => {
+    it('should create source-based frames when debug info available', async () => {
       // Setup: Mock CPU state, stack, and source map
       const mockCpuInfo = createMockCpuInfo({ pc: '0x1000', a7: '0x8000' });
       mockVAmiga.getCpuInfo.resolves(mockCpuInfo);
@@ -91,7 +91,7 @@ suite('StackManager - Comprehensive Tests', () => {
       assert.strictEqual(frames[0].instructionPointerReference, '0x00001000');
     });
 
-    test('should create disassembly frames when no debug info available', async () => {
+    it('should create disassembly frames when no debug info available', async () => {
       // Setup: Mock CPU state with no source mapping
       const mockCpuInfo = createMockCpuInfo({ pc: '0x1000', a7: '0x8000' });
       mockVAmiga.getCpuInfo.resolves(mockCpuInfo);
@@ -111,7 +111,7 @@ suite('StackManager - Comprehensive Tests', () => {
       assert.strictEqual(frames[0].instructionPointerReference, '0x00001000');
     });
 
-    test('should stop at ROM calls after finding user code', async () => {
+    it('should stop at ROM calls after finding user code', async () => {
       // Setup: Mock stack analysis that finds ROM address after user code
       const mockCpuInfo = createMockCpuInfo({ pc: '0x1000', a7: '0x8000' });
       mockVAmiga.getCpuInfo.resolves(mockCpuInfo);
@@ -136,7 +136,7 @@ suite('StackManager - Comprehensive Tests', () => {
       assert.strictEqual(frames[1].instructionPointerReference, '0x00002000');
     });
 
-    test('should handle pagination with startFrame and maxLevels', async () => {
+    it('should handle pagination with startFrame and maxLevels', async () => {
       // Setup: Mock multiple stack frames
       sinon.stub(stackManager, 'guessStack').resolves([
         [0x1000, 0x1000], // Frame 0
@@ -158,8 +158,8 @@ suite('StackManager - Comprehensive Tests', () => {
     });
   });
 
-  suite('Stack Analysis Algorithm', () => {
-    test('should include current PC as first frame', async () => {
+  describe('Stack Analysis Algorithm', () => {
+    it('should include current PC as first frame', async () => {
       // Setup: Mock CPU state
       const mockCpuInfo = createMockCpuInfo({ pc: '0x1000', a7: '0x8000' });
       mockVAmiga.getCpuInfo.resolves(mockCpuInfo);
@@ -174,7 +174,7 @@ suite('StackManager - Comprehensive Tests', () => {
       assert.deepStrictEqual(addresses[0], [0x1000, 0x1000]);
     });
 
-    test('should detect JSR return addresses in stack memory', async () => {
+    it('should detect JSR return addresses in stack memory', async () => {
       // Setup: Mock CPU and stack containing return address
       const mockCpuInfo = createMockCpuInfo({ pc: '0x1000', a7: '0x8000' });
       mockVAmiga.getCpuInfo.resolves(mockCpuInfo);
@@ -201,7 +201,7 @@ suite('StackManager - Comprehensive Tests', () => {
       assert.deepStrictEqual(addresses[1], [0x2000 - 2, 0x2000]); // JSR call site -> return
     });
 
-    test('should detect BSR return addresses in stack memory', async () => {
+    it('should detect BSR return addresses in stack memory', async () => {
       // Setup: Mock CPU and stack containing BSR return
       const mockCpuInfo = createMockCpuInfo({ pc: '0x1000', a7: '0x8000' });
       mockVAmiga.getCpuInfo.resolves(mockCpuInfo);
@@ -225,7 +225,7 @@ suite('StackManager - Comprehensive Tests', () => {
       assert.deepStrictEqual(addresses[1], [0x2004 - 4, 0x2004]); // BSR call site
     });
 
-    test('should skip invalid addresses and odd addresses', async () => {
+    it('should skip invalid addresses and odd addresses', async () => {
       // Setup: Mock CPU and stack with invalid data
       const mockCpuInfo = createMockCpuInfo({ pc: '0x1000', a7: '0x8000' });
       mockVAmiga.getCpuInfo.resolves(mockCpuInfo);
@@ -254,7 +254,7 @@ suite('StackManager - Comprehensive Tests', () => {
       assert.deepStrictEqual(addresses[1], [0x2000 - 2, 0x2000]);
     });
 
-    test('should handle memory read errors gracefully', async () => {
+    it('should handle memory read errors gracefully', async () => {
       // Setup: Mock CPU state
       const mockCpuInfo = createMockCpuInfo({ pc: '0x1000', a7: '0x8000' });
       mockVAmiga.getCpuInfo.resolves(mockCpuInfo);
@@ -276,7 +276,7 @@ suite('StackManager - Comprehensive Tests', () => {
       assert.deepStrictEqual(addresses[0], [0x1000, 0x1000]);
     });
 
-    test('should respect maxLength parameter', async () => {
+    it('should respect maxLength parameter', async () => {
       // Setup: Mock stack with many potential return addresses
       const mockCpuInfo = createMockCpuInfo({ pc: '0x1000', a7: '0x8000' });
       mockVAmiga.getCpuInfo.resolves(mockCpuInfo);
@@ -307,8 +307,8 @@ suite('StackManager - Comprehensive Tests', () => {
     });
   });
 
-  suite('Integration with Source Maps', () => {
-    test('should use source map for frame naming when available', async () => {
+  describe('Integration with Source Maps', () => {
+    it('should use source map for frame naming when available', async () => {
       // Setup: Mock with source mapping
       sinon.stub(stackManager, 'guessStack').resolves([[0x1000, 0x1000]]);
 
@@ -334,7 +334,7 @@ suite('StackManager - Comprehensive Tests', () => {
       assert.strictEqual(frames[0].line, 25);
     });
 
-    test('should fall back to disassembly frames when source map has no info', async () => {
+    it('should fall back to disassembly frames when source map has no info', async () => {
       // Setup: SourceMap exists but returns no location for address
       sinon.stub(stackManager, 'guessStack').resolves([[0x1000, 0x1000]]);
 
