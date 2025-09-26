@@ -49,7 +49,6 @@ import { sourceMapFromHunks } from "./amigaHunkSourceMap";
 import { SourceMap } from "./sourceMap";
 import {
   formatHex,
-  isNumeric,
   u32,
   u16,
   u8,
@@ -69,6 +68,7 @@ import {
 import { exceptionBreakpointFilters } from "./vectors";
 import { instructionAttrs } from "./instructions";
 import { VariablesManager } from "./variablesManager";
+import { BreakpointManager } from "./breakpointManager";
 
 /**
  * Launch configuration arguments for starting a debug session.
@@ -85,27 +85,6 @@ interface LaunchRequestArguments extends DebugProtocol.LaunchRequestArguments {
   trace?: boolean;
   /** Inject program directly into memory */
   fastLoad?: boolean;
-}
-
-/**
- * Internal reference to a breakpoint set in the emulator.
- */
-interface BreakpointRef {
-  /** Unique identifier for this breakpoint */
-  id: number;
-  /** Memory address where the breakpoint is set */
-  address: number;
-}
-
-/**
- * Temporary breakpoint used for step operations.
- * These are not visible to the client and are automatically removed when hit.
- */
-interface TmpBreakpoint {
-  /** Description of why this breakpoint was set (e.g., "step", "entry") */
-  reason: string;
-  /** Memory address where the temporary breakpoint is set */
-  address: number;
 }
 
 /**
@@ -227,13 +206,7 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
   private dwarfData?: DWARFData;
   private sourceMap?: SourceMap;
 
-  private sourceBreakpoints: Map<string, BreakpointRef[]> = new Map();
-  private instructionBreakpoints: BreakpointRef[] = [];
-  private exceptionBreakpoints: BreakpointRef[] = [];
-  private dataBreakpoints: BreakpointRef[] = [];
-  private functionBreakpoints: BreakpointRef[] = [];
-  private tmpBreakpoints: TmpBreakpoint[] = [];
-  private bpId = 0;
+  private breakpointManager?: BreakpointManager;
 
   private disposables: vscode.Disposable[] = [];
 
@@ -530,7 +503,9 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
     args: DebugProtocol.VariablesArguments,
   ): Promise<void> {
     try {
-      const variables = await this.variablesManager?.getVariables(args.variablesReference) ?? [];
+      const variables =
+        (await this.variablesManager?.getVariables(args.variablesReference)) ??
+        [];
       response.body = { variables };
       this.sendResponse(response);
     } catch (err) {
@@ -548,7 +523,12 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
     args: DebugProtocol.SetVariableArguments,
   ): Promise<void> {
     try {
-      const value = await this.variablesManager?.setVariable(args.variablesReference, args.name, Number(args.value)) ?? '';
+      const value =
+        (await this.variablesManager?.setVariable(
+          args.variablesReference,
+          args.name,
+          Number(args.value),
+        )) ?? "";
       response.body = { value };
       this.sendResponse(response);
     } catch (err) {
@@ -600,7 +580,7 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
       const isBranch = currInst.match(/^(jsr|bsr|dbra)/i);
       if (next && isBranch) {
         const addr = parseInt(next.addr, 16);
-        this.setTmpBreakpoint(addr, "step");
+        this.breakpointManager?.setTmpBreakpoint(addr, "step");
         this.vAmiga.run();
       } else {
         this.stepping = true;
@@ -627,7 +607,7 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
 
       // stack 0 is pc
       if (stack[1]) {
-        this.setTmpBreakpoint(stack[1][1], "step");
+        this.breakpointManager?.setTmpBreakpoint(stack[1][1], "step");
         this.isRunning = true;
         this.vAmiga.run();
       } else {
@@ -650,181 +630,111 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
     response: DebugProtocol.SetBreakpointsResponse,
     args: DebugProtocol.SetBreakpointsArguments,
   ): Promise<void> {
-    const path = args.source.path!;
-    logger.log(`Set breakpoints request: ${path}`);
-
-    // Remove existing breakpoints for source
-    const existing = this.sourceBreakpoints.get(path);
-    if (existing) {
-      for (const ref of existing) {
-        logger.log(
-          `Breakpoint #${ref.id} removed at ${formatHex(ref.address)}`,
-        );
-        this.vAmiga.removeBreakpoint(ref.address);
-      }
-    }
-
-    const refs: BreakpointRef[] = [];
-    this.sourceBreakpoints.set(path, refs);
-
-    response.body = { breakpoints: [] };
-
-    if (!this.sourceMap) {
+    if (!this.breakpointManager) {
       return this.sendError(
         response,
         ErrorCode.DEBUG_SYMBOLS_READ_ERROR,
-        "Debug symbols not loaded",
+        "Debug session not initialized",
       );
     }
 
-    // Add new breakpoints
-    for (const bp of args.breakpoints ?? []) {
-      const address = this.sourceMap.lookupSourceLine(path, bp.line).address;
-      const instructionReference = formatHex(address);
-      const id = this.bpId++;
-      refs.push({ id, address });
-
-      let ignores = 0;
-      if (bp.hitCondition) {
-        ignores = (await this.evaluate(bp.hitCondition)).value ?? 0;
-      }
-      this.vAmiga.setBreakpoint(address, ignores);
-
-      logger.log(
-        `Breakpoint #${id} at ${path}:${bp.line} set at ${instructionReference}`,
+    try {
+      const path = args.source.path!;
+      const breakpoints = await this.breakpointManager.setSourceBreakpoints(
+        path,
+        args.breakpoints ?? [],
       );
-      response.body.breakpoints.push({
-        id,
-        instructionReference,
-        verified: true,
-        ...bp,
-      });
+
+      response.body = { breakpoints };
+      this.sendResponse(response);
+    } catch (error) {
+      return this.sendError(
+        response,
+        ErrorCode.BREAKPOINT_SET_ERROR,
+        String(error),
+      );
     }
-    this.sendResponse(response);
   }
 
   protected async setInstructionBreakpointsRequest(
     response: DebugProtocol.SetInstructionBreakpointsResponse,
     args: DebugProtocol.SetInstructionBreakpointsArguments,
   ): Promise<void> {
-    // Remove existing
-    for (const ref of this.instructionBreakpoints) {
-      logger.log(
-        `Instruction breakpoint #${ref.id} removed at ${formatHex(ref.address)}`,
+    if (!this.breakpointManager) {
+      return this.sendError(
+        response,
+        ErrorCode.DEBUG_SYMBOLS_READ_ERROR,
+        "Debug session not initialized",
       );
-      this.vAmiga.removeBreakpoint(ref.address);
     }
-    this.instructionBreakpoints = [];
 
-    response.body = { breakpoints: [] };
+    try {
+      const breakpoints =
+        await this.breakpointManager.setInstructionBreakpoints(
+          args.breakpoints ?? [],
+        );
 
-    // Add new breakpoints
-    for (const bp of args.breakpoints ?? []) {
-      const address = Number(bp.instructionReference) + (bp.offset ?? 0);
-      const id = this.bpId++;
-
-      let ignores = 0;
-      if (bp.hitCondition) {
-        ignores = (await this.evaluate(bp.hitCondition)).value ?? 0;
-      }
-      this.instructionBreakpoints.push({ id, address });
-
-      this.vAmiga.setBreakpoint(address, ignores);
-      logger.log(
-        `Instruction breakpoint #${id} set at ${bp.instructionReference}`,
+      response.body = { breakpoints };
+      this.sendResponse(response);
+    } catch (error) {
+      return this.sendError(
+        response,
+        ErrorCode.BREAKPOINT_SET_ERROR,
+        String(error),
       );
-      response.body.breakpoints.push({
-        id,
-        verified: true,
-        ...bp,
-      });
     }
-    this.sendResponse(response);
   }
 
   protected setFunctionBreakPointsRequest(
     response: DebugProtocol.SetFunctionBreakpointsResponse,
     args: DebugProtocol.SetFunctionBreakpointsArguments,
   ): void {
-    // Remove existing
-    for (const ref of this.functionBreakpoints) {
-      logger.log(
-        `Function breakpoint #${ref.id} removed at ${formatHex(ref.address)}`,
+    if (!this.breakpointManager) {
+      return this.sendError(
+        response,
+        ErrorCode.DEBUG_SYMBOLS_READ_ERROR,
+        "Debug session not initialized",
       );
-      this.vAmiga.removeBreakpoint(ref.address);
     }
-    this.functionBreakpoints = [];
-    response.body = { breakpoints: [] };
 
-    // Add new breakpoints
-    for (const bp of args.breakpoints ?? []) {
-      const id = this.bpId++;
-      const address = this.sourceMap?.getSymbols()?.[bp.name];
-      if (address) {
-        const ignores =
-          bp.hitCondition && isNumeric(bp.hitCondition)
-            ? Number(bp.hitCondition)
-            : 0;
-        this.functionBreakpoints.push({ id, address });
+    try {
+      const breakpoints = this.breakpointManager.setFunctionBreakpoints(
+        args.breakpoints ?? [],
+      );
 
-        this.vAmiga.setBreakpoint(address, ignores);
-        logger.log(
-          `Function breakpoint #${id} set at ${address} for ${bp.name}`,
-        );
-      }
-      response.body.breakpoints.push({
-        id,
-        verified: Boolean(address),
-        ...bp,
-      });
+      response.body = { breakpoints };
+      this.sendResponse(response);
+    } catch (error) {
+      return this.sendError(
+        response,
+        ErrorCode.BREAKPOINT_SET_ERROR,
+        String(error),
+      );
     }
-    this.sendResponse(response);
   }
 
   protected dataBreakpointInfoRequest(
     response: DebugProtocol.DataBreakpointInfoResponse,
     args: DebugProtocol.DataBreakpointInfoArguments,
   ): void {
-    // Handle variables that have memory references
-    if (args.variablesReference) {
-      const id = this.variablesManager?.getVariableReference(args.variablesReference);
-      if (id === "registers" || id === "symbols") {
-        // For registers and symbols, we can create data breakpoints
-        const dataId = `${id}:${args.name}`;
-        response.body = {
-          dataId,
-          description: `Watch ${args.name}`,
-          accessTypes: ["readWrite"],
-          canPersist: false,
-        };
-        this.sendResponse(response);
-        return;
-      }
+    if (!this.breakpointManager || !this.variablesManager) {
+      response.body = {
+        dataId: null,
+        description: "Data breakpoints not available",
+        accessTypes: [],
+        canPersist: false,
+      };
+      this.sendResponse(response);
+      return;
     }
 
-    // Handle memory references directly
-    if (args.name && args.name.startsWith("0x")) {
-      const address = parseInt(args.name, 16);
-      if (!isNaN(address)) {
-        const dataId = `memory:${args.name}`;
-        response.body = {
-          dataId,
-          description: `Watch memory at ${args.name}`,
-          accessTypes: ["readWrite"],
-          canPersist: false,
-        };
-        this.sendResponse(response);
-        return;
-      }
-    }
+    const result = this.breakpointManager.getDataBreakpointInfo(
+      args.variablesReference ?? 0,
+      args.name,
+      (ref: number) => this.variablesManager!.getVariableReference(ref),
+    );
 
-    // No data breakpoint available for this variable
-    response.body = {
-      dataId: null,
-      description: "Data breakpoint not supported for this variable",
-      accessTypes: [],
-      canPersist: false,
-    };
+    response.body = result;
     this.sendResponse(response);
   }
 
@@ -832,76 +742,28 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
     response: DebugProtocol.SetDataBreakpointsResponse,
     args: DebugProtocol.SetDataBreakpointsArguments,
   ): Promise<void> {
-    logger.log(`Set data breakpoints request`);
-
-    // Remove existing data breakpoints
-    for (const ref of this.dataBreakpoints) {
-      logger.log(
-        `Data breakpoint #${ref.id} removed at ${formatHex(ref.address)}`,
+    if (!this.breakpointManager || !this.variablesManager) {
+      return this.sendError(
+        response,
+        ErrorCode.DEBUG_SYMBOLS_READ_ERROR,
+        "Debug session not initialized",
       );
-      this.vAmiga.removeWatchpoint(ref.address);
-    }
-    this.dataBreakpoints = [];
-
-    response.body = { breakpoints: [] };
-
-    // Add new data breakpoints
-    for (const bp of args.breakpoints) {
-      try {
-        let address: number | undefined;
-        const parts = bp.dataId.split(":");
-
-        if (parts[0] === "memory") {
-          // Direct memory address
-          address = parseInt(parts[1], 16);
-        } else if (parts[0] === "registers") {
-          const cpuInfo = await this.vAmiga.getCpuInfo();
-          const value = cpuInfo[parts[1] as keyof CpuInfo];
-          if (typeof value === "string") {
-            address = Number(value);
-          }
-        } else if (parts[0] === "symbols" && this.sourceMap) {
-          // Symbol address
-          const symbols = this.sourceMap.getSymbols();
-          address = symbols[parts[1]];
-        }
-
-        if (address !== undefined && !isNaN(address)) {
-          const id = this.bpId++;
-          const accessType = bp.accessType || "access";
-          this.dataBreakpoints.push({ id, address });
-
-          let ignores = 0;
-          if (bp.hitCondition) {
-            ignores = (await this.evaluate(bp.hitCondition)).value ?? 0;
-          }
-          this.vAmiga.setWatchpoint(address, ignores);
-
-          logger.log(
-            `Data breakpoint #${id} set at ${formatHex(address)} (${accessType})`,
-          );
-
-          response.body.breakpoints.push({
-            id,
-            verified: true,
-          });
-        } else {
-          response.body.breakpoints.push({
-            id: this.bpId++,
-            verified: false,
-            message: "Invalid memory address for data breakpoint",
-          });
-        }
-      } catch (_) {
-        response.body.breakpoints.push({
-          id: this.bpId++,
-          verified: false,
-          message: `Error setting data breakpoint`,
-        });
-      }
     }
 
-    this.sendResponse(response);
+    try {
+      const breakpoints = await this.breakpointManager.setDataBreakpoints(
+        args.breakpoints,
+      );
+
+      response.body = { breakpoints };
+      this.sendResponse(response);
+    } catch (error) {
+      return this.sendError(
+        response,
+        ErrorCode.BREAKPOINT_SET_ERROR,
+        String(error),
+      );
+    }
   }
 
   protected async evaluateRequest(
@@ -1201,7 +1063,9 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
     args: DebugProtocol.LocationsArguments,
   ): void {
     try {
-      const location = this.variablesManager?.getLocationReference(args.locationReference);
+      const location = this.variablesManager?.getLocationReference(
+        args.locationReference,
+      );
       if (location) {
         response.body = {
           source: new Source(path.basename(location.path), location.path),
@@ -1223,21 +1087,28 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
     response: DebugProtocol.SetExceptionBreakpointsResponse,
     args: DebugProtocol.SetExceptionBreakpointsArguments,
   ): void {
-    for (const ref of this.exceptionBreakpoints) {
-      this.vAmiga.removeCatchpoint(ref.address);
+    if (!this.breakpointManager) {
+      return this.sendError(
+        response,
+        ErrorCode.DEBUG_SYMBOLS_READ_ERROR,
+        "Debug session not initialized",
+      );
     }
-    this.exceptionBreakpoints = [];
 
-    const breakpoints: DebugProtocol.Breakpoint[] = [];
-    for (const filter of args.filters) {
-      const vector = Number(filter);
-      const id = this.bpId++;
-      this.vAmiga.setCatchpoint(vector);
-      this.exceptionBreakpoints.push({ id, address: vector });
-      breakpoints.push({ id, verified: true });
+    try {
+      const breakpoints = this.breakpointManager.setExceptionBreakpoints(
+        args.filters,
+      );
+
+      response.body = { breakpoints };
+      this.sendResponse(response);
+    } catch (error) {
+      return this.sendError(
+        response,
+        ErrorCode.BREAKPOINT_SET_ERROR,
+        String(error),
+      );
     }
-    response.body = { breakpoints };
-    this.sendResponse(response);
   }
 
   protected async completionsRequest(
@@ -1345,33 +1216,6 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
    * @param address Memory address for the temporary breakpoint
    * @param reason Description of why the breakpoint was set (e.g., "step", "entry")
    */
-  private setTmpBreakpoint(address: number, reason: string) {
-    const existing = this.findSourceBreakpoint(address);
-    if (existing) {
-      logger.log(`Breakpoint already exists at ${formatHex(address)}`);
-      return;
-    }
-    logger.log(
-      `Setting temporary breakpoint at ${formatHex(address)} (${reason})`,
-    );
-    this.tmpBreakpoints.push({ address, reason });
-    this.vAmiga.setBreakpoint(address);
-  }
-
-  /**
-   * Finds a source breakpoint at the specified address.
-   *
-   * @param address Memory address to search for
-   * @returns The breakpoint reference if found, undefined otherwise
-   */
-  private findSourceBreakpoint(address: number): BreakpointRef | undefined {
-    for (const bps of this.sourceBreakpoints.values()) {
-      const bpMatch = bps.find((bp) => bp.address === address);
-      if (bpMatch) {
-        return bpMatch;
-      }
-    }
-  }
 
   private async injectProgram() {
     logger.log("Injecting program into memory");
@@ -1400,9 +1244,6 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
    * Sets entry breakpoint if stopOnEntry is enabled.
    */
   private attach(offsets: number[]) {
-    if (this.stopOnEntry && !this.fastLoad) {
-      this.setTmpBreakpoint(offsets[0], "entry");
-    }
     try {
       if (this.dwarfData) {
         // Elf doesn't contain absolute path of sources. Assume it's one level up e.g. `out/a.elf`
@@ -1412,9 +1253,16 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
       } else if (this.hunks) {
         this.sourceMap = sourceMapFromHunks(this.hunks, offsets);
       } else {
-        throw new Error('No debug symbols');
+        throw new Error("No debug symbols");
       }
       this.variablesManager = new VariablesManager(this.vAmiga, this.sourceMap);
+      this.breakpointManager = new BreakpointManager(
+        this.vAmiga,
+        this.sourceMap,
+      );
+      if (this.stopOnEntry && !this.fastLoad) {
+        this.breakpointManager?.setTmpBreakpoint(offsets[0], "entry");
+      }
       this.sendEvent(new InitializedEvent());
     } catch (error) {
       this.sendEvent(
@@ -1499,59 +1347,20 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
 
     this.isRunning = false;
 
-    let bpMatch: { id: number } | undefined;
-
-    if (message.name === "WATCHPOINT_REACHED") {
-      evt.body.reason = "data breakpoint";
-      bpMatch = this.dataBreakpoints.find(
-        (bp) => bp.address === message.payload.pc,
-      );
-    } else if (message.name === "CATCHPOINT_REACHED") {
-      evt.body.reason = "exception";
-      evt.body.text = exceptionBreakpointFilters.find(
-        (f) => Number(f.filter) === message.payload.vector,
-      )?.label;
-      bpMatch = this.exceptionBreakpoints.find(
-        (bp) => bp.address === message.payload.vector,
-      );
-    } else if (message.name === "BREAKPOINT_REACHED") {
-      // First check tmp breakpoints
-      const tmpMatch = this.tmpBreakpoints.find(
-        (bp) => bp.address === message.payload.pc,
-      );
-      if (tmpMatch) {
-        // Client doesn't know about tmp breakpoints - don't set hitBreakpointIds
-        logger.log(`Matched tmp breakpoint at ${message.payload.pc}`);
-        this.vAmiga.removeBreakpoint(tmpMatch.address);
-        evt.body.reason = tmpMatch.reason;
-        this.tmpBreakpoints = this.tmpBreakpoints.filter(
-          (bp) => bp.address !== message.payload.pc,
-        );
-      } else {
-        // check instruction breakpoints
-        bpMatch = this.instructionBreakpoints.find(
-          (bp) => bp.address === message.payload.pc,
-        );
-        if (bpMatch) {
-          evt.body.reason = "instruction breakpoint";
-        } else {
-          // check function breakpoints
-          bpMatch = this.functionBreakpoints.find(
-            (bp) => bp.address === message.payload.pc,
-          );
-          if (bpMatch) {
-            evt.body.reason = "function breakpoint";
-          } else {
-            // check source breakpoints
-            bpMatch = this.findSourceBreakpoint(message.payload.pc);
-          }
-        }
-      }
+    if (!this.breakpointManager) {
+      this.sendEvent(evt);
+      return;
     }
 
-    if (bpMatch) {
-      evt.body.hitBreakpointIds = [bpMatch.id];
+    const result = this.breakpointManager.handleBreakpointStop(message);
+    evt.body.reason = result.reason;
+    if (result.text) {
+      evt.body.text = result.text;
     }
+    if (result.hitBreakpointIds) {
+      evt.body.hitBreakpointIds = result.hitBreakpointIds;
+    }
+
     this.sendEvent(evt);
   }
 
@@ -1656,14 +1465,6 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
   /**
    * Builds a complete variable lookup table for expression evaluation.
    *
-   * Combines CPU registers, custom chip registers, and symbols into a single
-   * namespace for the expression parser.
-   *
-   * @returns Record mapping variable names to their numeric values
-   */
-  /**
-   * Builds a complete variable lookup table for expression evaluation.
-   *
    * Made protected to allow testing of variable context building.
    *
    * @returns Record mapping variable names to their numeric values
@@ -1699,14 +1500,6 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
    * @param expression The expression string to evaluate
    * @returns Evaluation result with value, type, and optional memory reference
    */
-  /**
-   * Evaluates an expression in the context of the current debug session.
-   *
-   * Made protected to allow direct testing while keeping it internal to the class.
-   *
-   * @param expression The expression string to evaluate
-   * @returns Evaluation result with value, type, and optional memory reference
-   */
   protected async evaluate(expression: string): Promise<EvaluateResult> {
     expression = expression.trim();
     if (expression === "") {
@@ -1723,7 +1516,6 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
       // Interpret hex as address:
       const address = Number(expression);
       // Read longword value at address
-      // TODO: is this what we want? Support .w .b modifier?
       const memData = await this.vAmiga.readMemoryBuffer(address, 4);
       value = memData.readUInt32BE(0);
       memoryReference = formatHex(address);

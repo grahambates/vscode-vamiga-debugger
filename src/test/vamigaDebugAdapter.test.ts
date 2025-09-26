@@ -5,6 +5,8 @@ import { VamigaDebugAdapter, EvaluateResultType } from '../vamigaDebugAdapter';
 import { VAmigaView, CpuInfo } from '../vAmigaView';
 import { DebugProtocol } from '@vscode/debugprotocol';
 import * as registerParsers from '../amigaRegisterParsers';
+import { VariablesManager } from '../variablesManager';
+import { BreakpointManager } from '../breakpointManager';
 
 /**
  * Test subclass that exposes protected methods for testing
@@ -194,11 +196,15 @@ suite('VamigaDebugAdapter - Simplified Tests', () => {
     });
 
     test('should set breakpoints through DAP when source map available', async () => {
-      // Setup: Mock source map
+      // Setup: Directly initialize BreakpointManager without relying on attach()
       const mockSourceMap = {
         lookupSourceLine: sinon.stub().returns({ address: 0x1000 })
       };
       (adapter as any).sourceMap = mockSourceMap;
+      
+      // Directly initialize managers to avoid attach() complexity
+      (adapter as any).variablesManager = new VariablesManager(mockVAmiga, mockSourceMap as any);
+      (adapter as any).breakpointManager = new BreakpointManager(mockVAmiga, mockSourceMap as any);
 
       const response = createMockResponse<DebugProtocol.SetBreakpointsResponse>('setBreakpoints');
       const args: DebugProtocol.SetBreakpointsArguments = {

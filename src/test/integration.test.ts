@@ -4,6 +4,8 @@ import * as sinon from 'sinon';
 import { VamigaDebugAdapter } from '../vamigaDebugAdapter';
 import { VAmigaView, CpuInfo } from '../vAmigaView';
 import { DebugProtocol } from '@vscode/debugprotocol';
+import { VariablesManager } from '../variablesManager';
+import { BreakpointManager } from '../breakpointManager';
 
 // Helper function to create mock CPU info with required properties
 function createMockCpuInfo(overrides: Partial<CpuInfo> = {}): CpuInfo {
@@ -119,6 +121,21 @@ suite('VamigaDebugAdapter Integration Tests', () => {
     });
 
     test('next should handle JSR instruction with temporary breakpoint', async () => {
+      // Setup: Directly initialize BreakpointManager without relying on attach()
+      const mockSourceMap = {
+        lookupSourceLine: sinon.stub().returns({ address: 0x1000 }),
+        getSymbols: () => ({}),
+        getSegmentsInfo: () => [],
+        getSymbolLengths: () => ({}),
+        lookupAddress: sinon.stub().returns(null),
+        findSymbolOffset: sinon.stub().returns(null)
+      };
+      (adapter as any).sourceMap = mockSourceMap;
+
+      // Directly initialize managers to avoid attach() complexity
+      (adapter as any).variablesManager = new VariablesManager(mockVAmiga, mockSourceMap as any);
+      (adapter as any).breakpointManager = new BreakpointManager(mockVAmiga, mockSourceMap as any);
+
       const mockCpuInfo = createMockCpuInfo({ pc: '0x1000' });
       mockVAmiga.getCpuInfo.resolves(mockCpuInfo);
 
@@ -141,7 +158,7 @@ suite('VamigaDebugAdapter Integration Tests', () => {
       await (adapter as any).nextRequest(response);
 
       // Should set temp breakpoint at next instruction and run
-      const tmpBps = (adapter as any).tmpBreakpoints;
+      const tmpBps = (adapter as any).breakpointManager?.getTmpBreakpoints();
       assert.strictEqual(tmpBps.length, 1);
       assert.strictEqual(tmpBps[0].address, 0x1004);
       assert.strictEqual(tmpBps[0].reason, 'step');
@@ -178,11 +195,20 @@ suite('VamigaDebugAdapter Integration Tests', () => {
 
   suite('Breakpoint Management', () => {
     test('setBreakPointsRequest should handle source breakpoints', async () => {
-      // Mock source map
+      // Setup: Directly initialize BreakpointManager without relying on attach()
       const mockSourceMap = {
-        lookupSourceLine: sinon.stub().returns({ address: 0x1000 })
+        lookupSourceLine: sinon.stub().returns({ address: 0x1000 }),
+        getSymbols: () => ({}),
+        getSegmentsInfo: () => [],
+        getSymbolLengths: () => ({}),
+        lookupAddress: sinon.stub().returns(null),
+        findSymbolOffset: sinon.stub().returns(null)
       };
       (adapter as any).sourceMap = mockSourceMap;
+
+      // Directly initialize managers to avoid attach() complexity
+      (adapter as any).variablesManager = new VariablesManager(mockVAmiga, mockSourceMap as any);
+      (adapter as any).breakpointManager = new BreakpointManager(mockVAmiga, mockSourceMap as any);
 
       const response: DebugProtocol.SetBreakpointsResponse = {
         seq: 1,
@@ -217,6 +243,11 @@ suite('VamigaDebugAdapter Integration Tests', () => {
     });
 
     test('setInstructionBreakpointsRequest should set address breakpoints', async () => {
+      // Setup: Directly initialize BreakpointManager without relying on attach()
+      // Directly initialize managers to avoid attach() complexity
+      (adapter as any).variablesManager = new VariablesManager(mockVAmiga, {} as any);
+      (adapter as any).breakpointManager = new BreakpointManager(mockVAmiga, {} as any);
+
       const response: DebugProtocol.SetInstructionBreakpointsResponse = {
         seq: 1,
         type: 'response',

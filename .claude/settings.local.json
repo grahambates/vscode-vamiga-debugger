@@ -11,7 +11,8 @@
       "WebFetch(domain:amigadev.elowar.com)",
       "Bash(node:*)",
       "Bash(find:*)",
-      "Bash(npm run test:*)"
+      "Bash(npm run test:*)",
+      "Bash(npx mocha:*)"
     ],
     "deny": [],
     "ask": []
