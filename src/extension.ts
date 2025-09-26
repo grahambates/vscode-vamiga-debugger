@@ -26,6 +26,20 @@ export function activate(context: vscode.ExtensionContext) {
       },
     }),
   );
+
+  // Register EOF command
+  context.subscriptions.push(
+    vscode.commands.registerCommand('vamiga-debugger.eof', () => {
+      vAmiga.eof();
+    })
+  );
+
+  // Register EOL command
+  context.subscriptions.push(
+    vscode.commands.registerCommand('vamiga-debugger.eol', () => {
+      vAmiga.eol();
+    })
+  );
 }
 
 /**

@@ -2607,9 +2607,11 @@ postMessage({ type: 'ready' });
                     break;
                 case 'eol':
                     Module._wasm_eol();
+                    wasm_run();
                     break;
                 case 'eof':
                     Module._wasm_eof();
+                    wasm_run();
                     break;
                 case 'stepInto':
                     wasm_step_into();

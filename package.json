@@ -14,6 +14,34 @@
   ],
   "main": "./out/extension.js",
   "contributes": {
+    "commands": [
+      {
+        "command": "vamiga-debugger.eof",
+        "title": "End of Frame",
+        "icon": "$(run-below)",
+        "enablement": "debugType == 'vamiga' && debugState == 'stopped'"
+      },
+      {
+        "command": "vamiga-debugger.eol",
+        "title": "End of Line",
+        "icon": "$(debug-line-by-line)",
+        "enablement": "debugType == 'vamiga' && debugState == 'stopped'"
+      }
+    ],
+    "menus": {
+      "debug/toolBar": [
+        {
+          "command": "vamiga-debugger.eof",
+          "when": "debugType == 'vamiga'",
+          "group": "navigation@41"
+        },
+        {
+          "command": "vamiga-debugger.eol",
+          "when": "debugType == 'vamiga'",
+          "group": "navigation@42"
+        }
+      ]
+    },
     "configuration": {
       "title": "Vamiga Debugger",
       "properties": {
