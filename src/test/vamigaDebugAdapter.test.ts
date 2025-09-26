@@ -1,8 +1,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import * as assert from 'assert';
 import * as sinon from 'sinon';
-import { VamigaDebugAdapter, EvaluateResultType } from '../vamigaDebugAdapter';
-import { VAmigaView, CpuInfo } from '../vAmigaView';
+import { VamigaDebugAdapter, EvaluateResultType } from '../vAmigaDebugAdapter';
+import { VAmiga, CpuInfo } from '../vAmiga';
 import { DebugProtocol } from '@vscode/debugprotocol';
 import * as registerParsers from '../amigaRegisterParsers';
 import { VariablesManager } from '../variablesManager';
@@ -22,17 +22,17 @@ class TestableVamigaDebugAdapter extends VamigaDebugAdapter {
  *
  * These tests use minimal refactoring (protected methods + constructor injection)
  * to test behavior without over-engineering the architecture.
- * 
+ *
  * Note: Comprehensive variable management tests are now in VariablesManager test suite.
  * This test suite focuses on core debugger behavior, evaluation, and integration.
  */
 suite('VamigaDebugAdapter - Simplified Tests', () => {
   let adapter: TestableVamigaDebugAdapter;
-  let mockVAmiga: sinon.SinonStubbedInstance<VAmigaView>;
+  let mockVAmiga: sinon.SinonStubbedInstance<VAmiga>;
 
   setup(() => {
     // Create mock VAmiga with commonly needed methods
-    mockVAmiga = sinon.createStubInstance(VAmigaView);
+    mockVAmiga = sinon.createStubInstance(VAmiga);
 
     // Use constructor injection to provide mock
     adapter = new TestableVamigaDebugAdapter(mockVAmiga);
@@ -160,16 +160,16 @@ suite('VamigaDebugAdapter - Simplified Tests', () => {
       const mockSourceMap = createMockSourceMap({
         lookupSourceLine: sinon.stub().returns({ address: 0x1000 })
       });
-      
+
       const mockBreakpointManager = sinon.createStubInstance(BreakpointManager);
       const mockVariablesManager = sinon.createStubInstance(VariablesManager);
-      
+
       // Configure the setSourceBreakpoints stub to return expected breakpoints
       mockBreakpointManager.setSourceBreakpoints.resolves([
         { id: 1, verified: true, line: 10 },
         { id: 2, verified: true, line: 20 }
       ]);
-      
+
       // Inject dependencies
       (adapter as any).sourceMap = mockSourceMap;
       (adapter as any).variablesManager = mockVariablesManager;
@@ -193,15 +193,15 @@ suite('VamigaDebugAdapter - Simplified Tests', () => {
     test('should integrate with VariablesManager for variable requests', async () => {
       // Setup: Mock CPU state
       setupMockCpuState({ d0: '0x42' });
-      
+
       // Test: Get scopes should use VariablesManager
       const scopesResponse = createMockResponse<DebugProtocol.ScopesResponse>('scopes');
       (adapter as any).scopesRequest(scopesResponse);
-      
+
       // Verify: Should return empty scopes if VariablesManager not initialized (before launch)
       assert.ok(scopesResponse.body);
       assert.strictEqual(scopesResponse.body.scopes.length, 0);
-      
+
       // Note: Comprehensive variable testing is in VariablesManager test suite
       // This test verifies DAP integration without requiring full debugger launch
     });

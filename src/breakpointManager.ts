@@ -1,6 +1,6 @@
 import { DebugProtocol } from "@vscode/debugprotocol";
 import { logger } from "@vscode/debugadapter";
-import { VAmigaView, CpuInfo, StopMessage } from "./vAmigaView";
+import { VAmiga, CpuInfo, StopMessage } from "./vAmiga";
 import { SourceMap } from "./sourceMap";
 import { formatHex } from "./numbers";
 import { exceptionBreakpointFilters } from "./vectors";
@@ -45,7 +45,7 @@ export class BreakpointManager {
   private bpId = 0;
 
   constructor(
-    private vAmiga: VAmigaView,
+    private vAmiga: VAmiga,
     private sourceMap: SourceMap,
   ) {}
 

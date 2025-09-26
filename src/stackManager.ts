@@ -1,12 +1,12 @@
 import { Source, StackFrame } from "@vscode/debugadapter";
-import { VAmigaView } from "./vAmigaView";
+import { VAmiga } from "./vAmiga";
 import { formatAddress, formatHex } from "./numbers";
 import { basename } from "path";
 import { SourceMap } from "./sourceMap";
 
 export class StackManager {
   constructor(
-    private vAmiga: VAmigaView,
+    private vAmiga: VAmiga,
     private sourceMap: SourceMap,
   ) {}
 

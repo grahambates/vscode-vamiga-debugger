@@ -1,7 +1,7 @@
 import * as assert from 'assert';
 import * as sinon from 'sinon';
 import { VariablesManager } from '../variablesManager';
-import { VAmigaView, CpuInfo } from '../vAmigaView';
+import { VAmiga, CpuInfo } from '../vAmiga';
 import { SourceMap } from '../sourceMap';
 import { MemoryType } from '../amigaHunkParser';
 
@@ -11,11 +11,11 @@ import { MemoryType } from '../amigaHunkParser';
  */
 suite('VariablesManager - Comprehensive Tests', () => {
   let variablesManager: VariablesManager;
-  let mockVAmiga: sinon.SinonStubbedInstance<VAmigaView>;
+  let mockVAmiga: sinon.SinonStubbedInstance<VAmiga>;
   let mockSourceMap: sinon.SinonStubbedInstance<SourceMap>;
 
   setup(() => {
-    mockVAmiga = sinon.createStubInstance(VAmigaView);
+    mockVAmiga = sinon.createStubInstance(VAmiga);
     mockSourceMap = sinon.createStubInstance(SourceMap);
     variablesManager = new VariablesManager(mockVAmiga, mockSourceMap);
   });

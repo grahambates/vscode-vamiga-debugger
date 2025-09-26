@@ -1,5 +1,5 @@
 import { DebugProtocol } from "@vscode/debugprotocol";
-import { CpuInfo, VAmigaView } from "./vAmigaView";
+import { CpuInfo, VAmiga } from "./vAmiga";
 import { SourceMap, Location } from "./sourceMap";
 import { Handles, Scope } from "@vscode/debugadapter";
 import { vectors } from "./vectors";
@@ -21,7 +21,7 @@ export class VariablesManager {
   private locationHandles = new Handles<Location>();
 
   constructor(
-    private vAmiga: VAmigaView,
+    private vAmiga: VAmiga,
     private sourceMap: SourceMap,
   ) {}
 

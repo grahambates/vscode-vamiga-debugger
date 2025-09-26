@@ -3,19 +3,19 @@
  * Loads Amiga executables directly into memory bypassing floppy emulation
  */
 
-import { VAmigaView } from "./vAmigaView";
+import { VAmiga } from "./vAmiga";
 import { Hunk, HunkType, RelocInfo32 } from "./amigaHunkParser";
 import {
-  AmigaMemoryManager,
+  AmigaMemoryMapper,
   AllocatedHunk,
   LoadedProgram
-} from "./amigaMemoryManager";
+} from "./amigaMemoryMapper";
 
 export class AmigaHunkLoader {
-  private memoryManager: AmigaMemoryManager;
+  private memoryMapper: AmigaMemoryMapper;
 
-  constructor(private vAmiga: VAmigaView) {
-    this.memoryManager = new AmigaMemoryManager(vAmiga);
+  constructor(private vAmiga: VAmiga) {
+    this.memoryMapper = new AmigaMemoryMapper(vAmiga);
   }
 
   /**
@@ -57,7 +57,7 @@ export class AmigaHunkLoader {
     for (const hunk of hunks) {
       console.log(`Allocating ${hunk.allocSize} bytes of ${hunk.memType} memory for hunk ${hunk.index}`);
 
-      const address = await this.memoryManager.allocateMemory(
+      const address = await this.memoryMapper.allocateMemory(
         hunk.allocSize,
         hunk.memType
       );
@@ -190,7 +190,7 @@ export class AmigaHunkLoader {
 
     for (const alloc of program.allocations) {
       console.log(`Freeing hunk ${alloc.hunk.index} at $${alloc.address.toString(16)}`);
-      await this.memoryManager.freeMemory(alloc.address, alloc.size);
+      await this.memoryMapper.freeMemory(alloc.address, alloc.size);
     }
   }
 
@@ -198,14 +198,14 @@ export class AmigaHunkLoader {
    * Get memory allocation statistics
    */
   async getMemoryStats() {
-    return await this.memoryManager.getMemoryInfo();
+    return await this.memoryMapper.getMemoryInfo();
   }
 
   /**
    * Load and relocate hunks from binary data
    */
   static async loadFromHunks(
-    vAmiga: VAmigaView,
+    vAmiga: VAmiga,
     hunks: Hunk[]
   ): Promise<LoadedProgram> {
     const loader = new AmigaHunkLoader(vAmiga);
@@ -228,7 +228,7 @@ export class AmigaHunkLoader {
  * Utility function to load a program with full setup
  */
 export async function loadAmigaProgram(
-  vAmiga: VAmigaView,
+  vAmiga: VAmiga,
   hunks: Hunk[]
 ): Promise<LoadedProgram> {
   console.log(`Loading Amiga program with ${hunks.length} hunks`);

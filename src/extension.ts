@@ -1,9 +1,9 @@
 import * as vscode from 'vscode';
-import { VamigaDebugAdapter } from './vamigaDebugAdapter';
-import { VAmigaView } from './vAmigaView';
+import { VamigaDebugAdapter } from './vAmigaDebugAdapter';
+import { VAmiga } from './vAmiga';
 
 export function activate(context: vscode.ExtensionContext) {
-  const vAmiga = new VAmigaView(context.extensionUri);
+  const vAmiga = new VAmiga(context.extensionUri);
 
   // Register the debug adapter
   context.subscriptions.push(

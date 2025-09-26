@@ -1,11 +1,12 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import * as assert from 'assert';
 import * as sinon from 'sinon';
-import { VamigaDebugAdapter } from '../vamigaDebugAdapter';
-import { VAmigaView, CpuInfo } from '../vAmigaView';
+import { VamigaDebugAdapter } from '../vAmigaDebugAdapter';
+import { VAmiga, CpuInfo } from '../vAmiga';
 import { DebugProtocol } from '@vscode/debugprotocol';
 import { VariablesManager } from '../variablesManager';
 import { BreakpointManager } from '../breakpointManager';
+import { DisassemblyManager } from '../disassemblyManager';
 
 // Helper function to create mock CPU info with required properties
 function createMockCpuInfo(overrides: Partial<CpuInfo> = {}): CpuInfo {
@@ -44,10 +45,10 @@ function createMockSourceMap(overrides: any = {}) {
  */
 suite('VamigaDebugAdapter Integration Tests', () => {
   let adapter: VamigaDebugAdapter;
-  let mockVAmiga: sinon.SinonStubbedInstance<VAmigaView>;
+  let mockVAmiga: sinon.SinonStubbedInstance<VAmiga>;
 
   setup(() => {
-    mockVAmiga = sinon.createStubInstance(VAmigaView);
+    mockVAmiga = sinon.createStubInstance(VAmiga);
     adapter = new VamigaDebugAdapter(mockVAmiga);
   });
 
@@ -141,15 +142,15 @@ suite('VamigaDebugAdapter Integration Tests', () => {
       const mockSourceMap = createMockSourceMap({
         lookupSourceLine: sinon.stub().returns({ address: 0x1000 })
       });
-      
+
       const mockBreakpointManager = sinon.createStubInstance(BreakpointManager);
       const mockVariablesManager = sinon.createStubInstance(VariablesManager);
-      
+
       // Configure the getTmpBreakpoints stub to return expected result
       mockBreakpointManager.getTmpBreakpoints.returns([
         { address: 0x1004, reason: 'step' }
       ]);
-      
+
       // Inject dependencies
       (adapter as any).sourceMap = mockSourceMap;
       (adapter as any).variablesManager = mockVariablesManager;
@@ -218,16 +219,16 @@ suite('VamigaDebugAdapter Integration Tests', () => {
       const mockSourceMap = createMockSourceMap({
         lookupSourceLine: sinon.stub().returns({ address: 0x1000 })
       });
-      
+
       const mockBreakpointManager = sinon.createStubInstance(BreakpointManager);
       const mockVariablesManager = sinon.createStubInstance(VariablesManager);
-      
+
       // Configure the setSourceBreakpoints stub to return expected breakpoints
       mockBreakpointManager.setSourceBreakpoints.resolves([
         { id: 1, verified: true, line: 10 },
         { id: 2, verified: true, line: 20 }
       ]);
-      
+
       // Inject dependencies
       (adapter as any).sourceMap = mockSourceMap;
       (adapter as any).variablesManager = mockVariablesManager;
@@ -271,13 +272,13 @@ suite('VamigaDebugAdapter Integration Tests', () => {
       const mockSourceMap = createMockSourceMap();
       const mockBreakpointManager = sinon.createStubInstance(BreakpointManager);
       const mockVariablesManager = sinon.createStubInstance(VariablesManager);
-      
+
       // Configure the setInstructionBreakpoints stub to return expected breakpoints
       mockBreakpointManager.setInstructionBreakpoints.resolves([
         { id: 1, verified: true, instructionReference: '0x1000' },
         { id: 2, verified: true, instructionReference: '0x2004' }
       ]);
-      
+
       // Inject dependencies
       (adapter as any).sourceMap = mockSourceMap;
       (adapter as any).variablesManager = mockVariablesManager;
@@ -368,6 +369,18 @@ suite('VamigaDebugAdapter Integration Tests', () => {
 
   suite('Disassembly', () => {
     test('disassembleRequest should return instructions', async () => {
+      // Setup: Create proper mock instances for DisassemblyManager
+      const mockSourceMap = createMockSourceMap();
+      const mockBreakpointManager = sinon.createStubInstance(BreakpointManager);
+      const mockVariablesManager = sinon.createStubInstance(VariablesManager);
+      const mockDisassemblyManager = new DisassemblyManager(mockVAmiga, mockSourceMap);
+      
+      // Inject dependencies
+      (adapter as any).sourceMap = mockSourceMap;
+      (adapter as any).variablesManager = mockVariablesManager;
+      (adapter as any).breakpointManager = mockBreakpointManager;
+      (adapter as any).disassemblyManager = mockDisassemblyManager;
+
       const mockDisasm = {
         instructions: [
           { addr: '1000', instruction: 'move.l d0,d1', hex: '2200' },

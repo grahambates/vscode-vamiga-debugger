@@ -1,5 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-
 // TODO:
 // - Console
 //   - disasm
@@ -29,7 +27,7 @@ import { readFile } from "fs/promises";
 import { Parser } from "expr-eval";
 
 import {
-  VAmigaView,
+  VAmiga,
   CpuInfo,
   EmulatorMessage,
   isAttachedMessage,
@@ -38,11 +36,11 @@ import {
   EmulatorStateMessage,
   StopMessage,
   isExecReadyMessage,
-} from "./vAmigaView";
+} from "./vAmiga";
 import { Hunk, parseHunks } from "./amigaHunkParser";
 import { DWARFData, parseDwarf } from "./dwarfParser";
 import { loadAmigaProgram } from "./amigaHunkLoader";
-import { LoadedProgram } from "./amigaMemoryManager";
+import { LoadedProgram } from "./amigaMemoryMapper";
 import { sourceMapFromDwarf } from "./dwarfSourceMap";
 import { sourceMapFromHunks } from "./amigaHunkSourceMap";
 import { SourceMap } from "./sourceMap";
@@ -65,10 +63,11 @@ import {
   syntaxText,
 } from "./repl";
 import { exceptionBreakpointFilters } from "./vectors";
-import { instructionAttrs } from "./instructions";
+import { instructionAttrs } from "./sourceParsing";
 import { VariablesManager } from "./variablesManager";
 import { BreakpointManager } from "./breakpointManager";
 import { StackManager } from "./stackManager";
+import { DisassemblyManager } from "./disassemblyManager";
 
 /**
  * Launch configuration arguments for starting a debug session.
@@ -203,11 +202,11 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
   private variablesManager?: VariablesManager;
   private breakpointManager?: BreakpointManager;
   private stackManager?: StackManager;
+  private disassemblyManager?: DisassemblyManager;
 
   private hunks: Hunk[] = [];
   private dwarfData?: DWARFData;
   private sourceMap?: SourceMap;
-
 
   private disposables: (vscode.Disposable | undefined)[] = [];
 
@@ -221,7 +220,7 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
    *
    * @param vAmiga Optional VAmigaView instance for dependency injection (primarily for testing)
    */
-  public constructor(private vAmiga: VAmigaView) {
+  public constructor(private vAmiga: VAmiga) {
     super();
     this.setDebuggerLinesStartAt1(false);
     this.setDebuggerColumnsStartAt1(false);
@@ -439,7 +438,10 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
     const maxLevels = args.levels ?? 16;
 
     try {
-      const stk = await this.getStackManager().getStackFrames(startFrame, maxLevels);
+      const stk = await this.getStackManager().getStackFrames(
+        startFrame,
+        maxLevels,
+      );
       response.body = {
         stackFrames: stk,
         totalFrames: stk.length,
@@ -466,7 +468,9 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
     args: DebugProtocol.VariablesArguments,
   ): Promise<void> {
     try {
-      const variables = await this.getVariablesManager().getVariables(args.variablesReference);
+      const variables = await this.getVariablesManager().getVariables(
+        args.variablesReference,
+      );
       response.body = { variables };
       this.sendResponse(response);
     } catch (err) {
@@ -485,10 +489,10 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
   ): Promise<void> {
     try {
       const value = await this.getVariablesManager().setVariable(
-          args.variablesReference,
-          args.name,
-          Number(args.value),
-        )
+        args.variablesReference,
+        args.name,
+        Number(args.value),
+      );
       response.body = { value };
       this.sendResponse(response);
     } catch (err) {
@@ -592,10 +596,11 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
   ): Promise<void> {
     try {
       const path = args.source.path!;
-      const breakpoints = await this.getBreakpointManager().setSourceBreakpoints(
-        path,
-        args.breakpoints ?? [],
-      );
+      const breakpoints =
+        await this.getBreakpointManager().setSourceBreakpoints(
+          path,
+          args.breakpoints ?? [],
+        );
 
       response.body = { breakpoints };
       this.sendResponse(response);
@@ -886,97 +891,12 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
       const baseAddress = Number(args.memoryReference) + (args.offset ?? 0);
       const instructionOffset = args.instructionOffset ?? 0;
       const count = args.instructionCount;
-
-      let requestCount = count;
-      let startAddress = baseAddress;
-
-      // Instruction offsets are a pain in the arse!
-      if (instructionOffset < 0) {
-        // Negative instruction offset:
-        // Here we don't really know the start address to disassemble from to get this many additional instructions,
-        // because their length varies.
-        // Use the worst case, and set the start address way back as if each instruction is the maximum possible size.
-        // This will result in getting way more than we need.
-        const MAX_BYTES_PER_INSTRUCTION = 8; // really 10, but super unlikely
-        const MIN_BYTES_PER_INSTRUCTION = 2;
-        startAddress += instructionOffset * MAX_BYTES_PER_INSTRUCTION;
-        // Clamp to make sure we don't get a negative address. If we don't get enough instructions, we'll pad the result later
-        startAddress = Math.max(startAddress, 0);
-        // We also need to take the worst case of how many instructions to disassemble from the start address to include the requested range
-        // i.e. we set start address as if all the instructions were max size, but if they were min size, we have 4x
-        // that many instructions before we reach our base address
-        requestCount +=
-          -instructionOffset *
-          (MAX_BYTES_PER_INSTRUCTION / MIN_BYTES_PER_INSTRUCTION);
-      } else {
-        // Positive instruction offset:
-        // We still need to start disassembling from the base address, but just fetch more instructions and trim them later.
-        requestCount += instructionOffset;
-      }
-
-      const result = await this.vAmiga.disassemble(startAddress, requestCount);
-
-      if (result.instructions) {
-        // find the instruction containing the base address. We'll slice relative to this to get the requested range
-        const startIndex = result.instructions.findIndex(
-          (i) => parseInt(i.addr, 16) === baseAddress,
-        );
-        // If it's not there we're pretty screwed...
-        if (startIndex === -1) {
-          throw new Error("start instruction not found");
-        }
-        let realStart = startIndex + instructionOffset;
-
-        // These are the instructions that will actually go in the response
-        const includedInstructions: typeof result.instructions = [];
-
-        // Pad with filler instructions to make up requested amount if start index is negative.
-        if (realStart < 0) {
-          for (let i = 0; i < -realStart; i++) {
-            includedInstructions.push({
-              addr: "0x00000000",
-              instruction: "invalid",
-              hex: "0000 0000",
-            });
-          }
-          realStart = 0;
-        }
-
-        includedInstructions.push(
-          ...result.instructions.slice(realStart, realStart + count),
-        );
-
-        const instructions: DebugProtocol.DisassembledInstruction[] =
-          includedInstructions.map((instr: any) => {
-            const disasm: DebugProtocol.DisassembledInstruction = {
-              address: "0x" + instr.addr,
-              instruction: instr.instruction,
-              instructionBytes: instr.hex,
-            };
-            if (
-              instr.hex === "0000 0000" || // I mean, it could be `or.w #0,d0` but who's doing that?
-              instr.instruction.startsWith("dc.")
-            ) {
-              disasm.presentationHint = "invalid";
-            }
-
-            // Add symbol lookup if we have source map
-            if (this.sourceMap) {
-              const addr = parseInt(instr.addr, 16);
-              const loc = this.sourceMap.lookupAddress(addr);
-              if (loc) {
-                disasm.symbol = path.basename(loc.path) + ":" + loc.line;
-                disasm.location = new Source(path.basename(loc.path), loc.path);
-                disasm.line = loc.line;
-              }
-            }
-            return disasm;
-          });
-
-        response.body = { instructions };
-      } else {
-        throw new Error("No instructions returned from disassembler");
-      }
+      const instructions = await this.getDisassemblyManager().disassemble(
+        baseAddress,
+        instructionOffset,
+        count,
+      );
+      response.body = { instructions };
       this.sendResponse(response);
     } catch (err) {
       this.sendError(
@@ -1183,6 +1103,7 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
         this.sourceMap,
       );
       this.stackManager = new StackManager(this.vAmiga, this.sourceMap);
+      this.disassemblyManager = new DisassemblyManager(this.vAmiga, this.sourceMap);
       if (this.stopOnEntry && !this.fastLoad) {
         this.breakpointManager.setTmpBreakpoint(offsets[0], "entry");
       }
@@ -1412,22 +1333,29 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
 
   private getStackManager(): StackManager {
     if (!this.stackManager) {
-      throw new Error('Not initialized')
+      throw new Error("Not initialized");
     }
     return this.stackManager;
   }
 
   private getBreakpointManager(): BreakpointManager {
     if (!this.breakpointManager) {
-      throw new Error('Not initialized')
+      throw new Error("Not initialized");
     }
     return this.breakpointManager;
   }
 
   private getVariablesManager(): VariablesManager {
     if (!this.variablesManager) {
-      throw new Error('Not initialized')
+      throw new Error("Not initialized");
     }
     return this.variablesManager;
+  }
+
+  private getDisassemblyManager(): DisassemblyManager {
+    if (!this.disassemblyManager) {
+      throw new Error("Not initialized");
+    }
+    return this.disassemblyManager;
   }
 }
