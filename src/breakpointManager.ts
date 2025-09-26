@@ -37,7 +37,7 @@ export interface BreakpointStopResult {
 
 /**
  * Manages all types of breakpoints for the debug adapter.
- * 
+ *
  * Handles different breakpoint types:
  * - Source breakpoints: Line-based breakpoints in source files
  * - Instruction breakpoints: Address-based breakpoints in disassembly
@@ -57,7 +57,7 @@ export class BreakpointManager {
 
   /**
    * Creates a new BreakpointManager instance.
-   * 
+   *
    * @param vAmiga VAmiga instance for setting hardware breakpoints
    * @param sourceMap Source map for resolving source locations to addresses
    */

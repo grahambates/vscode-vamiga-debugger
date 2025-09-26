@@ -16,7 +16,8 @@
       "Bash(npm view:*)",
       "Bash(npm install:*)",
       "Bash(sed:*)",
-      "Bash(cat:*)"
+      "Bash(cat:*)",
+      "WebFetch(domain:code.visualstudio.com)"
     ],
     "deny": [],
     "ask": []

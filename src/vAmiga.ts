@@ -146,7 +146,7 @@ export type EmulatorMessage =
 
 /**
  * Type guard to check if a message is an AttachedMessage.
- * 
+ *
  * @param message The emulator message to check
  * @returns True if the message is an AttachedMessage
  */
@@ -158,7 +158,7 @@ export function isAttachedMessage(
 
 /**
  * Type guard to check if a message is an EmulatorStateMessage.
- * 
+ *
  * @param message The emulator message to check
  * @returns True if the message is an EmulatorStateMessage
  */
@@ -170,7 +170,7 @@ export function isEmulatorStateMessage(
 
 /**
  * Type guard to check if a message is an EmulatorOutputMessage.
- * 
+ *
  * @param message The emulator message to check
  * @returns True if the message is an EmulatorOutputMessage
  */
@@ -182,7 +182,7 @@ export function isEmulatorOutputMessage(
 
 /**
  * Type guard to check if a message is an ExecReadyMessage.
- * 
+ *
  * @param message The emulator message to check
  * @returns True if the message is an ExecReadyMessage
  */
@@ -194,7 +194,7 @@ export function isExecReadyMessage(
 
 /**
  * Type guard to check if a message is an RpcResponseMessage.
- * 
+ *
  * @param message The emulator message to check
  * @returns True if the message is an RpcResponseMessage
  */
@@ -402,6 +402,22 @@ export class VAmiga {
   public stepInto(): void {
     this.invalidateCache();
     this.sendCommand("stepInto");
+  }
+
+  /**
+   * Run to end of frame
+   */
+  public eof(): void {
+    this.invalidateCache();
+    this.sendCommand("eof");
+  }
+
+  /**
+   * Run to end of line
+   */
+  public eol(): void {
+    this.invalidateCache();
+    this.sendCommand("eol");
   }
 
   /**

@@ -4,6 +4,7 @@
  * @see {@link http://amiga-dev.wikidot.com/file-format:hunk}
  */
 
+import { logger } from "@vscode/debugadapter";
 import { readFile } from "fs/promises";
 
 export interface Hunk {
@@ -211,6 +212,7 @@ function createHunk(
 
       // Skip all other block types
       default:
+        logger.error('Skipping unsupported hunk type: ' + blockType.toString(16))
         reader.skip(reader.readLong() * 4);
         break;
     }

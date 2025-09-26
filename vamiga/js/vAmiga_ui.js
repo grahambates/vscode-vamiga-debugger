@@ -2605,6 +2605,12 @@ postMessage({ type: 'ready' });
                 case 'removeCatchpoint':
                     wasm_remove_catchpoint(message.args.vector);
                     break;
+                case 'eol':
+                    Module._wasm_eol();
+                    break;
+                case 'eof':
+                    Module._wasm_eof();
+                    break;
                 case 'stepInto':
                     wasm_step_into();
                     wasm_run();

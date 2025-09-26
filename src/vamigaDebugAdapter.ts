@@ -1,5 +1,7 @@
 // TODO:
 // - Step from break on entry broken - pc is not set to entry point (caching?)
+// - eol / eof
+// - beamtraps
 // - copy tests from borrowed code
 // - Console commands:
 //   - disasm command for interactive disassembly
