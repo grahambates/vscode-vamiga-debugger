@@ -19,7 +19,6 @@ import {
   ContinuedEvent,
   OutputEvent,
   Thread,
-  StackFrame,
   Source,
 } from "@vscode/debugadapter";
 import { LogLevel } from "@vscode/debugadapter/lib/logger";
@@ -69,6 +68,7 @@ import { exceptionBreakpointFilters } from "./vectors";
 import { instructionAttrs } from "./instructions";
 import { VariablesManager } from "./variablesManager";
 import { BreakpointManager } from "./breakpointManager";
+import { StackManager } from "./stackManager";
 
 /**
  * Launch configuration arguments for starting a debug session.
@@ -201,12 +201,13 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
   private lastStepGranularity: DebugProtocol.SteppingGranularity | undefined;
 
   private variablesManager?: VariablesManager;
+  private breakpointManager?: BreakpointManager;
+  private stackManager?: StackManager;
 
   private hunks: Hunk[] = [];
   private dwarfData?: DWARFData;
   private sourceMap?: SourceMap;
 
-  private breakpointManager?: BreakpointManager;
 
   private disposables: (vscode.Disposable | undefined)[] = [];
 
@@ -257,7 +258,9 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
    */
   public dispose(): void {
     this.vAmiga.run(); // unpause emulator if we're leaving it open
-    this.breakpointManager?.clearAll();
+    if (this.breakpointManager) {
+      this.breakpointManager.clearAll();
+    }
     this.disposables.forEach((d) => d?.dispose());
     this.disposables = [];
   }
@@ -434,42 +437,9 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
   ): Promise<void> {
     const startFrame = args.startFrame ?? 0;
     const maxLevels = args.levels ?? 16;
-    const endFrame = startFrame + maxLevels;
 
     try {
-      const addresses = await this.guessStack(endFrame);
-
-      let foundSource = false;
-
-      // Now build stack frame response from addresses
-      const stk = [];
-      for (let i = startFrame; i < addresses.length && i < endFrame; i++) {
-        const addr = addresses[i][0];
-        if (this.sourceMap) {
-          const loc = this.sourceMap.lookupAddress(addr);
-          if (loc) {
-            const frame = new StackFrame(
-              0,
-              formatAddress(addr, this.sourceMap),
-              new Source(path.basename(loc.path), loc.path),
-              loc.line,
-            );
-            frame.instructionPointerReference = formatHex(addr);
-            stk.push(frame);
-            foundSource = true;
-            continue;
-          }
-        }
-        // stop on first rom call after user code
-        if (foundSource && addr > 0x00e00000 && addr < 0x01000000) {
-          break;
-        }
-        // No source available - create disassembly frame
-        const frame = new StackFrame(0, formatHex(addr));
-        frame.instructionPointerReference = formatHex(addr);
-        stk.push(frame);
-      }
-
+      const stk = await this.getStackManager().getStackFrames(startFrame, maxLevels);
       response.body = {
         stackFrames: stk,
         totalFrames: stk.length,
@@ -496,9 +466,7 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
     args: DebugProtocol.VariablesArguments,
   ): Promise<void> {
     try {
-      const variables =
-        (await this.variablesManager?.getVariables(args.variablesReference)) ??
-        [];
+      const variables = await this.getVariablesManager().getVariables(args.variablesReference);
       response.body = { variables };
       this.sendResponse(response);
     } catch (err) {
@@ -516,12 +484,11 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
     args: DebugProtocol.SetVariableArguments,
   ): Promise<void> {
     try {
-      const value =
-        (await this.variablesManager?.setVariable(
+      const value = await this.getVariablesManager().setVariable(
           args.variablesReference,
           args.name,
           Number(args.value),
-        )) ?? "";
+        )
       response.body = { value };
       this.sendResponse(response);
     } catch (err) {
@@ -573,7 +540,7 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
       const isBranch = currInst.match(/^(jsr|bsr|dbra)/i);
       if (next && isBranch) {
         const addr = parseInt(next.addr, 16);
-        this.breakpointManager?.setTmpBreakpoint(addr, "step");
+        this.getBreakpointManager().setTmpBreakpoint(addr, "step");
         this.vAmiga.run();
       } else {
         this.stepping = true;
@@ -596,11 +563,11 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
   ): Promise<void> {
     try {
       // vAmiga has no stepOut function, as it doesn't track stack frames. We need to use our guessed stack list to set a tmp breakpoint.
-      const stack = await this.guessStack();
+      const stack = await this.getStackManager().guessStack();
 
       // stack 0 is pc
       if (stack[1]) {
-        this.breakpointManager?.setTmpBreakpoint(stack[1][1], "step");
+        this.getBreakpointManager().setTmpBreakpoint(stack[1][1], "step");
         this.isRunning = true;
         this.vAmiga.run();
       } else {
@@ -623,17 +590,9 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
     response: DebugProtocol.SetBreakpointsResponse,
     args: DebugProtocol.SetBreakpointsArguments,
   ): Promise<void> {
-    if (!this.breakpointManager) {
-      return this.sendError(
-        response,
-        ErrorCode.DEBUG_SYMBOLS_READ_ERROR,
-        "Debug session not initialized",
-      );
-    }
-
     try {
       const path = args.source.path!;
-      const breakpoints = await this.breakpointManager.setSourceBreakpoints(
+      const breakpoints = await this.getBreakpointManager().setSourceBreakpoints(
         path,
         args.breakpoints ?? [],
       );
@@ -653,17 +612,9 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
     response: DebugProtocol.SetInstructionBreakpointsResponse,
     args: DebugProtocol.SetInstructionBreakpointsArguments,
   ): Promise<void> {
-    if (!this.breakpointManager) {
-      return this.sendError(
-        response,
-        ErrorCode.DEBUG_SYMBOLS_READ_ERROR,
-        "Debug session not initialized",
-      );
-    }
-
     try {
       const breakpoints =
-        await this.breakpointManager.setInstructionBreakpoints(
+        await this.getBreakpointManager().setInstructionBreakpoints(
           args.breakpoints ?? [],
         );
 
@@ -682,16 +633,8 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
     response: DebugProtocol.SetFunctionBreakpointsResponse,
     args: DebugProtocol.SetFunctionBreakpointsArguments,
   ): void {
-    if (!this.breakpointManager) {
-      return this.sendError(
-        response,
-        ErrorCode.DEBUG_SYMBOLS_READ_ERROR,
-        "Debug session not initialized",
-      );
-    }
-
     try {
-      const breakpoints = this.breakpointManager.setFunctionBreakpoints(
+      const breakpoints = this.getBreakpointManager().setFunctionBreakpoints(
         args.breakpoints ?? [],
       );
 
@@ -712,11 +655,11 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
   ): void {
     // Handle variables that have memory references
     // TODO: handle expressions as args.name, and args.asAddress
-    if (args.variablesReference && this.breakpointManager && this.variablesManager) {
-      const id = this.variablesManager.getVariableReference(
+    if (args.variablesReference) {
+      const id = this.getVariablesManager().getVariableReference(
         args.variablesReference,
       );
-      const result = this.breakpointManager.getDataBreakpointInfo(
+      const result = this.getBreakpointManager().getDataBreakpointInfo(
         id,
         args.name,
       );
@@ -737,16 +680,8 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
     response: DebugProtocol.SetDataBreakpointsResponse,
     args: DebugProtocol.SetDataBreakpointsArguments,
   ): Promise<void> {
-    if (!this.breakpointManager || !this.variablesManager) {
-      return this.sendError(
-        response,
-        ErrorCode.DEBUG_SYMBOLS_READ_ERROR,
-        "Debug session not initialized",
-      );
-    }
-
     try {
-      const breakpoints = await this.breakpointManager.setDataBreakpoints(
+      const breakpoints = await this.getBreakpointManager().setDataBreakpoints(
         args.breakpoints,
       );
 
@@ -1058,7 +993,7 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
     args: DebugProtocol.LocationsArguments,
   ): void {
     try {
-      const location = this.variablesManager?.getLocationReference(
+      const location = this.getVariablesManager().getLocationReference(
         args.locationReference,
       );
       if (location) {
@@ -1082,16 +1017,8 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
     response: DebugProtocol.SetExceptionBreakpointsResponse,
     args: DebugProtocol.SetExceptionBreakpointsArguments,
   ): void {
-    if (!this.breakpointManager) {
-      return this.sendError(
-        response,
-        ErrorCode.DEBUG_SYMBOLS_READ_ERROR,
-        "Debug session not initialized",
-      );
-    }
-
     try {
-      const breakpoints = this.breakpointManager.setExceptionBreakpoints(
+      const breakpoints = this.getBreakpointManager().setExceptionBreakpoints(
         args.filters,
       );
 
@@ -1255,8 +1182,9 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
         this.vAmiga,
         this.sourceMap,
       );
+      this.stackManager = new StackManager(this.vAmiga, this.sourceMap);
       if (this.stopOnEntry && !this.fastLoad) {
-        this.breakpointManager?.setTmpBreakpoint(offsets[0], "entry");
+        this.breakpointManager.setTmpBreakpoint(offsets[0], "entry");
       }
       this.sendEvent(new InitializedEvent());
     } catch (error) {
@@ -1357,70 +1285,6 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
     }
 
     this.sendEvent(evt);
-  }
-
-  /**
-   * Analyzes stack memory to guess call frames.
-   *
-   * Since VAmiga doesn't track stack frames, this method examines stack memory
-   * looking for patterns that indicate return addresses from JSR/BSR instructions.
-   *
-   * Made protected to allow testing of the stack analysis algorithm.
-   *
-   * Algorithm:
-   * 1. Reads stack memory from current SP
-   * 2. Looks for 32-bit values that could be return addresses
-   * 3. Validates by checking if previous instructions are JSR/BSR
-   * 4. Builds list of [call_site, return_address] pairs
-   *
-   * @param maxLength Maximum number of stack frames to return
-   * @returns Array of [call instruction address, return address] pairs
-   */
-  protected async guessStack(maxLength = 16): Promise<[number, number][]> {
-    const cpuInfo = await this.vAmiga.getCpuInfo();
-
-    // vAmiga doesn't currently track stack frames, so we'll need to look at the stack data and guess...
-    // Fetch data from sp, up to a reasonable length
-    const maxSize = 128;
-    const stackData = await this.vAmiga.readMemoryBuffer(
-      Number(cpuInfo.a7),
-      128,
-    );
-
-    const pc = Number(cpuInfo.pc);
-    const addresses: [number, number][] = [[pc, pc]]; // Start with at least the current frame
-
-    // Look for values that could be a possible return address (as opposed to other data pushed to the stack)
-    let offset = 0;
-    addresses: while (offset <= maxSize - 4 && addresses.length < maxLength) {
-      const addr = stackData.readInt32BE(offset);
-      if (
-        this.vAmiga.isValidAddress(addr) &&
-        !(addr & 1) // even address
-      ) {
-        try {
-          // Look at previous 3 words, and check if they look like a jsr or bsr
-          const prevBytes = await this.vAmiga.readMemoryBuffer(addr - 6, 6);
-          for (let i = 0; i < 3; i++) {
-            const w = prevBytes.readUInt16BE(i * 2);
-            if (
-              (w & 0xffc0) === 0x4e80 || // jsr
-              (w & 0xff00) === 0x6100 // bsr
-            ) {
-              // found likely return
-              addresses.push([addr - 6 + i * 2, addr]);
-              offset += 4;
-              continue addresses;
-            }
-          }
-        } catch (_) {
-          // probably failed to read mem at invalid address
-        }
-      }
-      // next word if match not found
-      offset += 2;
-    }
-    return addresses;
   }
 
   /**
@@ -1544,5 +1408,26 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
       }
     }
     return { value, memoryReference, type };
+  }
+
+  private getStackManager(): StackManager {
+    if (!this.stackManager) {
+      throw new Error('Not initialized')
+    }
+    return this.stackManager;
+  }
+
+  private getBreakpointManager(): BreakpointManager {
+    if (!this.breakpointManager) {
+      throw new Error('Not initialized')
+    }
+    return this.breakpointManager;
+  }
+
+  private getVariablesManager(): VariablesManager {
+    if (!this.variablesManager) {
+      throw new Error('Not initialized')
+    }
+    return this.variablesManager;
   }
 }

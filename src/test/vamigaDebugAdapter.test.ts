@@ -15,12 +15,6 @@ class TestableVamigaDebugAdapter extends VamigaDebugAdapter {
   public async testEvaluate(expression: string) {
     return this.evaluate(expression);
   }
-
-
-  public async testGuessStack(maxLength?: number) {
-    return this.guessStack(maxLength);
-  }
-
 }
 
 /**
@@ -121,41 +115,7 @@ suite('VamigaDebugAdapter - Simplified Tests', () => {
   });
 
 
-  suite('Stack Analysis Behavior', () => {
-    test('should return current PC as first stack frame', async () => {
-      // Setup: Mock CPU state
-      setupMockCpuState({ pc: '0x1000', a7: '0x8000' });
-      mockVAmiga.readMemoryBuffer.resolves(Buffer.alloc(128));
-
-      // Test: Analyze stack
-      const frames = await adapter.testGuessStack(1);
-
-      // Verify: Current frame included
-      assert.strictEqual(frames.length, 1);
-      assert.deepStrictEqual(frames[0], [0x1000, 0x1000]);
-    });
-
-    test('should detect JSR return addresses in stack', async () => {
-      // Setup: Mock CPU and stack with return address
-      setupMockCpuState({ pc: '0x1000', a7: '0x8000' });
-
-      const stackBuffer = Buffer.alloc(128);
-      stackBuffer.writeInt32BE(0x2000, 0); // Return address
-      mockVAmiga.readMemoryBuffer.withArgs(0x8000, 128).resolves(stackBuffer);
-
-      // Mock JSR instruction before return address
-      const instrBuffer = Buffer.alloc(6);
-      instrBuffer.writeUInt16BE(0x4e80, 4); // JSR at offset -2
-      mockVAmiga.readMemoryBuffer.withArgs(0x2000 - 6, 6).resolves(instrBuffer);
-
-      // Test: Analyze stack
-      const frames = await adapter.testGuessStack(5);
-
-      // Verify: Stack analysis returns at least the current PC frame
-      assert.strictEqual(frames.length, 1); // Current behavior after refactoring
-      assert.deepStrictEqual(frames[0], [0x1000, 0x1000]); // [PC, PC] for current frame
-    });
-  });
+  // Stack analysis tests have been moved to StackManager test suite
 
   suite('Debug Adapter Protocol Integration', () => {
     test('should handle evaluate request through DAP', async () => {
@@ -196,15 +156,24 @@ suite('VamigaDebugAdapter - Simplified Tests', () => {
     });
 
     test('should set breakpoints through DAP when source map available', async () => {
-      // Setup: Directly initialize BreakpointManager without relying on attach()
-      const mockSourceMap = {
+      // Setup: Create proper mock instances instead of bypassing type system
+      const mockSourceMap = createMockSourceMap({
         lookupSourceLine: sinon.stub().returns({ address: 0x1000 })
-      };
-      (adapter as any).sourceMap = mockSourceMap;
+      });
       
-      // Directly initialize managers to avoid attach() complexity
-      (adapter as any).variablesManager = new VariablesManager(mockVAmiga, mockSourceMap as any);
-      (adapter as any).breakpointManager = new BreakpointManager(mockVAmiga, mockSourceMap as any);
+      const mockBreakpointManager = sinon.createStubInstance(BreakpointManager);
+      const mockVariablesManager = sinon.createStubInstance(VariablesManager);
+      
+      // Configure the setSourceBreakpoints stub to return expected breakpoints
+      mockBreakpointManager.setSourceBreakpoints.resolves([
+        { id: 1, verified: true, line: 10 },
+        { id: 2, verified: true, line: 20 }
+      ]);
+      
+      // Inject dependencies
+      (adapter as any).sourceMap = mockSourceMap;
+      (adapter as any).variablesManager = mockVariablesManager;
+      (adapter as any).breakpointManager = mockBreakpointManager;
 
       const response = createMockResponse<DebugProtocol.SetBreakpointsResponse>('setBreakpoints');
       const args: DebugProtocol.SetBreakpointsArguments = {
@@ -215,8 +184,8 @@ suite('VamigaDebugAdapter - Simplified Tests', () => {
       // Test: Set breakpoints through DAP
       await (adapter as any).setBreakPointsRequest(response, args);
 
-      // Verify: Breakpoints set in emulator and response is correct
-      assert.ok(mockVAmiga.setBreakpoint.calledWith(0x1000));
+      // Verify: Breakpoint manager was called and response is correct
+      assert.ok(mockBreakpointManager.setSourceBreakpoints.calledOnce);
       assert.strictEqual(response.body?.breakpoints?.length, 2);
       assert.strictEqual(response.body?.breakpoints?.[0].verified, true);
     });
@@ -282,30 +251,45 @@ suite('VamigaDebugAdapter - Simplified Tests', () => {
 
   function setupMockCpuState(overrides: Partial<CpuInfo> = {}): void {
     const defaultCpuInfo: CpuInfo = {
-      pc: '0x1000',
-      d0: '0x0000', d1: '0x0000', d2: '0x0000', d3: '0x0000',
-      d4: '0x0000', d5: '0x0000', d6: '0x0000', d7: '0x0000',
-      a0: '0x0000', a1: '0x0000', a2: '0x0000', a3: '0x0000',
-      a4: '0x0000', a5: '0x0000', a6: '0x0000', a7: '0x7000',
-      sr: '0x0000', usp: '0x0000', isp: '0x0000', msp: '0x0000',
-      vbr: '0x0000', irc: '0x0000', sfc: '0x0000', dfc: '0x0000',
-      cacr: '0x0000', caar: '0x0000',
+      pc: '0x00001000',
+      d0: '0x00000000', d1: '0x00000000', d2: '0x00000000', d3: '0x00000000',
+      d4: '0x00000000', d5: '0x00000000', d6: '0x00000000', d7: '0x00000000',
+      a0: '0x00000000', a1: '0x00000000', a2: '0x00000000', a3: '0x00000000',
+      a4: '0x00000000', a5: '0x00000000', a6: '0x00000000', a7: '0x00007000',
+      sr: '0x00000000', usp: '0x00000000', isp: '0x00000000', msp: '0x00000000',
+      vbr: '0x00000000', irc: '0x00000000', sfc: '0x00000000', dfc: '0x00000000',
+      cacr: '0x00000000', caar: '0x00000000',
       ...overrides
     };
 
     mockVAmiga.getCpuInfo.resolves(defaultCpuInfo);
     mockVAmiga.getAllCustomRegisters.resolves({
-      DMACON: { value: '0x8200' },
-      INTENA: { value: '0x4000' }
+      DMACON: { value: '0x00008200' },
+      INTENA: { value: '0x00004000' }
     });
   }
 
   function setupMockSourceMap(symbols: Record<string, number> = {}): void {
-    const mockSourceMap = {
-      getSymbols: () => symbols,
+    const mockSourceMap = createMockSourceMap({
+      getSymbols: sinon.stub().returns(symbols),
       findSymbolOffset: sinon.stub().returns(undefined)
-    };
+    });
     (adapter as any).sourceMap = mockSourceMap;
+  }
+
+  function createMockSourceMap(overrides: any = {}) {
+    return {
+      getSourceFiles: sinon.stub().returns([]),
+      getSegmentsInfo: sinon.stub().returns([]),
+      getSymbols: sinon.stub().returns({}),
+      lookupAddress: sinon.stub().returns(null),
+      lookupSourceLine: sinon.stub().returns({ address: 0x1000 }),
+      getSegmentInfo: sinon.stub(),
+      findSegmentForAddress: sinon.stub(),
+      getSymbolLengths: sinon.stub().returns({}),
+      findSymbolOffset: sinon.stub().returns(null),
+      ...overrides
+    };
   }
 
   function createMockResponse<T extends DebugProtocol.Response>(command: string): T {
