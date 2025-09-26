@@ -112,9 +112,9 @@
     "watch": "tsc -watch -p ./",
     "pretest": "npm run compile && npm run lint",
     "lint": "eslint src --ext ts",
-    "test": "vscode-test",
-    "test:unit": "npm run compile && mocha out/test/**/*.test.js --ui tdd",
-    "test:coverage": "npm run compile && nyc mocha out/test/**/*.test.js --ui tdd",
+    "test": "npm run test:unit",
+    "test:unit": "jest",
+    "test:coverage": "jest --coverage",
     "format": "prettier --write src/**/*.ts",
     "format:check": "prettier --check src/**/*.ts"
   },
@@ -124,7 +124,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.35.0",
-    "@types/mocha": "^10.0.6",
+    "@types/jest": "^30.0.0",
     "@types/node": "24.3.1",
     "@types/sinon": "^17.0.3",
     "@types/vscode": "^1.74.0",
@@ -133,10 +133,27 @@
     "@vscode/test-cli": "0.0.11",
     "@vscode/test-electron": "^2.3.8",
     "eslint": "9.35.0",
+    "jest": "^30.1.3",
     "prettier": "^3.6.2",
     "sinon": "^18.0.1",
+    "ts-jest": "^29.4.4",
     "typescript": "^5.9.2",
     "typescript-eslint": "^8.43.0"
+  },
+  "jest": {
+    "preset": "ts-jest",
+    "testEnvironment": "node",
+    "testMatch": ["**/test/**/*.test.ts"],
+    "testPathIgnorePatterns": [
+      "/node_modules/",
+      "extension.test.ts",
+      "integration.test.ts"
+    ],
+    "collectCoverageFrom": [
+      "src/**/*.ts",
+      "!src/test/**/*"
+    ],
+    "setupFilesAfterEnv": ["<rootDir>/src/test/jestSetup.ts"]
   },
   "author": "",
   "license": "ISC"

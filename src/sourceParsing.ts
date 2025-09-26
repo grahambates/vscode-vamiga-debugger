@@ -28,48 +28,65 @@ export interface ComponentInfo {
   index?: number;
 }
 
-// Regex to match line components:
-// ^
-// (?<label>                           Label:
-//   ([^:\s;*=]+:?:?)                  - anything at start of line - optional colon
-//   |                                   or...
-//   (\s+[^:\s;*=]+::?)                - can have leading whitespace with colon present
-// )?
-// (\s*                                Instruction or directive:
-//   (
-//                                     Need seprate case for instructions/directives without operands
-//                                     in order for position based comments to work
-//                                     i.e. any text following one of these mnemonics should be treated
-//                                     as a comment:
-//
-//     (                                 No-operand mnemonics:
-//       (?<mnemonic1>\.?(nop|reset|rte|rtr|rts|trapv|illegal|clrfo|clrso|comment|einline|even|inline|list|mexit|nolist|nopage|odd|page|popsection|pushsection|rsreset|endif|endc|else|elseif|endm|endr|erem))
-//       (?<size1>\.[a-z0-9_.]*)?          - Size qualifier
-//     )
-//     |
-//     (                                 Any other mnemonic:
-//       (?<mnemonic>([^\s.,;*=]+|=))               - Mnemonic
-//       (?<size>\.[^\s.,;*]*)?                     - Size qualifier
-//       (\s*(?<operands>                           - Operand list:
-//         (?<op1>                     First operand
-//          "([^"]*)"?|                 - double quoted
-//          '([^']*)'?|                 - singled quoted
-//          <([^>]*)>?|                 - chevron quoted
-//          [^\s;,]+                    - anything else
-//         )
-//         (?<op2>,\s*(                Additional comma separated operands
-//          "([^"]*)"?|
-//          '([^']*)'?|
-//          <([^>]*)>?|
-//          [^\s;,]*)
-//         )*))?
-//     )
-//   )
-// )?
-// (\s*(?<comment>.+))?                Comment (any trailing text)
-// $
-const pattern =
-  /^(?<label>([^:\s;*=]+:?:?)|(\s+[^:\s;*=]+::?))?(\s*(((?<mnemonic1>\.?(nop|reset|rte|rtr|rts|trapv|illegal|clrfo|clrso|comment|einline|even|inline|list|mexit|nolist|nopage|odd|page|popsection|pushsection|rsreset|endif|endc|else|elseif|endm|endr|erem))(?<size1>\.[a-z0-9_.]*)?)|((?<mnemonic>([^\s.,;*=]+|=))(?<size>\.[^\s.,;*]*)?(\s*(?<operands>(?<op1>"([^"]*)"?|'([^']*)'?|<([^>]*)>?|[^\s;,]+)(?<op2>,\s*("([^"]*)"?|'([^']*)'?|<([^>]*)>?|[^\s;,]*))*))?)))?(\s*(?<comment>.+))?$/i;
+// Helper to strip comments and normalize whitespace from regex strings
+function rx(template: string): string {
+  return template
+    .replace(/\s*#.*$/gm, '')  // Remove comments (# to end of line)
+    .replace(/\s+/g, '');      // Remove all whitespace
+}
+
+// Assembly line parsing regex - built from documented components
+const labelGroup = rx(String.raw`
+  (?<label>
+    ([^:\s;*=]+:?:?)           # anything at start of line - optional colon
+    |                          # or...
+    (\s+[^:\s;*=]+::?)         # can have leading whitespace with colon present
+  )?
+`);
+
+const noOperandMnemonics = rx(String.raw`
+  (?<mnemonic1>\.?(nop|reset|rte|rtr|rts|trapv|illegal|clrfo|clrso|comment|einline|even|inline|list|mexit|nolist|nopage|odd|page|popsection|pushsection|rsreset|endif|endc|else|elseif|endm|endr|erem))
+  (?<size1>\.[a-z0-9_.]*)?     # Size qualifier
+`);
+
+const operandPattern = rx(String.raw`
+  "([^"]*)"?|                  # double quoted
+  '([^']*)'?|                  # single quoted  
+  <([^>]*)>?|                  # chevron quoted
+  [^\s;,]+                     # anything else
+`);
+
+const operandPatternForSecond = rx(String.raw`
+  "([^"]*)"?|                  # double quoted
+  '([^']*)'?|                  # single quoted  
+  <([^>]*)>?|                  # chevron quoted
+  [^\s;,]*                     # anything else (can be empty)
+`);
+
+const regularMnemonic = rx(String.raw`
+  (?<mnemonic>([^\s.,;*=]+|=)) # Mnemonic
+  (?<size>\.[^\s.,;*]*)?       # Size qualifier
+  (\s*(?<operands>             # Operand list:
+    (?<op1>${operandPattern})  # First operand
+    (?<op2>,\s*(${operandPatternForSecond}))* # Additional comma separated operands
+  ))?
+`);
+
+const instructionGroup = rx(String.raw`
+  (\s*                         # Instruction or directive:
+    (
+      (${noOperandMnemonics})  # No-operand mnemonics
+      |
+      (${regularMnemonic})     # Any other mnemonic
+    )
+  )?
+`);
+
+const commentGroup = rx(String.raw`
+  (\s*(?<comment>.+))?         # Comment (any trailing text)
+`);
+
+const pattern = new RegExp(`^${labelGroup}${instructionGroup}${commentGroup}$`, 'i');
 
 /**
  * Parse a single line of source code into positional components

@@ -2,10 +2,10 @@
  * Amiga Hardware Register Bit Parsers
  *
  * This module contains parsers for various Amiga custom chip registers,
- * breaking down their bit fields into meaningful components wit },
+ * breaking down their bit fields into meaningful components
  *
  * Each parser function takes a register value and returns an array of named
- * bit fields with their values and human-readabl },
+ * bit fields with their values and human-readable labels
  */
 
 import { formatBin, formatHex } from "./numbers";
@@ -22,7 +22,7 @@ export const SUPPORTED_REGISTERS = [
   "DMACON",
   "DMACONR",
   "INTENA",
-  "INTENAR", 
+  "INTENAR",
   "INTREQ",
   "INTREQR",
   "BPLCON0",

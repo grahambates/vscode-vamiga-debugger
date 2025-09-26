@@ -12,7 +12,11 @@
       "Bash(node:*)",
       "Bash(find:*)",
       "Bash(npm run test:*)",
-      "Bash(npx mocha:*)"
+      "Bash(npx mocha:*)",
+      "Bash(npm view:*)",
+      "Bash(npm install:*)",
+      "Bash(sed:*)",
+      "Bash(cat:*)"
     ],
     "deny": [],
     "ask": []
