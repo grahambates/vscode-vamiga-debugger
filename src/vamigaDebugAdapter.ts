@@ -1,11 +1,10 @@
 // TODO:
-// Step from break on entry broken
+// Step from break on entry broken - pc is not set to entry point (caching?)
 // - Console
 //   - disasm
 //   - mem
 // - constants
 // - Copper debugging
-// custom regs eval to NaN
 // custom regs order
 // custom regs offset prefix
 

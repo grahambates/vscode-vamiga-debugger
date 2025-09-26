@@ -350,7 +350,7 @@ export class VariablesManager {
       variables[k] = Number(cpuInfo[k as keyof CpuInfo]);
     }
     for (const k in customRegs) {
-      variables[k] = Number(customRegs[k]);
+      variables[k] = Number(customRegs[k]?.value);
     }
     for (const k in symbols) {
       variables[k] = Number(symbols[k]);
