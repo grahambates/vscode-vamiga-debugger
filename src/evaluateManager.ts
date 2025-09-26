@@ -48,9 +48,26 @@ export enum EvaluateResultType {
   PARSED,
 }
 
+/**
+ * Manages expression evaluation for the debug adapter.
+ * 
+ * Handles evaluation of:
+ * - Numeric literals and hex addresses
+ * - CPU registers and custom chip registers
+ * - Symbols from source maps
+ * - Complex arithmetic expressions
+ * - Memory access and type conversion functions
+ */
 export class EvaluateManager {
   private parser: Parser;
 
+  /**
+   * Creates a new EvaluateManager instance.
+   * 
+   * @param vAmiga VAmiga instance for memory access and register reads
+   * @param sourceMap Source map for symbol resolution and address formatting
+   * @param variablesManager Variables manager for accessing flat variable data
+   */
   constructor(
     private vAmiga: VAmiga,
     private sourceMap: SourceMap,
@@ -76,6 +93,19 @@ export class EvaluateManager {
     };
   }
 
+  /**
+   * Evaluates an expression and returns formatted result for Debug Adapter Protocol.
+   * 
+   * Formats results based on expression type:
+   * - Data registers: hex + decimal values
+   * - Address registers: formatted addresses with symbol information
+   * - Symbols: addresses with pointer dereferencing for known types
+   * - Custom registers: hex values
+   * - Parsed expressions: hex + decimal values
+   * 
+   * @param args Evaluation request arguments from DAP
+   * @returns Formatted evaluation response for DAP
+   */
   public async evaluateFormatted({
     expression,
     context,

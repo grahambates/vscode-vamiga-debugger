@@ -4,12 +4,38 @@ import { formatAddress, formatHex } from "./numbers";
 import { basename } from "path";
 import { SourceMap } from "./sourceMap";
 
+/**
+ * Manages stack frame analysis and generation for the debug adapter.
+ * 
+ * Provides stack trace functionality by:
+ * - Analyzing stack memory to identify return addresses
+ * - Detecting JSR/BSR call patterns in the stack
+ * - Creating source-based or disassembly-based stack frames
+ * - Handling pagination for large stack traces
+ */
 export class StackManager {
+  /**
+   * Creates a new StackManager instance.
+   * 
+   * @param vAmiga VAmiga instance for reading CPU state and memory
+   * @param sourceMap Source map for resolving addresses to source locations
+   */
   constructor(
     private vAmiga: VAmiga,
     private sourceMap: SourceMap,
   ) {}
 
+  /**
+   * Generates stack frames for the debug adapter.
+   * 
+   * Creates stack frames by analyzing the stack memory and resolving addresses
+   * to source locations when available. Falls back to disassembly frames
+   * when source information is not available.
+   * 
+   * @param startFrame Starting frame index for pagination
+   * @param maxLevels Maximum number of frames to return
+   * @returns Array of stack frames with source or disassembly information
+   */
   public async getStackFrames(startFrame: number, maxLevels: number): Promise<StackFrame[]> {
     const endFrame = startFrame + maxLevels;
     const addresses = await this.guessStack(endFrame);

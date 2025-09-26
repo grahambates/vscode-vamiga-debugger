@@ -1,12 +1,13 @@
 // TODO:
-// Step from break on entry broken - pc is not set to entry point (caching?)
-// - Console
-//   - disasm
-//   - mem
-// - constants
-// - Copper debugging
-// custom regs order
-// custom regs offset prefix
+// - Step from break on entry broken - pc is not set to entry point (caching?)
+// - copy tests from borrowed code
+// - Console commands:
+//   - disasm command for interactive disassembly
+//   - mem command for memory inspection
+// - Constants/symbols browser in variables view
+// - Copper debugging support
+// - Custom register display ordering
+// - Custom register offset prefix display
 
 import {
   logger,
@@ -173,10 +174,10 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
    *
    * Initializes the debug adapter with:
    * - Zero-based line and column numbering
-   * - VAmiga emulator view for webview communication
-   * - Expression parser with memory access functions
+   * - VAmiga emulator interface for program execution and debugging
+   * - Manager classes for evaluation, variables, breakpoints, etc.
    *
-   * @param vAmiga Optional VAmigaView instance for dependency injection (primarily for testing)
+   * @param vAmiga VAmiga instance for dependency injection (primarily for testing)
    */
   public constructor(private vAmiga: VAmiga) {
     super();
@@ -905,15 +906,12 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
   }
 
   /**
-   * Sets a temporary breakpoint at the specified address.
+   * Injects the program into emulator memory for fast loading.
    *
-   * Temporary breakpoints are used for step operations and are automatically
-   * removed when hit. They are not visible to the client.
-   *
-   * @param address Memory address for the temporary breakpoint
-   * @param reason Description of why the breakpoint was set (e.g., "step", "entry")
+   * Uses the AmigaHunkLoader to load the program directly into memory
+   * without requiring floppy disk emulation. Sets up memory segments
+   * and calls attach() with the loaded program offsets.
    */
-
   private async injectProgram() {
     logger.log("Injecting program into memory");
     try {
@@ -953,7 +951,7 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
         throw new Error("No debug symbols");
       }
 
-      // Create managers:
+      // Initialize specialized manager classes for debugging functionality:
       this.variablesManager = new VariablesManager(this.vAmiga, this.sourceMap);
       this.breakpointManager = new BreakpointManager(
         this.vAmiga,

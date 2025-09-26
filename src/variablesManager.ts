@@ -16,10 +16,26 @@ import {
 } from "./numbers";
 import * as registerParsers from "./amigaRegisterParsers";
 
+/**
+ * Manages variable inspection and scoping for the debug adapter.
+ * 
+ * Provides hierarchical variable views including:
+ * - CPU registers (data, address, status, and special registers)
+ * - Custom chip registers with bit-field breakdowns
+ * - Interrupt vectors with address resolution
+ * - Source symbols with pointer dereferencing
+ * - Memory segments information
+ */
 export class VariablesManager {
   private variableHandles = new Handles<string>();
   private locationHandles = new Handles<Location>();
 
+  /**
+   * Creates a new VariablesManager instance.
+   * 
+   * @param vAmiga VAmiga instance for reading registers and memory
+   * @param sourceMap Source map for symbol resolution and address formatting
+   */
   constructor(
     private vAmiga: VAmiga,
     private sourceMap: SourceMap,

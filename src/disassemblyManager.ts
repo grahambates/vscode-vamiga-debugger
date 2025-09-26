@@ -5,12 +5,40 @@ import { SourceMap } from "./sourceMap";
 import { VAmiga } from "./vAmiga";
 import { Source } from "@vscode/debugadapter";
 
+/**
+ * Manages instruction disassembly for the debug adapter.
+ * 
+ * Handles disassembly requests with support for:
+ * - Variable-length instruction handling
+ * - Positive and negative instruction offsets
+ * - Source map integration for symbol information
+ * - Padding for missing instructions at negative boundaries
+ */
 export class DisassemblyManager {
+  /**
+   * Creates a new DisassemblyManager instance.
+   * 
+   * @param vAmiga VAmiga instance for disassembly operations
+   * @param sourceMap Source map for adding symbol information to instructions
+   */
   constructor(
     private vAmiga: VAmiga,
     private sourceMap: SourceMap,
   ) {}
 
+  /**
+   * Disassembles instructions at the specified address with offset support.
+   * 
+   * Handles complex offset calculations for variable-length instructions:
+   * - Negative offsets: Estimates start address using worst-case instruction lengths
+   * - Positive offsets: Fetches extra instructions and trims to requested range
+   * - Padding: Adds invalid instructions when negative offset exceeds available code
+   * 
+   * @param baseAddress Base memory address for disassembly
+   * @param instructionOffset Instruction offset from base address (can be negative)
+   * @param count Number of instructions to disassemble
+   * @returns Array of disassembled instructions with optional source information
+   */
   public async disassemble(
     baseAddress: number,
     instructionOffset: number,

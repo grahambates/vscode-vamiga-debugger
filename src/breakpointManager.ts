@@ -35,6 +35,17 @@ export interface BreakpointStopResult {
   hitBreakpointIds?: number[];
 }
 
+/**
+ * Manages all types of breakpoints for the debug adapter.
+ * 
+ * Handles different breakpoint types:
+ * - Source breakpoints: Line-based breakpoints in source files
+ * - Instruction breakpoints: Address-based breakpoints in disassembly
+ * - Exception breakpoints: Break on specific CPU exceptions/interrupts
+ * - Data breakpoints: Break on memory read/write access
+ * - Function breakpoints: Break when entering named functions
+ * - Temporary breakpoints: Internal breakpoints for stepping operations
+ */
 export class BreakpointManager {
   private sourceBreakpoints: Map<string, BreakpointRef[]> = new Map();
   private instructionBreakpoints: BreakpointRef[] = [];
@@ -44,6 +55,12 @@ export class BreakpointManager {
   private tmpBreakpoints: TmpBreakpoint[] = [];
   private bpId = 0;
 
+  /**
+   * Creates a new BreakpointManager instance.
+   * 
+   * @param vAmiga VAmiga instance for setting hardware breakpoints
+   * @param sourceMap Source map for resolving source locations to addresses
+   */
   constructor(
     private vAmiga: VAmiga,
     private sourceMap: SourceMap,
