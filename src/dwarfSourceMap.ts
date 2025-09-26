@@ -8,6 +8,18 @@ import {
 import { SourceMap, Location, Segment } from "./sourceMap";
 import { MemoryType } from "./amigaHunkParser";
 
+/**
+ * Creates a source map from DWARF debug information.
+ * 
+ * Processes DWARF debug data to create a mapping between memory addresses
+ * and source file locations. Handles line number tables, compilation units,
+ * and symbol information from DWARF debugging format.
+ * 
+ * @param dwarfData Parsed DWARF debug information
+ * @param offsets Memory offset addresses for loaded sections
+ * @param baseDir Base directory for resolving relative source paths
+ * @returns SourceMap instance for address-to-source resolution
+ */
 export function sourceMapFromDwarf(
   dwarfData: DWARFData,
   offsets: number[],

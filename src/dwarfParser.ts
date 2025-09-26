@@ -178,6 +178,17 @@ export const DW_FORM = {
   indirect: 0x16,
 } as const;
 
+/**
+ * Parses DWARF debug information from an ELF file buffer.
+ * 
+ * Extracts debugging information including source file mappings, line number
+ * data, and compilation unit information from DWARF-formatted debug sections
+ * within an ELF binary.
+ * 
+ * @param elfBuffer Buffer containing ELF file data with DWARF debug info
+ * @returns Parsed DWARF data structure containing debug information
+ * @throws Error if the buffer is not a valid ELF file or lacks DWARF data
+ */
 export function parseDwarf(elfBuffer: Buffer): DWARFData {
   const view = new DataView(elfBuffer.buffer);
 

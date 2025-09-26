@@ -144,30 +144,60 @@ export type EmulatorMessage =
   | ExecReadyMessage
   | RpcResponseMessage;
 
+/**
+ * Type guard to check if a message is an AttachedMessage.
+ * 
+ * @param message The emulator message to check
+ * @returns True if the message is an AttachedMessage
+ */
 export function isAttachedMessage(
   message: EmulatorMessage,
 ): message is AttachedMessage {
   return message.type === "attached";
 }
 
+/**
+ * Type guard to check if a message is an EmulatorStateMessage.
+ * 
+ * @param message The emulator message to check
+ * @returns True if the message is an EmulatorStateMessage
+ */
 export function isEmulatorStateMessage(
   message: EmulatorMessage,
 ): message is EmulatorStateMessage {
   return message.type === "emulator-state";
 }
 
+/**
+ * Type guard to check if a message is an EmulatorOutputMessage.
+ * 
+ * @param message The emulator message to check
+ * @returns True if the message is an EmulatorOutputMessage
+ */
 export function isEmulatorOutputMessage(
   message: EmulatorMessage,
 ): message is EmulatorOutputMessage {
   return message.type === "emulator-output";
 }
 
+/**
+ * Type guard to check if a message is an ExecReadyMessage.
+ * 
+ * @param message The emulator message to check
+ * @returns True if the message is an ExecReadyMessage
+ */
 export function isExecReadyMessage(
   message: EmulatorMessage,
 ): message is ExecReadyMessage {
   return message.type === "exec-ready";
 }
 
+/**
+ * Type guard to check if a message is an RpcResponseMessage.
+ * 
+ * @param message The emulator message to check
+ * @returns True if the message is an RpcResponseMessage
+ */
 export function isRpcResponseMessage(
   message: EmulatorMessage,
 ): message is RpcResponseMessage {

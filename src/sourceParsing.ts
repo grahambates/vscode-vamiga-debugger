@@ -160,6 +160,16 @@ const byteDefault = [
 ];
 const bitOps = ["bchg", "bset", "bclr", "btst"];
 
+/**
+ * Determines the byte length and signedness attributes of an assembly instruction.
+ * 
+ * Analyzes the instruction size suffix (.b, .w, .l) and mnemonic to determine
+ * the appropriate data size and whether the operation is signed or unsigned.
+ * Used for proper formatting of expression evaluation results.
+ * 
+ * @param line Assembly source line to analyze
+ * @returns Object containing byteLength (1, 2, or 4) and signed (boolean)
+ */
 export function instructionAttrs(line: string): {
   byteLength: number;
   signed: boolean;
