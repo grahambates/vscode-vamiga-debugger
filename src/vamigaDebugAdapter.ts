@@ -208,7 +208,7 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
 
   private breakpointManager?: BreakpointManager;
 
-  private disposables: vscode.Disposable[] = [];
+  private disposables: (vscode.Disposable | undefined)[] = [];
 
   /**
    * Creates a new VamigaDebugAdapter instance.
@@ -257,8 +257,8 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
    */
   public dispose(): void {
     this.vAmiga.run(); // unpause emulator if we're leaving it open
-    // TODO: clear all breakpoints
-    this.disposables.forEach((d) => d.dispose());
+    this.breakpointManager?.clearAll();
+    this.disposables.forEach((d) => d?.dispose());
     this.disposables = [];
   }
 
@@ -351,25 +351,18 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
       }
 
       // Add listeners to emulator
-      const disposeDisposable = this.vAmiga.onDidDispose(() =>
-        this.sendEvent(new TerminatedEvent()),
+      this.disposables.push(
+        this.vAmiga.onDidDispose(() => this.sendEvent(new TerminatedEvent())),
       );
-      const messageDisposable = this.vAmiga.onDidReceiveMessage(
-        async (message) => {
+      this.disposables.push(
+        this.vAmiga.onDidReceiveMessage(async (message) => {
           try {
             await this.handleMessageFromEmulator(message);
           } catch (err) {
             console.error(err);
           }
-        },
+        }),
       );
-      // Store disposables
-      if (disposeDisposable) {
-        this.disposables.push(disposeDisposable);
-      }
-      if (messageDisposable) {
-        this.disposables.push(messageDisposable);
-      }
 
       this.isRunning = true;
       this.stopOnEntry = args.stopOnEntry ?? false;
@@ -717,24 +710,26 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
     response: DebugProtocol.DataBreakpointInfoResponse,
     args: DebugProtocol.DataBreakpointInfoArguments,
   ): void {
-    if (!this.breakpointManager || !this.variablesManager) {
-      response.body = {
-        dataId: null,
-        description: "Data breakpoints not available",
-        accessTypes: [],
-        canPersist: false,
-      };
-      this.sendResponse(response);
-      return;
+    // Handle variables that have memory references
+    // TODO: handle expressions as args.name, and args.asAddress
+    if (args.variablesReference && this.breakpointManager && this.variablesManager) {
+      const id = this.variablesManager.getVariableReference(
+        args.variablesReference,
+      );
+      const result = this.breakpointManager.getDataBreakpointInfo(
+        id,
+        args.name,
+      );
+      if (result) {
+        response.body = result;
+        this.sendResponse(response);
+      }
     }
 
-    const result = this.breakpointManager.getDataBreakpointInfo(
-      args.variablesReference ?? 0,
-      args.name,
-      (ref: number) => this.variablesManager!.getVariableReference(ref),
-    );
-
-    response.body = result;
+    response.body = {
+      dataId: null,
+      description: "Data breakpoint not supported for this variable",
+    };
     this.sendResponse(response);
   }
 
