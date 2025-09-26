@@ -20,9 +20,7 @@ export interface RegisterBitField {
  */
 export const SUPPORTED_REGISTERS = [
   "DMACON",
-  "DMACONR",
   "INTENA",
-  "INTENAR",
   "INTREQ",
   "INTREQR",
   "BPLCON0",
@@ -31,8 +29,8 @@ export const SUPPORTED_REGISTERS = [
   "BPLCON3",
   "BLTCON0",
   "BLTCON1",
-  "VPOSR",
-  "VHPOSR",
+  "VPOS",
+  "VHPOS",
   "BLTSIZE",
   "BLTSIZV",
   "BLTSIZH",
@@ -54,7 +52,6 @@ export const SUPPORTED_REGISTERS = [
   "SPR6POS",
   "SPR7POS",
   "ADKCON",
-  "ADKCONR",
 ] as const;
 
 /**
@@ -74,11 +71,11 @@ export function parseRegister(
 ): RegisterBitField[] {
   const upperName = regName.toUpperCase();
 
-  if (upperName === "DMACON" || upperName === "DMACONR") {
+  if (upperName === "DMACON") {
     return parseDmaconRegister(value);
-  } else if (upperName === "INTENA" || upperName === "INTENAR") {
+  } else if (upperName === "INTENA") {
     return parseIntenaRegister(value);
-  } else if (upperName === "INTREQ" || upperName === "INTREQR") {
+  } else if (upperName === "INTREQ") {
     return parseIntreqRegister(value);
   } else if (upperName === "BPLCON0") {
     return parseBplcon0Register(value);
@@ -92,9 +89,9 @@ export function parseRegister(
     return parseBltcon0Register(value);
   } else if (upperName === "BLTCON1") {
     return parseBltcon1Register(value);
-  } else if (upperName === "VPOSR") {
+  } else if (upperName === "VPOS") {
     return parseVposrRegister(value);
-  } else if (upperName === "VHPOSR") {
+  } else if (upperName === "VHPOS") {
     return parseVhposrRegister(value);
   } else if (upperName === "BLTSIZE") {
     return parseBltSizeRegister(value);
@@ -108,7 +105,7 @@ export function parseRegister(
     return parseSpriteCtlRegister(value);
   } else if (upperName.match(/^SPR[0-7]POS$/)) {
     return parseSpritePosRegister(value);
-  } else if (upperName === "ADKCON" || upperName === "ADKCONR") {
+  } else if (upperName === "ADKCON") {
     return parseAdkconRegister(value);
   }
 
