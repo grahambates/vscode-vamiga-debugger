@@ -84,7 +84,7 @@ export class VariablesManager {
     } else if (id === "segments") {
       return this.segmentVariables();
     }
-    throw new Error("Unknown variable ID: " + id);
+    throw new Error(`Variable access error: Unknown variable ID: ${id}`);
   }
 
   public async setVariable(
@@ -99,7 +99,7 @@ export class VariablesManager {
     } else if (id === "custom") {
       res = await this.vAmiga.setCustomRegister(name, value);
     } else {
-      throw new Error("Not writeable");
+      throw new Error("Variable access error: Variable is not writeable");
     }
     return res.value;
   }

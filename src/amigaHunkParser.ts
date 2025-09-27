@@ -94,7 +94,7 @@ export function parseHunks(contents: Buffer): Hunk[] {
   const type = reader.readLong();
   if (type !== BlockTypes.HEADER) {
     throw new Error(
-      "Not a valid hunk file : Unable to find correct HUNK_HEADER",
+      `Invalid hunk file: Expected HUNK_HEADER (0x${BlockTypes.HEADER.toString(16)}) but got 0x${type.toString(16)}`,
     );
   }
 
@@ -120,7 +120,7 @@ function parseHeader(reader: BufferReader): Allocation[] {
 
   // Validate sizes
   if (tableSize < 0 || firstHunk < 0 || lastHunk < 0) {
-    throw new Error("Not a valid hunk file : Invalid sizes for hunks");
+    throw new Error("Invalid hunk file: Hunk size table is invalid");
   }
 
   const hunkTable: Allocation[] = [];

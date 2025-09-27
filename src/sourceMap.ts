@@ -70,7 +70,7 @@ export class SourceMap {
     const pathKey = normalize(path).toUpperCase();
     const fileMap = this.locationsBySource.get(pathKey);
     if (!fileMap) {
-      throw new Error("File not found in source map: " + path);
+      throw new Error(`Source map error: File not found: ${path}`);
     }
     let location = fileMap.get(line);
     if (!location) {
@@ -80,7 +80,7 @@ export class SourceMap {
       }
     }
     if (!location) {
-      throw new Error("Location not found for line " + line);
+      throw new Error(`Source map error: Location not found for line ${line}`);
     }
     return location;
   }

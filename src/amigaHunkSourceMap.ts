@@ -71,7 +71,7 @@ export function sourceMapFromHunks(
 
   // Ensure we found some debug info
   if (!sources.size) {
-    throw new Error("No debug info found in hunk exe");
+    throw new Error("Source map error: No debug information found in hunk executable");
   }
 
   return new SourceMap(segments, sources, symbols, locations);

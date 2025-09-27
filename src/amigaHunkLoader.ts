@@ -23,7 +23,7 @@ export class AmigaHunkLoader {
    */
   async loadProgram(hunks: Hunk[]): Promise<LoadedProgram> {
     if (hunks.length === 0) {
-      throw new Error("No hunks to load");
+      throw new Error("Program loading error: No hunks to load");
     }
 
     // Phase 1: Allocate memory for all hunks
@@ -96,7 +96,7 @@ export class AmigaHunkLoader {
         for (const relocInfo of hunk.reloc32) {
           const targetAddress = hunkAddresses.get(relocInfo.target);
           if (targetAddress === undefined) {
-            throw new Error(`Relocation target hunk ${relocInfo.target} not found`);
+            throw new Error(`Program loading error: Relocation target hunk ${relocInfo.target} not found`);
           }
 
           await this.applyRelocationGroup(alloc, relocInfo, targetAddress);

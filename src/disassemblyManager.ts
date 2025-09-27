@@ -74,7 +74,7 @@ export class DisassemblyManager {
     const result = await this.vAmiga.disassemble(startAddress, requestCount);
 
     if (!result.instructions) {
-      throw new Error("No instructions returned from disassembler");
+      throw new Error("Disassembly failed: No instructions returned from disassembler");
     }
 
     // find the instruction containing the base address. We'll slice relative to this to get the requested range
@@ -83,7 +83,7 @@ export class DisassemblyManager {
     );
     // If it's not there we're pretty screwed...
     if (startIndex === -1) {
-      throw new Error("start instruction not found");
+      throw new Error("Disassembly failed: Start instruction not found");
     }
     let realStart = startIndex + instructionOffset;
 

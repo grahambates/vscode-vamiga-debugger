@@ -199,7 +199,7 @@ export function parseDwarf(elfBuffer: Buffer): DWARFData {
     elfBuffer[2] !== 0x4c ||
     elfBuffer[3] !== 0x46
   ) {
-    throw new Error("Not a valid ELF file");
+    throw new Error("DWARF parsing error: Not a valid ELF file");
   }
 
   const is64bit = elfBuffer[4] === 2;
@@ -209,7 +209,7 @@ export function parseDwarf(elfBuffer: Buffer): DWARFData {
   function readUInt8(offset: number): number {
     const value = elfBuffer[offset];
     if (value === undefined) {
-      throw new Error(`Invalid read at offset ${offset}`);
+      throw new Error(`DWARF parsing error: Invalid read at offset ${offset}`);
     }
     return value;
   }
@@ -217,7 +217,7 @@ export function parseDwarf(elfBuffer: Buffer): DWARFData {
   function readInt8(offset: number): number {
     const value = elfBuffer[offset];
     if (value === undefined) {
-      throw new Error(`Invalid read at offset ${offset}`);
+      throw new Error(`DWARF parsing error: Invalid read at offset ${offset}`);
     }
     return value > 127 ? value - 256 : value;
   }
@@ -551,7 +551,7 @@ export function parseDwarf(elfBuffer: Buffer): DWARFData {
 
     const addressSize = elfBuffer[offset];
     if (addressSize === undefined) {
-      throw new Error("Invalid address size in compilation unit");
+      throw new Error("DWARF parsing error: Invalid address size in compilation unit");
     }
     offset += 1;
 
@@ -596,7 +596,7 @@ export function parseDwarf(elfBuffer: Buffer): DWARFData {
   ): LineNumberInstruction {
     const opcode = elfBuffer[offset];
     if (opcode === undefined) {
-      throw new Error("Invalid opcode in line number instruction");
+      throw new Error("DWARF parsing error: Invalid opcode in line number instruction");
     }
 
     let size = 1;
