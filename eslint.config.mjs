@@ -6,7 +6,7 @@ import tseslint from 'typescript-eslint';
 
 export default defineConfig(
   {
-    ignores: ['vamiga/**']
+    ignores: ['vamiga/**', '*.js']
   },
   eslint.configs.recommended,
   ...tseslint.configs.recommended,

@@ -1,10 +1,16 @@
 .vscode/**
 .vscode-test/**
 src/**
+node_modules/**
+esbuild.js
 .gitignore
-.yarnrc
-vsc-extension-quickstart.md
+.prettierignore
+.vscode-test.mjs
+eslint.config.mjs
 **/tsconfig.json
 **/.eslintrc.json
-**/*.map
 **/*.ts
+# Keep only the bundled extension files
+out/**
+!out/extension.js
+!out/extension.js.map

@@ -1,10 +1,14 @@
 {
   "name": "vscode-vamiga-debugger",
-  "displayName": "Vamiga Debugger",
-  "description": "VSCode extension for Vamiga debugging with webview panel",
+  "displayName": "VAmiga Debugger",
+  "description": "Debug Amiga programs with an integrated VAmiga emulator in vscode",
   "version": "0.0.1",
+  "repository": {
+    "type": "git",
+    "url": "git@github.com:grahambates/vscode-vamiga-debugger.git"
+  },
   "engines": {
-    "vscode": "^1.74.0"
+    "vscode": "^1.104.0"
   },
   "categories": [
     "Debuggers"
@@ -73,8 +77,6 @@
           "m68k"
         ],
         "label": "vAmiga Debug",
-        "program": "./out/debugAdapter.js",
-        "runtime": "node",
         "configurationAttributes": {
           "launch": {
             "required": [
@@ -135,9 +137,11 @@
     ]
   },
   "scripts": {
-    "vscode:prepublish": "npm run compile",
-    "compile": "tsc -p ./",
-    "watch": "tsc -watch -p ./",
+    "vscode:prepublish": "npm run package",
+    "compile": "npm run check-types && node esbuild.js",
+    "watch": "npm run check-types && node esbuild.js --watch",
+    "package": "npm run check-types && node esbuild.js --production",
+    "check-types": "tsc --noEmit",
     "pretest": "npm run compile && npm run lint",
     "lint": "eslint src --ext ts",
     "test": "npm run test:unit",
@@ -152,6 +156,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.36.0",
+    "esbuild": "^0.21.5",
     "@types/jest": "^30.0.0",
     "@types/node": "^24.5.2",
     "@types/sinon": "^17.0.4",

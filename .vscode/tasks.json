@@ -13,7 +13,19 @@
                 "panel": "dedicated",
                 "reveal": "never"
             },
-            "problemMatcher": ["$tsc"]
+            "problemMatcher": ["$tsc", "$esbuild"]
+        },
+        {
+            "type": "npm",
+            "script": "watch",
+            "label": "watch",
+            "group": "build",
+            "presentation": {
+                "panel": "dedicated",
+                "reveal": "never"
+            },
+            "problemMatcher": ["$tsc", "$esbuild"],
+            "isBackground": true
         }
     ]
 }
