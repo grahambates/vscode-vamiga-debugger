@@ -47,9 +47,9 @@ describe('Amiga Register Parsers - Comprehensive Tests', () => {
       assert.strictEqual(enableAllBit?.value, false);
     });
 
-    it('should handle DMACONR read register', () => {
+    it('should handle DMACON read register', () => {
       // Test read-only version
-      const bits = registerParsers.parseRegister('DMACONR', 0x0200);
+      const bits = registerParsers.parseRegister('DMACON', 0x0200);
       assert.ok(bits.length > 0);
 
       const enableAllBit = bits.find(b => b.name === '09: ENABLE_ALL');
@@ -283,12 +283,12 @@ describe('Amiga Register Parsers - Comprehensive Tests', () => {
   describe('Register Detection and Routing', () => {
     it('should correctly identify all supported registers', () => {
       const supportedRegs = [
-        'DMACON', 'DMACONR', 'INTENA', 'INTENAR', 'INTREQ', 'INTREQR',
+        'DMACON', 'INTENA', 'INTREQ',
         'BPLCON0', 'BPLCON1', 'BPLCON2', 'BPLCON3',
-        'BLTCON0', 'BLTCON1', 'VPOSR', 'VHPOSR', 'BLTSIZE',
+        'BLTCON0', 'BLTCON1', 'VPOS', 'VHPOS', 'BLTSIZE',
         'SPR0CTL', 'SPR1CTL', 'SPR2CTL', 'SPR3CTL', 'SPR4CTL', 'SPR5CTL', 'SPR6CTL', 'SPR7CTL',
         'SPR0POS', 'SPR1POS', 'SPR2POS', 'SPR3POS', 'SPR4POS', 'SPR5POS', 'SPR6POS', 'SPR7POS',
-        'ADKCON', 'ADKCONR', 'CLXCON', 'BLTSIZV', 'BLTSIZH'
+        'ADKCON', 'CLXCON', 'BLTSIZV', 'BLTSIZH'
       ];
 
       supportedRegs.forEach(regName => {

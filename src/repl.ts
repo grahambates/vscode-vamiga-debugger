@@ -308,7 +308,7 @@ ${funcDocs(typeFunctions)}
 
 ${ansi.section("Available Variables:")}
   ${ansi.subsection("CPU Registers:")} ${ansi.variable("d0-d7")}, ${ansi.variable("a0-a7")}, ${ansi.variable("pc")}, ${ansi.variable("sr")} etc.
-  ${ansi.subsection("Custom Chip Registers:")} ${ansi.variable("DMACONR")}, ${ansi.variable("INTENAR")}, ${ansi.variable("INTREQR")}, ${ansi.variable("ADKCONR")}, etc.
+  ${ansi.subsection("Custom Chip Registers:")} ${ansi.variable("DMACON")}, ${ansi.variable("INTENA")}, ${ansi.variable("INTREQ")}, ${ansi.variable("ADKCON")}, etc.
   ${ansi.subsection("Symbol Names:")} All symbols (i.e. labels) from your debug program
 
 ${ansi.section("Examples:")}

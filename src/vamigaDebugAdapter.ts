@@ -301,7 +301,9 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
           try {
             await this.handleMessageFromEmulator(message);
           } catch (err) {
-            console.error(err);
+            console.error(`Error while processing ${message.type} message:`, err);
+            this.sendEvent(new OutputEvent(`Error while processing ${message.type} message: ${this.errorString(err)}\n`, "stderr"));
+            this.sendEvent(new TerminatedEvent());
           }
         }),
       );
@@ -1025,9 +1027,14 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
     // Don't need to do this for step with instruction granularity, as this is already handled
     // see: https://github.com/microsoft/vscode/pull/143649/files
     if (this.lastStepGranularity !== "instruction") {
-      const cpuInfo = await this.vAmiga.getCpuInfo();
-      if (!this.sourceMap?.lookupAddress(Number(cpuInfo.pc))) {
-        evt.body.reason = "instruction breakpoint";
+      try {
+        const cpuInfo = await this.vAmiga.getCpuInfo();
+        if (!this.sourceMap?.lookupAddress(Number(cpuInfo.pc))) {
+          evt.body.reason = "instruction breakpoint";
+        }
+      } catch (error) {
+        // If we can't get CPU info, still send the step event to avoid hanging the debugger
+        console.warn('Failed to get CPU info during step, defaulting to step reason:', error);
       }
     }
 

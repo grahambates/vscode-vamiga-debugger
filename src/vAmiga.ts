@@ -2,6 +2,7 @@
 import * as vscode from "vscode";
 import { existsSync, readFileSync } from "fs";
 import { join } from "path";
+import { u32, u16, u8 } from "./numbers";
 
 export interface CpuInfo {
   pc: string;
@@ -284,6 +285,25 @@ export class VAmiga {
   }
 
   /**
+   * Atomically cleans up a pending RPC and returns its handlers if found.
+   * Prevents race conditions between timeout and response handling.
+   * @param rpcId The RPC ID to clean up
+   * @returns The pending RPC handlers, or null if already cleaned up
+   */
+  private cleanupPendingRpc(rpcId: string): {
+    resolve: (result: any) => void;
+    reject: (err: Error) => void;
+    timeout: NodeJS.Timeout;
+  } | null {
+    const pending = this._pendingRpcs.get(rpcId);
+    if (!pending) return null; // Already cleaned up
+    
+    this._pendingRpcs.delete(rpcId);
+    clearTimeout(pending.timeout);
+    return pending;
+  }
+
+  /**
    * Sends an RPC command to the VAmiga emulator and waits for a response
    * @param command RPC command name
    * @param args Optional command arguments
@@ -304,8 +324,10 @@ export class VAmiga {
 
       const id = Math.random().toString(36).substring(2, 15);
       const timeout = setTimeout(() => {
-        this._pendingRpcs.delete(id);
-        reject(new Error(`RPC timeout after ${timeoutMs}ms: ${command}`));
+        const pending = this.cleanupPendingRpc(id);
+        if (pending) {
+          pending.reject(new Error(`RPC timeout after ${timeoutMs}ms: ${command}`));
+        }
       }, timeoutMs);
 
       this._pendingRpcs.set(id, { resolve, reject, timeout });
@@ -549,13 +571,7 @@ export class VAmiga {
    * @param value numeric value to write
    */
   public async poke32(address: number, value: number): Promise<void> {
-    if (value < 0) {
-      value += 0x1_0000_0000;
-    }
-    if (value < 0 || value >= 0x1_0000_0000) {
-      throw new Error("value out of 32 bit range");
-    }
-    return await this.sendRpcCommand("poke32", { address, value });
+    return await this.sendRpcCommand("poke32", { address, value: u32(value) });
   }
 
   /**
@@ -564,13 +580,7 @@ export class VAmiga {
    * @param value numeric value to write
    */
   public async poke16(address: number, value: number): Promise<void> {
-    if (value < 0) {
-      value += 0x1_0000;
-    }
-    if (value < 0 || value >= 0x1_0000) {
-      throw new Error("value out of 16 bit range");
-    }
-    return this.sendRpcCommand("poke16", { address, value });
+    return this.sendRpcCommand("poke16", { address, value: u16(value) });
   }
 
   /**
@@ -579,13 +589,7 @@ export class VAmiga {
    * @param value numeric value to write
    */
   public async poke8(address: number, value: number): Promise<void> {
-    if (value < 0) {
-      value += 0x100;
-    }
-    if (value < 0 || value >= 0x100) {
-      throw new Error("value out of 8 bit range");
-    }
-    return this.sendRpcCommand("poke8", { address, value });
+    return this.sendRpcCommand("poke8", { address, value: u8(value) });
   }
 
   /**
@@ -653,10 +657,8 @@ export class VAmiga {
     // Set up RPC response handler
     this._panel.webview.onDidReceiveMessage((message) => {
       if (message.type === "rpcResponse") {
-        const pending = this._pendingRpcs.get(message.id);
+        const pending = this.cleanupPendingRpc(message.id);
         if (pending) {
-          clearTimeout(pending.timeout);
-          this._pendingRpcs.delete(message.id);
           if (message.result?.error) {
             pending.reject(new Error(message.result.error));
           } else {
@@ -667,7 +669,9 @@ export class VAmiga {
         // Only need to fetch memory info once on load
         this.getMemoryInfo().then((memoryInfo) => {
           this.memoryInfo = memoryInfo;
-        })
+        }).catch((error) => {
+          console.error('Failed to fetch memory info on exec-ready:', error);
+        });
       }
     });
   }

@@ -115,7 +115,7 @@ export function parseRegister(
 // ===== DMA CONTROL REGISTERS =====
 
 /**
- * Parses DMACON/DMACONR register bits
+ * Parses DMACON register bits
  */
 export function parseDmaconRegister(dmacon: number): RegisterBitField[] {
   return [

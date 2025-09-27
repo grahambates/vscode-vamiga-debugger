@@ -232,9 +232,7 @@ describe('VamigaDebugAdapter - Simplified Tests', () => {
   describe('Custom Register Bit Breakdown Behavior', () => {
     it('should detect supported custom registers', () => {
       assert.ok(registerParsers.hasRegisterBitBreakdown('DMACON'));
-      assert.ok(registerParsers.hasRegisterBitBreakdown('DMACONR'));
       assert.ok(registerParsers.hasRegisterBitBreakdown('INTENA'));
-      assert.ok(registerParsers.hasRegisterBitBreakdown('INTENAR'));
       assert.ok(registerParsers.hasRegisterBitBreakdown('INTREQ'));
       assert.ok(registerParsers.hasRegisterBitBreakdown('BPLCON0'));
       assert.ok(registerParsers.hasRegisterBitBreakdown('BPLCON1'));
@@ -242,8 +240,8 @@ describe('VamigaDebugAdapter - Simplified Tests', () => {
       assert.ok(registerParsers.hasRegisterBitBreakdown('BPLCON3'));
       assert.ok(registerParsers.hasRegisterBitBreakdown('BLTCON0'));
       assert.ok(registerParsers.hasRegisterBitBreakdown('BLTCON1'));
-      assert.ok(registerParsers.hasRegisterBitBreakdown('VPOSR'));
-      assert.ok(registerParsers.hasRegisterBitBreakdown('VHPOSR'));
+      assert.ok(registerParsers.hasRegisterBitBreakdown('VPOS'));
+      assert.ok(registerParsers.hasRegisterBitBreakdown('VHPOS'));
       assert.ok(registerParsers.hasRegisterBitBreakdown('BLTSIZE'));
       assert.ok(registerParsers.hasRegisterBitBreakdown('ADKCON'));
       assert.ok(registerParsers.hasRegisterBitBreakdown('SPR0CTL'));

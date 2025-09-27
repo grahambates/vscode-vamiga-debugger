@@ -318,16 +318,25 @@ class BufferReader {
   constructor(private buffer: Buffer) {}
 
   public readLong() {
+    if (this.pos + 4 > this.buffer.length) {
+      throw new Error(`Buffer overrun: trying to read 4 bytes at position ${this.pos}, buffer length is ${this.buffer.length}`);
+    }
     const value = this.buffer.readUInt32BE(this.pos);
     this.pos += 4;
     return value;
   }
 
   public readByte() {
+    if (this.pos >= this.buffer.length) {
+      throw new Error(`Buffer overrun: trying to read 1 byte at position ${this.pos}, buffer length is ${this.buffer.length}`);
+    }
     return this.buffer.readUInt8(this.pos++);
   }
 
   public readBytes(length: number): Buffer {
+    if (this.pos + length > this.buffer.length) {
+      throw new Error(`Buffer overrun: trying to read ${length} bytes at position ${this.pos}, buffer length is ${this.buffer.length}`);
+    }
     const slice = this.buffer.slice(this.pos, this.pos + length);
     this.pos += length;
     return slice;
@@ -352,7 +361,11 @@ class BufferReader {
   }
 
   public finished(): boolean {
-    return this.pos > this.buffer.length - 2;
+    return this.pos >= this.buffer.length;
+  }
+
+  public canRead(bytes: number): boolean {
+    return this.pos + bytes <= this.buffer.length;
   }
 
   public offset(): number {

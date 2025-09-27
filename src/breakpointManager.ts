@@ -67,6 +67,27 @@ export class BreakpointManager {
   ) {}
 
   /**
+   * Parses a hit condition and returns the number of times to ignore the breakpoint.
+   * Currently supports numeric values, but can be extended to support expressions.
+   * 
+   * @param hitCondition The hit condition string from the breakpoint
+   * @returns Number of times to ignore the breakpoint (0 if invalid)
+   */
+  private parseHitCondition(hitCondition: string | undefined): number {
+    if (!hitCondition) {
+      return 0;
+    }
+
+    // For now, support numeric values only
+    // TODO: Extend to support expressions when needed
+    const ignores = Number(hitCondition) - 1;
+    if (isNaN(ignores) || ignores < 0) {
+      return 0;
+    }
+    return ignores;
+  }
+
+  /**
    * Sets source breakpoints for a specific file
    */
   public async setSourceBreakpoints(
@@ -97,14 +118,7 @@ export class BreakpointManager {
         const address = location.address;
         const instructionReference = formatHex(address);
         const id = this.bpId++;
-
-        let ignores = 0;
-        if (bp.hitCondition) {
-          ignores = Number(bp.hitCondition) - 1;
-          if (isNaN(ignores) || ignores < 0) {
-            ignores = 0;
-          }
-        }
+        const ignores = this.parseHitCondition(bp.hitCondition);
 
         refs.push({ id, address });
         this.vAmiga.setBreakpoint(address, ignores);
@@ -155,14 +169,7 @@ export class BreakpointManager {
     for (const bp of breakpoints) {
       const address = Number(bp.instructionReference) + (bp.offset ?? 0);
       const id = this.bpId++;
-
-      let ignores = 0;
-      if (bp.hitCondition) {
-        ignores = Number(bp.hitCondition) - 1;
-        if (isNaN(ignores) || ignores < 0) {
-          ignores = 0;
-        }
-      }
+      const ignores = this.parseHitCondition(bp.hitCondition);
 
       this.instructionBreakpoints.push({ id, address });
       this.vAmiga.setBreakpoint(address, ignores);
@@ -203,13 +210,7 @@ export class BreakpointManager {
       const address = this.sourceMap.getSymbols()?.[bp.name];
 
       if (address) {
-        let ignores = 0;
-        if (bp.hitCondition) {
-          ignores = Number(bp.hitCondition) - 1;
-          if (isNaN(ignores) || ignores < 0) {
-            ignores = 0;
-          }
-        }
+        const ignores = this.parseHitCondition(bp.hitCondition);
 
         this.functionBreakpoints.push({ id, address });
         this.vAmiga.setBreakpoint(address, ignores);
@@ -296,14 +297,7 @@ export class BreakpointManager {
           const id = this.bpId++;
           const accessType = bp.accessType || "access";
           this.dataBreakpoints.push({ id, address });
-
-          let ignores = 0;
-          if (bp.hitCondition) {
-            ignores = Number(bp.hitCondition) - 1;
-            if (isNaN(ignores) || ignores < 0) {
-              ignores = 0;
-            }
-          }
+          const ignores = this.parseHitCondition(bp.hitCondition);
 
           this.vAmiga.setWatchpoint(address, ignores);
           logger.log(
