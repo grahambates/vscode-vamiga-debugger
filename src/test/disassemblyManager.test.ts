@@ -83,7 +83,7 @@ describe('DisassemblyManager - Comprehensive Tests', () => {
       // Test & Verify: Should throw error for empty instructions
       await assert.rejects(
         () => disassemblyManager.disassemble(0x1000, 0, 1),
-        /start instruction not found/
+        /Disassembly failed: Start instruction not found/
       );
     });
 
@@ -100,7 +100,7 @@ describe('DisassemblyManager - Comprehensive Tests', () => {
       // Test & Verify: Should throw error when base address not found
       await assert.rejects(
         () => disassemblyManager.disassemble(0x1000, 0, 1),
-        /start instruction not found/
+        /Disassembly failed: Start instruction not found/
       );
     });
   });

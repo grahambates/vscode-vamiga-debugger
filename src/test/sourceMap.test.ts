@@ -110,7 +110,7 @@ describe('SourceMap Tests', () => {
     it('should throw for non-existent file', () => {
       assert.throws(() => {
         sourceMap.lookupSourceLine('/nonexistent/file.c', 10);
-      }, /File not found in source map/);
+      }, /Source map error: File not found/);
     });
 
     it('should find last available line for high line numbers', () => {

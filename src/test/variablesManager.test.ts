@@ -537,7 +537,7 @@ describe('VariablesManager - Comprehensive Tests', () => {
         await variablesManager.setVariable(125, 'readonly', 0x1234);
         assert.fail('Should have thrown error');
       } catch (error: unknown) {
-        assert.strictEqual((error as Error).message, 'Not writeable');
+        assert.strictEqual((error as Error).message, 'Variable access error: Variable is not writeable');
       }
     });
   });
