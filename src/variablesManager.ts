@@ -2,7 +2,7 @@ import { DebugProtocol } from "@vscode/debugprotocol";
 import { CpuInfo, VAmiga } from "./vAmiga";
 import { SourceMap, Location } from "./sourceMap";
 import { Handles, Scope } from "@vscode/debugadapter";
-import { vectors } from "./vectors";
+import { vectors, customAddresses } from "./hardware";
 import {
   formatHex,
   u32,
@@ -18,7 +18,7 @@ import * as registerParsers from "./amigaRegisterParsers";
 
 /**
  * Manages variable inspection and scoping for the debug adapter.
- * 
+ *
  * Provides hierarchical variable views including:
  * - CPU registers (data, address, status, and special registers)
  * - Custom chip registers with bit-field breakdowns
@@ -32,7 +32,7 @@ export class VariablesManager {
 
   /**
    * Creates a new VariablesManager instance.
-   * 
+   *
    * @param vAmiga VAmiga instance for reading registers and memory
    * @param sourceMap Source map for symbol resolution and address formatting
    */
@@ -96,12 +96,19 @@ export class VariablesManager {
     let res;
     if (id === "registers") {
       res = await this.vAmiga.setRegister(name, value);
+      return res.value;
     } else if (id === "custom") {
-      res = await this.vAmiga.setCustomRegister(name, value);
+      const custom = customAddresses[name as keyof typeof customAddresses];
+      if (custom.long) {
+        await this.vAmiga.pokeCustom32(custom.address, value);
+        return formatHex(value);
+      } else {
+        await this.vAmiga.pokeCustom16(custom.address, value);
+        return formatHex(value, 4);
+      }
     } else {
       throw new Error("Variable access error: Variable is not writeable");
     }
-    return res.value;
   }
 
   public async registerVariables(): Promise<DebugProtocol.Variable[]> {

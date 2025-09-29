@@ -3,7 +3,7 @@ import { logger } from "@vscode/debugadapter";
 import { VAmiga, CpuInfo, StopMessage } from "./vAmiga";
 import { SourceMap } from "./sourceMap";
 import { formatHex } from "./numbers";
-import { exceptionBreakpointFilters } from "./vectors";
+import { exceptionBreakpointFilters } from "./hardware";
 
 /**
  * Internal reference to a breakpoint set in the emulator.
@@ -69,7 +69,7 @@ export class BreakpointManager {
   /**
    * Parses a hit condition and returns the number of times to ignore the breakpoint.
    * Currently supports numeric values, but can be extended to support expressions.
-   * 
+   *
    * @param hitCondition The hit condition string from the breakpoint
    * @returns Number of times to ignore the breakpoint (0 if invalid)
    */

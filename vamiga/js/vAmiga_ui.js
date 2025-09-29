@@ -1949,7 +1949,7 @@ function InitWrappers() {
                 // Fast load mode - emulator will inject program into RAM
                 console.log('exec ready - stopping for fastLoad mode');
                 attached = true;
-                wasm_poke_custom(0xdff09A, 0x7fff); // Disable interrupts
+                wasm_poke_custom16(0xdff09A, 0x7fff); // Disable interrupts
                 wasm_configure('WARP_MODE', 'NEVER');
                 wasm_halt(false);
 
@@ -2261,7 +2261,8 @@ postMessage({ type: 'ready' });
     wasm_poke8 = Module.cwrap('wasm_poke8', 'undefined', ['number']);
     wasm_poke16 = Module.cwrap('wasm_poke16', 'undefined', ['number']);
     wasm_poke32 = Module.cwrap('wasm_poke32', 'undefined', ['number']);
-    wasm_poke_custom = Module.cwrap('wasm_poke_custom', 'undefined', ['number','number']);
+    wasm_poke_custom16 = Module.cwrap('wasm_poke_custom16', 'undefined', ['number','number']);
+    wasm_poke_custom32 = Module.cwrap('wasm_poke_custom32', 'undefined', ['number','number']);
     wasm_enable_cpu_logging = Module.cwrap('wasm_enable_cpu_logging', 'boolean', ['boolean']);
     wasm_clear_cpu_trace = Module.cwrap('wasm_clear_cpu_trace', 'undefined');
     wasm_get_cpu_trace = Module.cwrap('wasm_get_cpu_trace', 'string', ['number']);
@@ -2296,7 +2297,6 @@ postMessage({ type: 'ready' });
 
     // custom
     wasm_get_all_custom_registers = Module.cwrap('wasm_get_all_custom_registers', 'string');
-    wasm_set_custom_register = Module.cwrap('wasm_set_custom_register', 'string', ['string', 'number']);
 
     wasm_get_current_process = Module.cwrap('wasm_get_current_process', 'string');
     wasm_get_call_stack = Module.cwrap('wasm_get_call_stack', 'string');
@@ -2630,8 +2630,11 @@ postMessage({ type: 'ready' });
                 case 'setRegister':
                     rpcRequest(() => JSON.parse(wasm_set_register(message.args.name, message.args.value)));
                     break;
-                case 'setCustomRegister':
-                    rpcRequest(() => JSON.parse(wasm_set_custom_register(message.args.name, message.args.value)));
+                case 'pokeCustom16':
+                    rpcRequest(() => wasm_poke_custom16(message.args.address, message.args.value));
+                    break;
+                case 'pokeCustom32':
+                    rpcRequest(() => wasm_poke_custom32(message.args.address, message.args.value));
                     break;
                 case 'readMemory':
                     rpcRequest(() => JSON.parse(wasm_read_memory(message.args.address, message.args.count)));

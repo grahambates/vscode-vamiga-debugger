@@ -297,7 +297,7 @@ export class VAmiga {
   } | null {
     const pending = this._pendingRpcs.get(rpcId);
     if (!pending) return null; // Already cleaned up
-    
+
     this._pendingRpcs.delete(rpcId);
     clearTimeout(pending.timeout);
     return pending;
@@ -487,17 +487,30 @@ export class VAmiga {
   }
 
   /**
-   * Sets a custom chip register to the specified value
-   * @param name Register name (e.g. 'DMACON', 'INTENA')
+   * Sets a custom chip register to the specified 16 bit value
+   * @param address Register address (e.g. 0xdff180)
    * @param value New register value
    * @returns Promise resolving to set status
    */
-  public async setCustomRegister(
-    name: string,
+  public async pokeCustom16(
+    address: number,
     value: number,
   ): Promise<RegisterSetStatus> {
     this.customRegisters = undefined; // Clear cache
-    return this.sendRpcCommand("setCustomRegister", { name, value });
+    return this.sendRpcCommand("pokeCustom16", { address, value });
+  }
+  /**
+   * Sets a custom chip register to the specified 32 bit value
+   * @param address Register address (e.g. 0xdff180)
+   * @param value New register value
+   * @returns Promise resolving to set status
+   */
+  public async pokeCustom32(
+    address: number,
+    value: number,
+  ): Promise<RegisterSetStatus> {
+    this.customRegisters = undefined; // Clear cache
+    return this.sendRpcCommand("pokeCustom32", { address, value });
   }
 
   /**

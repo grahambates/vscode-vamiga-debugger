@@ -524,12 +524,12 @@ describe('VariablesManager - Comprehensive Tests', () => {
       const customScope = scopes.find(s => s.name === 'Custom Registers');
       assert.ok(customScope);
 
-      mockVAmiga.setCustomRegister.withArgs('DMACON', 0x8200).resolves({ value: '0x8200' });
+      mockVAmiga.pokeCustom16.withArgs(0xdff09A, 0x8200).resolves();
 
-      const result = await variablesManager.setVariable(customScope.variablesReference, 'DMACON', 0x8200);
+      const result = await variablesManager.setVariable(customScope.variablesReference, 'INTENA', 0x8200);
 
       assert.strictEqual(result, '0x8200');
-      assert.ok(mockVAmiga.setCustomRegister.calledWith('DMACON', 0x8200));
+      assert.ok(mockVAmiga.pokeCustom16.calledWith(0xdff09A, 0x8200));
     });
 
     it('should throw error for non-writable variables', async () => {

@@ -1,4 +1,5 @@
 // TODO:
+// - poke custom
 // - beamtraps?
 // - Console commands:
 //   - disasm command for interactive disassembly
@@ -53,7 +54,7 @@ import {
   initOutput,
   syntaxText,
 } from "./repl";
-import { exceptionBreakpointFilters } from "./vectors";
+import { exceptionBreakpointFilters } from "./hardware";
 import { VariablesManager } from "./variablesManager";
 import { BreakpointManager } from "./breakpointManager";
 import { StackManager } from "./stackManager";
