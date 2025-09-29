@@ -1949,6 +1949,7 @@ function InitWrappers() {
                 // Fast load mode - emulator will inject program into RAM
                 console.log('exec ready - stopping for fastLoad mode');
                 attached = true;
+                wasm_poke_custom(0xdff09A, 0x7fff); // Disable interrupts
                 wasm_configure('WARP_MODE', 'NEVER');
                 wasm_halt(false);
 
@@ -2260,7 +2261,7 @@ postMessage({ type: 'ready' });
     wasm_poke8 = Module.cwrap('wasm_poke8', 'undefined', ['number']);
     wasm_poke16 = Module.cwrap('wasm_poke16', 'undefined', ['number']);
     wasm_poke32 = Module.cwrap('wasm_poke32', 'undefined', ['number']);
-    wasm_poke_custom = Module.cwrap('wasm_poke_custom', 'undefined', ['number']);
+    wasm_poke_custom = Module.cwrap('wasm_poke_custom', 'undefined', ['number','number']);
     wasm_enable_cpu_logging = Module.cwrap('wasm_enable_cpu_logging', 'boolean', ['boolean']);
     wasm_clear_cpu_trace = Module.cwrap('wasm_clear_cpu_trace', 'undefined');
     wasm_get_cpu_trace = Module.cwrap('wasm_get_cpu_trace', 'string', ['number']);

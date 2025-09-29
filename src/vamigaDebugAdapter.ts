@@ -1,5 +1,4 @@
 // TODO:
-// - Step from break on entry broken - pc is not set to entry point (caching?)
 // - beamtraps?
 // - Console commands:
 //   - disasm command for interactive disassembly
