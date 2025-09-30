@@ -418,9 +418,17 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
     args: DebugProtocol.VariablesArguments,
   ): Promise<void> {
     try {
-      const variables = await this.getVariablesManager().getVariables(
-        args.variablesReference,
-      );
+      let variables: DebugProtocol.Variable[];
+      
+      // Check if this is an array reference from the evaluate manager
+      if (this.getEvaluateManager().hasArrayReference(args.variablesReference)) {
+        variables = this.getEvaluateManager().getArrayVariables(args.variablesReference);
+      } else {
+        variables = await this.getVariablesManager().getVariables(
+          args.variablesReference,
+        );
+      }
+      
       response.body = { variables };
       this.sendResponse(response);
     } catch (err) {

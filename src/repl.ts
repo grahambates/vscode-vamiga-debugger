@@ -82,6 +82,18 @@ export const memoryAccessFunctions: UsageDocs = {
     `${ansi.func("poke8")}(${ansi.variable("addr")}, ${ansi.variable("val")})`,
     "Write 8-bit value to memory",
   ],
+  readBytes: [
+    `${ansi.func("readBytes")}(${ansi.variable("addr")}, ${ansi.variable("count")}[, ${ansi.variable("perLine")}])`,
+    "Read array of bytes with expandable hex dump view",
+  ],
+  readWords: [
+    `${ansi.func("readWords")}(${ansi.variable("addr")}, ${ansi.variable("count")}[, ${ansi.variable("perLine")}])`,
+    "Read array of 16-bit words with expandable hex dump view",
+  ],
+  readLongs: [
+    `${ansi.func("readLongs")}(${ansi.variable("addr")}, ${ansi.variable("count")}[, ${ansi.variable("perLine")}])`,
+    "Read array of 32-bit longs with expandable hex dump view",
+  ],
 };
 
 export const typeFunctions: UsageDocs = {
@@ -315,6 +327,7 @@ ${ansi.section("Examples:")}
   ${ansi.func("i16")}(${ansi.variable("d0")})            - Get signed word value of register d0
   ${ansi.func("peekU32")}(${ansi.variable("a0")})        - Read long from address in a0
   ${ansi.func("poke16")}(${ansi.variable("Speed")}, ${ansi.number("100")}) - Write word to address of 'Speed' symbol
+  ${ansi.func("readBytes")}(${ansi.number("0x1000")}, ${ansi.number("16")}, ${ansi.number("8")}) - Read 16 bytes, 8 per line hex dump
   ${ansi.variable("main")} + ${ansi.number("0x10")}        - Symbol address + offset
 `;
 
