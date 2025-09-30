@@ -678,6 +678,8 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
         .trim()
         .toLowerCase()
         .split(/\s+/g);
+
+      // Help command:
       if (["help", "?", "h"].includes(firstWord)) {
         if (cmdArgs[0] === "syntax") {
           this.sendEvent(new OutputEvent(syntaxText));

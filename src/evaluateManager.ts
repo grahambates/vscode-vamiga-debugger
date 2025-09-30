@@ -1,5 +1,7 @@
 import * as vscode from "vscode";
 import { DebugProtocol } from "@vscode/debugprotocol";
+import { Parser } from "expr-eval";
+import deasync from 'deasync'
 import { instructionAttrs } from "./sourceParsing";
 import {
   formatAddress,
@@ -14,7 +16,6 @@ import {
 import { VAmiga } from "./vAmiga";
 import { SourceMap } from "./sourceMap";
 import { VariablesManager } from "./variablesManager";
-import { Parser } from "expr-eval";
 
 /**
  * Result of evaluating an expression in the debug context.
@@ -50,7 +51,7 @@ export enum EvaluateResultType {
 
 /**
  * Manages expression evaluation for the debug adapter.
- * 
+ *
  * Handles evaluation of:
  * - Numeric literals and hex addresses
  * - CPU registers and custom chip registers
@@ -63,7 +64,7 @@ export class EvaluateManager {
 
   /**
    * Creates a new EvaluateManager instance.
-   * 
+   *
    * @param vAmiga VAmiga instance for memory access and register reads
    * @param sourceMap Source map for symbol resolution and address formatting
    * @param variablesManager Variables manager for accessing flat variable data
@@ -81,28 +82,28 @@ export class EvaluateManager {
       i32,
       i16,
       i8,
-      peekU32: (addr: number) => this.vAmiga.peek32(addr),
-      peekU16: (addr: number) => this.vAmiga.peek16(addr),
-      peekU8: (addr: number) => this.vAmiga.peek8(addr),
-      peekI32: (addr: number) => this.vAmiga.peek32(addr).then(i32),
-      peekI16: (addr: number) => this.vAmiga.peek16(addr).then(i16),
-      peekI8: (addr: number) => this.vAmiga.peek8(addr).then(i8),
-      poke32: (addr: number, value: number) => this.vAmiga.poke32(addr, value),
-      poke16: (addr: number, value: number) => this.vAmiga.poke16(addr, value),
-      poke8: (addr: number, value: number) => this.vAmiga.poke8(addr, value),
+      peekU32: deasync((addr: number) => this.vAmiga.peek32(addr)),
+      peekU16: deasync((addr: number) => this.vAmiga.peek16(addr)),
+      peekU8: deasync((addr: number) => this.vAmiga.peek8(addr)),
+      peekI32: deasync((addr: number) => this.vAmiga.peek32(addr).then(i32)),
+      peekI16: deasync((addr: number) => this.vAmiga.peek16(addr).then(i16)),
+      peekI8: deasync((addr: number) => this.vAmiga.peek8(addr).then(i8)),
+      poke32: deasync((addr: number, value: number) => this.vAmiga.poke32(addr, value)),
+      poke16: deasync((addr: number, value: number) => this.vAmiga.poke16(addr, value)),
+      poke8: deasync((addr: number, value: number) => this.vAmiga.poke8(addr, value)),
     };
   }
 
   /**
    * Evaluates an expression and returns formatted result for Debug Adapter Protocol.
-   * 
+   *
    * Formats results based on expression type:
    * - Data registers: hex + decimal values
    * - Address registers: formatted addresses with symbol information
    * - Symbols: addresses with pointer dereferencing for known types
    * - Custom registers: hex values
    * - Parsed expressions: hex + decimal values
-   * 
+   *
    * @param args Evaluation request arguments from DAP
    * @returns Formatted evaluation response for DAP
    */
