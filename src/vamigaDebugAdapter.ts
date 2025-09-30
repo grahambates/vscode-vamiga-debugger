@@ -1,5 +1,5 @@
 // TODO:
-// - poke custom
+// - step on entry after re-attach - just runs, step gets lost after jump?
 // - beamtraps?
 // - Console commands:
 //   - disasm command for interactive disassembly
@@ -43,9 +43,7 @@ import { LoadedProgram } from "./amigaMemoryMapper";
 import { sourceMapFromDwarf } from "./dwarfSourceMap";
 import { sourceMapFromHunks } from "./amigaHunkSourceMap";
 import { SourceMap } from "./sourceMap";
-import {
-  formatHex,
-} from "./numbers";
+import { formatHex } from "./numbers";
 import {
   allFunctions,
   consoleCommands,
@@ -130,6 +128,8 @@ export enum ErrorCode {
   BREAKPOINT_REMOVE_ERROR = 6002,
   /** Source location not found in debug symbols */
   SOURCE_LOCATION_ERROR = 6003,
+  /** Error getting breakpoint info */
+  BREAKPOINT_INFO_ERROR = 6004,
 }
 
 /**
@@ -301,8 +301,16 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
           try {
             await this.handleMessageFromEmulator(message);
           } catch (err) {
-            console.error(`Error while processing ${message.type} message:`, err);
-            this.sendEvent(new OutputEvent(`Error while processing ${message.type} message: ${this.errorString(err)}\n`, "stderr"));
+            console.error(
+              `Error while processing ${message.type} message:`,
+              err,
+            );
+            this.sendEvent(
+              new OutputEvent(
+                `Error while processing ${message.type} message: ${this.errorString(err)}\n`,
+                "stderr",
+              ),
+            );
             this.sendEvent(new TerminatedEvent());
           }
         }),
@@ -546,11 +554,12 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
 
       response.body = { breakpoints };
       this.sendResponse(response);
-    } catch (error) {
+    } catch (err) {
       return this.sendError(
         response,
         ErrorCode.BREAKPOINT_SET_ERROR,
-        String(error),
+        `Error setting breakpoint`,
+        err,
       );
     }
   }
@@ -567,11 +576,12 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
 
       response.body = { breakpoints };
       this.sendResponse(response);
-    } catch (error) {
+    } catch (err) {
       return this.sendError(
         response,
         ErrorCode.BREAKPOINT_SET_ERROR,
-        String(error),
+        `Error setting breakpoint`,
+        err,
       );
     }
   }
@@ -587,11 +597,12 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
 
       response.body = { breakpoints };
       this.sendResponse(response);
-    } catch (error) {
+    } catch (err) {
       return this.sendError(
         response,
         ErrorCode.BREAKPOINT_SET_ERROR,
-        String(error),
+        `Error setting breakpoint`,
+        err,
       );
     }
   }
@@ -600,27 +611,36 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
     response: DebugProtocol.DataBreakpointInfoResponse,
     args: DebugProtocol.DataBreakpointInfoArguments,
   ): void {
-    // Handle variables that have memory references
-    // TODO: handle expressions as args.name, and args.asAddress
-    if (args.variablesReference) {
-      const id = this.getVariablesManager().getVariableReference(
-        args.variablesReference,
-      );
-      const result = this.getBreakpointManager().getDataBreakpointInfo(
-        id,
-        args.name,
-      );
-      if (result) {
-        response.body = result;
-        this.sendResponse(response);
+    try {
+      // Handle variables that have memory references
+      // TODO: handle expressions as args.name, and args.asAddress
+      if (args.variablesReference) {
+        const id = this.getVariablesManager().getVariableReference(
+          args.variablesReference,
+        );
+        const result = this.getBreakpointManager().getDataBreakpointInfo(
+          id,
+          args.name,
+        );
+        if (result) {
+          response.body = result;
+          this.sendResponse(response);
+        }
       }
-    }
 
-    response.body = {
-      dataId: null,
-      description: "Data breakpoint not supported for this variable",
-    };
-    this.sendResponse(response);
+      response.body = {
+        dataId: null,
+        description: "Data breakpoint not supported for this variable",
+      };
+      this.sendResponse(response);
+    } catch (err) {
+      return this.sendError(
+        response,
+        ErrorCode.BREAKPOINT_INFO_ERROR,
+        `Error getting breakpoint info`,
+        err,
+      );
+    }
   }
 
   protected async setDataBreakpointsRequest(
@@ -634,11 +654,12 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
 
       response.body = { breakpoints };
       this.sendResponse(response);
-    } catch (error) {
+    } catch (err) {
       return this.sendError(
         response,
         ErrorCode.BREAKPOINT_SET_ERROR,
-        String(error),
+        `Error setting breakpoint`,
+        err,
       );
     }
   }
@@ -802,11 +823,12 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
 
       response.body = { breakpoints };
       this.sendResponse(response);
-    } catch (error) {
+    } catch (err) {
       return this.sendError(
         response,
         ErrorCode.BREAKPOINT_SET_ERROR,
-        String(error),
+        `Error setting exception breakpoint`,
+        err,
       );
     }
   }
@@ -964,7 +986,11 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
         this.vAmiga,
         this.sourceMap,
       );
-      this.evaluateManager = new EvaluateManager(this.vAmiga, this.sourceMap, this.variablesManager);
+      this.evaluateManager = new EvaluateManager(
+        this.vAmiga,
+        this.sourceMap,
+        this.variablesManager,
+      );
 
       if (this.stopOnEntry && !this.fastLoad) {
         this.breakpointManager.setTmpBreakpoint(offsets[0], "entry");
@@ -1034,7 +1060,10 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
         }
       } catch (error) {
         // If we can't get CPU info, still send the step event to avoid hanging the debugger
-        console.warn('Failed to get CPU info during step, defaulting to step reason:', error);
+        console.warn(
+          "Failed to get CPU info during step, defaulting to step reason:",
+          error,
+        );
       }
     }
 
