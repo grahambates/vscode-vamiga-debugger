@@ -1,7 +1,6 @@
 import * as vscode from "vscode";
 import { DebugProtocol } from "@vscode/debugprotocol";
 import { Parser } from "expr-eval";
-import deasync from 'deasync'
 import { instructionAttrs } from "./sourceParsing";
 import {
   formatAddress,
@@ -82,15 +81,6 @@ export class EvaluateManager {
       i32,
       i16,
       i8,
-      peekU32: deasync((addr: number) => this.vAmiga.peek32(addr)),
-      peekU16: deasync((addr: number) => this.vAmiga.peek16(addr)),
-      peekU8: deasync((addr: number) => this.vAmiga.peek8(addr)),
-      peekI32: deasync((addr: number) => this.vAmiga.peek32(addr).then(i32)),
-      peekI16: deasync((addr: number) => this.vAmiga.peek16(addr).then(i16)),
-      peekI8: deasync((addr: number) => this.vAmiga.peek8(addr).then(i8)),
-      poke32: deasync((addr: number, value: number) => this.vAmiga.poke32(addr, value)),
-      poke16: deasync((addr: number, value: number) => this.vAmiga.poke16(addr, value)),
-      poke8: deasync((addr: number, value: number) => this.vAmiga.poke8(addr, value)),
     };
   }
 
@@ -255,12 +245,156 @@ export class EvaluateManager {
           type = EvaluateResultType.CUSTOM_REGISTER;
         }
       } else {
-        // Complex expression
-        const expr = this.parser.parse(expression);
-        value = await expr.evaluate(numVars);
+        // Complex expression - handle async functions manually
+        value = await this.evaluateComplexExpression(expression, numVars);
         type = EvaluateResultType.PARSED;
       }
     }
     return { value, memoryReference, type };
+  }
+
+  /**
+   * Evaluates complex expressions with async function support.
+   * 
+   * Handles expressions containing memory access functions like peekU32, peekU16, etc.
+   * with proper recursive evaluation to support nested async calls.
+   * 
+   * @param expression The expression string to evaluate
+   * @param variables Variable lookup table
+   * @returns Promise resolving to the expression result
+   */
+  private async evaluateComplexExpression(expression: string, variables: Record<string, number>): Promise<number> {
+    // Check if expression contains async functions
+    const asyncFunctions = ['peekU32', 'peekU16', 'peekU8', 'peekI32', 'peekI16', 'peekI8', 'poke32', 'poke16', 'poke8'];
+    const hasAsyncFunctions = asyncFunctions.some(fn => expression.includes(fn));
+    
+    if (!hasAsyncFunctions) {
+      // No async functions, use standard expr-eval
+      const expr = this.parser.parse(expression);
+      return expr.evaluate(variables);
+    }
+    
+    // Find the innermost async function call (one with no nested async calls)
+    const innermostCall = this.findInnermostAsyncCall(expression);
+    
+    if (!innermostCall) {
+      // No more async calls, evaluate normally
+      const expr = this.parser.parse(expression);
+      return expr.evaluate(variables);
+    }
+    
+    // Evaluate the innermost async call
+    const callValue = await this.evaluateAsyncCall(innermostCall.func, innermostCall.args, variables);
+    
+    // Replace the call with its value and recursively evaluate the rest
+    const newExpression = expression.substring(0, innermostCall.start) + 
+                         callValue.toString() + 
+                         expression.substring(innermostCall.end);
+    
+    return this.evaluateComplexExpression(newExpression, variables);
+  }
+
+  /**
+   * Finds the innermost async function call (one with no nested async calls in its arguments).
+   */
+  private findInnermostAsyncCall(expression: string): {start: number, end: number, func: string, args: string[]} | null {
+    const asyncFunctions = ['peekU32', 'peekU16', 'peekU8', 'peekI32', 'peekI16', 'peekI8', 'poke32', 'poke16', 'poke8'];
+    const funcRegex = new RegExp(`(${asyncFunctions.join('|')})\\s*\\(`, 'g');
+    let match;
+    
+    while ((match = funcRegex.exec(expression)) !== null) {
+      const funcName = match[1];
+      const startPos = match.index;
+      const openParenPos = match.index + match[0].length - 1;
+      
+      // Find the matching closing parenthesis
+      let parenCount = 1;
+      let pos = openParenPos + 1;
+      let argsStr = '';
+      
+      while (pos < expression.length && parenCount > 0) {
+        const char = expression[pos];
+        if (char === '(') {
+          parenCount++;
+        } else if (char === ')') {
+          parenCount--;
+        }
+        
+        if (parenCount > 0) {
+          argsStr += char;
+        }
+        pos++;
+      }
+      
+      if (parenCount === 0) {
+        // Check if this call's arguments contain any async functions
+        const hasNestedAsync = asyncFunctions.some(fn => argsStr.includes(fn));
+        
+        if (!hasNestedAsync) {
+          // This is an innermost call
+          const args = funcName.startsWith('poke') ? argsStr.split(',').map(s => s.trim()) : [argsStr];
+          return {
+            start: startPos,
+            end: pos,
+            func: funcName,
+            args
+          };
+        }
+      }
+    }
+    
+    return null;
+  }
+
+  /**
+   * Evaluates a single async function call.
+   */
+  private async evaluateAsyncCall(func: string, args: string[], variables: Record<string, number>): Promise<number> {
+    switch (func) {
+      case 'peekU32': {
+        const addr = await this.evaluateComplexExpression(args[0], variables);
+        return this.vAmiga.peek32(addr);
+      }
+      case 'peekU16': {
+        const addr = await this.evaluateComplexExpression(args[0], variables);
+        return this.vAmiga.peek16(addr);
+      }
+      case 'peekU8': {
+        const addr = await this.evaluateComplexExpression(args[0], variables);
+        return this.vAmiga.peek8(addr);
+      }
+      case 'peekI32': {
+        const addr = await this.evaluateComplexExpression(args[0], variables);
+        return i32(await this.vAmiga.peek32(addr));
+      }
+      case 'peekI16': {
+        const addr = await this.evaluateComplexExpression(args[0], variables);
+        return i16(await this.vAmiga.peek16(addr));
+      }
+      case 'peekI8': {
+        const addr = await this.evaluateComplexExpression(args[0], variables);
+        return i8(await this.vAmiga.peek8(addr));
+      }
+      case 'poke32': {
+        const addr = await this.evaluateComplexExpression(args[0], variables);
+        const value = await this.evaluateComplexExpression(args[1], variables);
+        await this.vAmiga.poke32(addr, value);
+        return value;
+      }
+      case 'poke16': {
+        const addr = await this.evaluateComplexExpression(args[0], variables);
+        const value = await this.evaluateComplexExpression(args[1], variables);
+        await this.vAmiga.poke16(addr, value);
+        return value;
+      }
+      case 'poke8': {
+        const addr = await this.evaluateComplexExpression(args[0], variables);
+        const value = await this.evaluateComplexExpression(args[1], variables);
+        await this.vAmiga.poke8(addr, value);
+        return value;
+      }
+      default:
+        throw new Error(`Unknown async function: ${func}`);
+    }
   }
 }

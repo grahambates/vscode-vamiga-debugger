@@ -152,12 +152,10 @@
   },
   "dependencies": {
     "@vscode/debugadapter": "^1.68.0",
-    "deasync": "^0.1.30",
     "expr-eval": "^2.0.2"
   },
   "devDependencies": {
     "@eslint/js": "^9.36.0",
-    "@types/deasync": "^0.1.5",
     "@types/jest": "^30.0.0",
     "@types/node": "^24.5.2",
     "@types/sinon": "^17.0.4",
