@@ -94,6 +94,10 @@ export const memoryAccessFunctions: UsageDocs = {
     `${ansi.func("readLongs")}(${ansi.variable("addr")}, ${ansi.variable("count")}[, ${ansi.variable("perLine")}])`,
     "Read array of 32-bit longs with expandable hex dump view",
   ],
+  disassemble: [
+    `${ansi.func("disassemble")}(${ansi.variable("addr")}[, ${ansi.variable("count")}])`,
+    "Disassemble instructions with expandable view (default count: 1)",
+  ],
 };
 
 export const typeFunctions: UsageDocs = {
@@ -328,6 +332,8 @@ ${ansi.section("Examples:")}
   ${ansi.func("peekU32")}(${ansi.variable("a0")})        - Read long from address in a0
   ${ansi.func("poke16")}(${ansi.variable("Speed")}, ${ansi.number("100")}) - Write word to address of 'Speed' symbol
   ${ansi.func("readBytes")}(${ansi.number("0x1000")}, ${ansi.number("16")}, ${ansi.number("8")}) - Read 16 bytes, 8 per line hex dump
+  ${ansi.func("disassemble")}(${ansi.variable("pc")})     - Disassemble 1 instruction from current PC
+  ${ansi.func("disassemble")}(${ansi.number("0x1000")}, ${ansi.number("5")}) - Disassemble 5 instructions from address
   ${ansi.variable("main")} + ${ansi.number("0x10")}        - Symbol address + offset
 `;
 

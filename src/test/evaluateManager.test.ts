@@ -4,6 +4,7 @@ import * as sinon from 'sinon';
 import { EvaluateManager, EvaluateResultType } from '../evaluateManager';
 import { VAmiga, CpuInfo } from '../vAmiga';
 import { VariablesManager } from '../variablesManager';
+import { DisassemblyManager } from '../disassemblyManager';
 
 /**
  * Comprehensive tests for EvaluateManager
@@ -13,14 +14,16 @@ describe('EvaluateManager - Comprehensive Tests', () => {
   let evaluateManager: EvaluateManager;
   let mockVAmiga: sinon.SinonStubbedInstance<VAmiga>;
   let mockVariablesManager: sinon.SinonStubbedInstance<VariablesManager>;
+  let mockDisassemblyManager: sinon.SinonStubbedInstance<DisassemblyManager>;
   let mockSourceMap: any;
 
   beforeEach(() => {
     mockVAmiga = sinon.createStubInstance(VAmiga);
     mockVariablesManager = sinon.createStubInstance(VariablesManager);
+    mockDisassemblyManager = sinon.createStubInstance(DisassemblyManager);
     mockSourceMap = createMockSourceMap();
 
-    evaluateManager = new EvaluateManager(mockVAmiga, mockSourceMap, mockVariablesManager);
+    evaluateManager = new EvaluateManager(mockVAmiga, mockSourceMap, mockVariablesManager, mockDisassemblyManager);
 
     // Setup default CPU state
     mockVAmiga.getCpuInfo.resolves(createMockCpuInfo());

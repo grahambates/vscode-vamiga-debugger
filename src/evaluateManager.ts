@@ -16,6 +16,7 @@ import {
 import { VAmiga } from "./vAmiga";
 import { SourceMap } from "./sourceMap";
 import { VariablesManager } from "./variablesManager";
+import { DisassemblyManager } from "./disassemblyManager";
 
 /**
  * Result of evaluating an expression in the debug context.
@@ -61,7 +62,7 @@ export enum EvaluateResultType {
  */
 export class EvaluateManager {
   private parser: Parser;
-  private arrayHandles = new Map<number, {elements: number[], elementSize: number, baseAddress: number, valuesPerLine?: number}>();
+  private arrayHandles = new Map<number, {elements?: number[], elementSize?: number, baseAddress: number, valuesPerLine?: number, instructions?: any[], type?: string}>();
   private nextArrayHandle = 1;
 
   /**
@@ -70,11 +71,13 @@ export class EvaluateManager {
    * @param vAmiga VAmiga instance for memory access and register reads
    * @param sourceMap Source map for symbol resolution and address formatting
    * @param variablesManager Variables manager for accessing flat variable data
+   * @param disassemblyManager Disassembly manager for code inspection
    */
   constructor(
     private vAmiga: VAmiga,
     private sourceMap: SourceMap,
     private variablesManager: VariablesManager,
+    private disassemblyManager: DisassemblyManager,
   ) {
     this.parser = new Parser();
     this.parser.functions = {
@@ -183,7 +186,29 @@ export class EvaluateManager {
       result = formatHex(value, 4);
     } else {
       // Default - parsed expression result
-      if (typeof value === 'object' && value.type === 'array') {
+      if (typeof value === 'object' && value.type === 'disassembly') {
+        // Handle disassembly results
+        const instructions = value.instructions;
+        const firstInstruction = instructions.length > 0 ? instructions[0].instruction : 'no instructions';
+        const ellipsis = instructions.length > 1 ? '...' : '';
+        
+        result = `disassembly[${instructions.length}] @ ${formatHex(value.baseAddress)} = ${firstInstruction}${ellipsis}`;
+        
+        // Create variables reference for expandable disassembly view
+        const handle = this.nextArrayHandle++;
+        this.arrayHandles.set(handle, {
+          instructions: instructions,
+          baseAddress: value.baseAddress,
+          type: 'disassembly'
+        });
+        
+        return {
+          result,
+          memoryReference: formatHex(value.baseAddress),
+          variablesReference: handle,
+          indexedVariables: instructions.length,
+        };
+      } else if (typeof value === 'object' && value.type === 'array') {
         // Handle array results
         const elementTypeName = value.elementSize === 1 ? 'byte' : 
                               value.elementSize === 2 ? 'word' : 'long';
@@ -289,8 +314,8 @@ export class EvaluateManager {
       } else {
         // Complex expression - handle async functions manually
         const result = await this.evaluateComplexExpression(expression, numVars);
-        if (typeof result === 'object' && result.type === 'array') {
-          // Array result - pass the object as the value for formatting
+        if (typeof result === 'object' && (result.type === 'array' || result.type === 'disassembly')) {
+          // Array or disassembly result - pass the object as the value for formatting
           return {
             value: result,
             type: EvaluateResultType.PARSED
@@ -314,9 +339,9 @@ export class EvaluateManager {
    * @param variables Variable lookup table
    * @returns Promise resolving to the expression result
    */
-  private async evaluateComplexExpression(expression: string, variables: Record<string, number>): Promise<number | {type: 'array', elements: number[], elementSize: number, baseAddress: number, valuesPerLine?: number}> {
+  private async evaluateComplexExpression(expression: string, variables: Record<string, number>): Promise<number | {type: 'array', elements: number[], elementSize: number, baseAddress: number, valuesPerLine?: number} | {type: 'disassembly', instructions: DebugProtocol.DisassembledInstruction[], baseAddress: number}> {
     // Check if expression contains async functions
-    const asyncFunctions = ['peekU32', 'peekU16', 'peekU8', 'peekI32', 'peekI16', 'peekI8', 'poke32', 'poke16', 'poke8', 'readBytes', 'readWords', 'readLongs'];
+    const asyncFunctions = ['peekU32', 'peekU16', 'peekU8', 'peekI32', 'peekI16', 'peekI8', 'poke32', 'poke16', 'poke8', 'readBytes', 'readWords', 'readLongs', 'disassemble'];
     const hasAsyncFunctions = asyncFunctions.some(fn => expression.includes(fn));
 
     if (!hasAsyncFunctions) {
@@ -337,14 +362,14 @@ export class EvaluateManager {
     // Evaluate the innermost async call
     const callValue = await this.evaluateAsyncCall(innermostCall.func, innermostCall.args, variables);
 
-    // If this is an array result and it's the whole expression, return it
-    if (typeof callValue === 'object' && callValue.type === 'array') {
+    // If this is an array or disassembly result and it's the whole expression, return it
+    if (typeof callValue === 'object' && (callValue.type === 'array' || callValue.type === 'disassembly')) {
       // Check if this function call is the entire expression
       if (innermostCall.start === 0 && innermostCall.end === expression.length) {
         return callValue;
       } else {
-        // Array functions can't be part of larger expressions
-        throw new Error(`Array functions like ${innermostCall.func} cannot be used in complex expressions`);
+        // Array and disassembly functions can't be part of larger expressions
+        throw new Error(`Functions like ${innermostCall.func} cannot be used in complex expressions`);
       }
     }
 
@@ -360,7 +385,7 @@ export class EvaluateManager {
    * Finds the innermost async function call (one with no nested async calls in its arguments).
    */
   private findInnermostAsyncCall(expression: string): {start: number, end: number, func: string, args: string[]} | null {
-    const asyncFunctions = ['peekU32', 'peekU16', 'peekU8', 'peekI32', 'peekI16', 'peekI8', 'poke32', 'poke16', 'poke8', 'readBytes', 'readWords', 'readLongs'];
+    const asyncFunctions = ['peekU32', 'peekU16', 'peekU8', 'peekI32', 'peekI16', 'peekI8', 'poke32', 'poke16', 'poke8', 'readBytes', 'readWords', 'readLongs', 'disassemble'];
     const funcRegex = new RegExp(`(${asyncFunctions.join('|')})\\s*\\(`, 'g');
     let match;
 
@@ -395,7 +420,7 @@ export class EvaluateManager {
         if (!hasNestedAsync) {
           // This is an innermost call
           // Split arguments for all multi-argument functions
-          const multiArgFunctions = ['poke32', 'poke16', 'poke8', 'readBytes', 'readWords', 'readLongs'];
+          const multiArgFunctions = ['poke32', 'poke16', 'poke8', 'readBytes', 'readWords', 'readLongs', 'disassemble'];
           const args = multiArgFunctions.includes(funcName) 
             ? argsStr.split(',').map(s => s.trim())
             : [argsStr];
@@ -415,7 +440,7 @@ export class EvaluateManager {
   /**
    * Evaluates a single async function call.
    */
-  private async evaluateAsyncCall(func: string, args: string[], variables: Record<string, number>): Promise<number | {type: 'array', elements: number[], elementSize: number, baseAddress: number, valuesPerLine?: number}> {
+  private async evaluateAsyncCall(func: string, args: string[], variables: Record<string, number>): Promise<number | {type: 'array', elements: number[], elementSize: number, baseAddress: number, valuesPerLine?: number} | {type: 'disassembly', instructions: DebugProtocol.DisassembledInstruction[], baseAddress: number}> {
     switch (func) {
       case 'peekU32': {
         const addrResult = await this.evaluateComplexExpression(args[0], variables);
@@ -561,6 +586,24 @@ export class EvaluateManager {
           valuesPerLine
         };
       }
+      case 'disassemble': {
+        const addrResult = await this.evaluateComplexExpression(args[0], variables);
+        const countResult = args[1] ? await this.evaluateComplexExpression(args[1], variables) : 1;
+        
+        if (typeof addrResult !== 'number' || typeof countResult !== 'number') {
+          throw new Error('Disassemble function arguments must be numeric expressions');
+        }
+        
+        const addr = addrResult;
+        const count = countResult;
+        const instructions = await this.disassemblyManager.disassemble(addr, 0, count);
+        
+        return {
+          type: 'disassembly',
+          instructions,
+          baseAddress: addr
+        };
+      }
       default:
         throw new Error(`Unknown async function: ${func}`);
     }
@@ -588,7 +631,37 @@ export class EvaluateManager {
       return [];
     }
 
+    // Handle disassembly results
+    if (arrayData.type === 'disassembly' && arrayData.instructions) {
+      const variables: DebugProtocol.Variable[] = [];
+      
+      // Find the maximum width of instruction bytes for alignment
+      const maxHexWidth = Math.max(...arrayData.instructions.map((instr: any) => 
+        (instr.instructionBytes || '').length
+      ));
+      
+      for (let i = 0; i < arrayData.instructions.length; i++) {
+        const instr = arrayData.instructions[i];
+        const address = instr.address || `0x${instr.addr || '00000000'}`;
+        const hexBytes = (instr.instructionBytes || '').padEnd(maxHexWidth, ' ');
+        
+        variables.push({
+          name: address,
+          value: `${hexBytes} ${instr.instruction}`,
+          memoryReference: address,
+          variablesReference: 0,
+          presentationHint: { attributes: ['readOnly'] }
+        });
+      }
+      return variables;
+    }
+
+    // Handle array results
     const { elements, elementSize, baseAddress, valuesPerLine = 1 } = arrayData;
+    if (!elements || !elementSize) {
+      return [];
+    }
+    
     const variables: DebugProtocol.Variable[] = [];
     
     // Group elements by valuesPerLine

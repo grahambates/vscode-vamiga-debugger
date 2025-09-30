@@ -1000,6 +1000,7 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
         this.vAmiga,
         this.sourceMap,
         this.variablesManager,
+        this.disassemblyManager,
       );
 
       if (this.stopOnEntry && !this.fastLoad) {

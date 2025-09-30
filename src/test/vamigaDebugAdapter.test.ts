@@ -8,6 +8,7 @@ import { DebugProtocol } from '@vscode/debugprotocol';
 import * as registerParsers from '../amigaRegisterParsers';
 import { VariablesManager } from '../variablesManager';
 import { BreakpointManager } from '../breakpointManager';
+import { DisassemblyManager } from '../disassemblyManager';
 
 /**
  * Test subclass that exposes protected methods for testing
@@ -50,7 +51,8 @@ describe('VamigaDebugAdapter - Simplified Tests', () => {
       setupMockCpuState();
       const mockSourceMap = setupMockSourceMap();
       const mockVariablesManager = setupMockVariablesManager();
-      const evaluateManager = new EvaluateManager(mockVAmiga, mockSourceMap, mockVariablesManager);
+      const mockDisassemblyManager = setupMockDisassemblyManager();
+      const evaluateManager = new EvaluateManager(mockVAmiga, mockSourceMap, mockVariablesManager, mockDisassemblyManager);
       (adapter as any).evaluateManager = evaluateManager;
 
       // Test: Evaluate simple expression
@@ -65,7 +67,8 @@ describe('VamigaDebugAdapter - Simplified Tests', () => {
       setupMockCpuState({ d0: '0x100' });
       const mockSourceMap = setupMockSourceMap();
       const mockVariablesManager = setupMockVariablesManager({ d0: 0x100 });
-      const evaluateManager = new EvaluateManager(mockVAmiga, mockSourceMap, mockVariablesManager);
+      const mockDisassemblyManager = setupMockDisassemblyManager();
+      const evaluateManager = new EvaluateManager(mockVAmiga, mockSourceMap, mockVariablesManager, mockDisassemblyManager);
       (adapter as any).evaluateManager = evaluateManager;
 
       // Test: Evaluate register
@@ -81,7 +84,8 @@ describe('VamigaDebugAdapter - Simplified Tests', () => {
       setupMockCpuState({ d0: '0x10', d1: '0x20' });
       const mockSourceMap = setupMockSourceMap();
       const mockVariablesManager = setupMockVariablesManager({ d0: 0x10, d1: 0x20 });
-      const evaluateManager = new EvaluateManager(mockVAmiga, mockSourceMap, mockVariablesManager);
+      const mockDisassemblyManager = setupMockDisassemblyManager();
+      const evaluateManager = new EvaluateManager(mockVAmiga, mockSourceMap, mockVariablesManager, mockDisassemblyManager);
       (adapter as any).evaluateManager = evaluateManager;
 
       // Test: Evaluate arithmetic expression
@@ -100,7 +104,8 @@ describe('VamigaDebugAdapter - Simplified Tests', () => {
       setupMockCpuState();
       const mockSourceMap = setupMockSourceMap();
       const mockVariablesManager = setupMockVariablesManager();
-      const evaluateManager = new EvaluateManager(mockVAmiga, mockSourceMap, mockVariablesManager);
+      const mockDisassemblyManager = setupMockDisassemblyManager();
+      const evaluateManager = new EvaluateManager(mockVAmiga, mockSourceMap, mockVariablesManager, mockDisassemblyManager);
       (adapter as any).evaluateManager = evaluateManager;
 
       // Test: Evaluate hex address (should read memory)
@@ -117,7 +122,8 @@ describe('VamigaDebugAdapter - Simplified Tests', () => {
       setupMockCpuState();
       const mockSourceMap = setupMockSourceMap({ main: 0x1000, buffer: 0x2000 });
       const mockVariablesManager = setupMockVariablesManager({ main: 0x1000 });
-      const evaluateManager = new EvaluateManager(mockVAmiga, mockSourceMap, mockVariablesManager);
+      const mockDisassemblyManager = setupMockDisassemblyManager();
+      const evaluateManager = new EvaluateManager(mockVAmiga, mockSourceMap, mockVariablesManager, mockDisassemblyManager);
       (adapter as any).evaluateManager = evaluateManager;
 
       // Test: Evaluate symbol
@@ -139,7 +145,8 @@ describe('VamigaDebugAdapter - Simplified Tests', () => {
       setupMockCpuState({ d0: '0x42' });
       const mockSourceMap = setupMockSourceMap();
       const mockVariablesManager = setupMockVariablesManager({ d0: 0x42 });
-      const evaluateManager = new EvaluateManager(mockVAmiga, mockSourceMap, mockVariablesManager);
+      const mockDisassemblyManager = setupMockDisassemblyManager();
+      const evaluateManager = new EvaluateManager(mockVAmiga, mockSourceMap, mockVariablesManager, mockDisassemblyManager);
       (adapter as any).evaluateManager = evaluateManager;
 
       const response = createMockResponse<DebugProtocol.EvaluateResponse>('evaluate');
@@ -160,7 +167,8 @@ describe('VamigaDebugAdapter - Simplified Tests', () => {
       setupMockCpuState();
       const mockSourceMap = setupMockSourceMap();
       const mockVariablesManager = setupMockVariablesManager();
-      const evaluateManager = new EvaluateManager(mockVAmiga, mockSourceMap, mockVariablesManager);
+      const mockDisassemblyManager = setupMockDisassemblyManager();
+      const evaluateManager = new EvaluateManager(mockVAmiga, mockSourceMap, mockVariablesManager, mockDisassemblyManager);
       (adapter as any).evaluateManager = evaluateManager;
 
       const response = createMockResponse<DebugProtocol.EvaluateResponse>('evaluate');
@@ -302,6 +310,12 @@ describe('VamigaDebugAdapter - Simplified Tests', () => {
     const mockVariablesManager = sinon.createStubInstance(VariablesManager);
     mockVariablesManager.getFlatVariables.resolves(flatVariables);
     return mockVariablesManager;
+  }
+
+  function setupMockDisassemblyManager() {
+    const mockDisassemblyManager = sinon.createStubInstance(DisassemblyManager);
+    mockDisassemblyManager.disassemble.resolves([]);
+    return mockDisassemblyManager;
   }
 
   function createMockSourceMap(overrides: any = {}) {
