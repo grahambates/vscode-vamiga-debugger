@@ -421,9 +421,12 @@ export class EvaluateManager {
           // This is an innermost call
           // Split arguments for all multi-argument functions
           const multiArgFunctions = ['poke32', 'poke16', 'poke8', 'readBytes', 'readWords', 'readLongs', 'disassemble'];
-          const args = multiArgFunctions.includes(funcName) 
-            ? argsStr.split(',').map(s => s.trim())
-            : [argsStr];
+          let args: string[];
+          if (multiArgFunctions.includes(funcName)) {
+            args = argsStr.trim() === '' ? [] : argsStr.split(',').map(s => s.trim());
+          } else {
+            args = argsStr.trim() === '' ? [] : [argsStr];
+          }
           return {
             start: startPos,
             end: pos,
@@ -441,6 +444,33 @@ export class EvaluateManager {
    * Evaluates a single async function call.
    */
   private async evaluateAsyncCall(func: string, args: string[], variables: Record<string, number>): Promise<number | {type: 'array', elements: number[], elementSize: number, baseAddress: number, valuesPerLine?: number} | {type: 'disassembly', instructions: DebugProtocol.DisassembledInstruction[], baseAddress: number}> {
+    // Validate argument count for each function
+    const requiredArgs: Record<string, {min: number, max: number, usage: string}> = {
+      peekU32: {min: 1, max: 1, usage: 'peekU32(address)'},
+      peekU16: {min: 1, max: 1, usage: 'peekU16(address)'},
+      peekU8: {min: 1, max: 1, usage: 'peekU8(address)'},
+      peekI32: {min: 1, max: 1, usage: 'peekI32(address)'},
+      peekI16: {min: 1, max: 1, usage: 'peekI16(address)'},
+      peekI8: {min: 1, max: 1, usage: 'peekI8(address)'},
+      poke32: {min: 2, max: 2, usage: 'poke32(address, value)'},
+      poke16: {min: 2, max: 2, usage: 'poke16(address, value)'},
+      poke8: {min: 2, max: 2, usage: 'poke8(address, value)'},
+      readBytes: {min: 2, max: 3, usage: 'readBytes(address, count[, valuesPerLine])'},
+      readWords: {min: 2, max: 3, usage: 'readWords(address, count[, valuesPerLine])'},
+      readLongs: {min: 2, max: 3, usage: 'readLongs(address, count[, valuesPerLine])'},
+      disassemble: {min: 1, max: 2, usage: 'disassemble(address[, count])'}
+    };
+
+    const argSpec = requiredArgs[func];
+    if (argSpec) {
+      if (args.length < argSpec.min) {
+        throw new Error(`${func}() requires at least ${argSpec.min} argument${argSpec.min > 1 ? 's' : ''}. Usage: ${argSpec.usage}`);
+      }
+      if (args.length > argSpec.max) {
+        throw new Error(`${func}() accepts at most ${argSpec.max} argument${argSpec.max > 1 ? 's' : ''}. Usage: ${argSpec.usage}`);
+      }
+    }
+
     switch (func) {
       case 'peekU32': {
         const addrResult = await this.evaluateComplexExpression(args[0], variables);
