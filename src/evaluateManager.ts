@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import * as vscode from "vscode";
 import { DebugProtocol } from "@vscode/debugprotocol";
 import { Parser } from "expr-eval";
@@ -21,7 +22,7 @@ import { VariablesManager } from "./variablesManager";
  */
 export interface EvaluateResult {
   /** Numeric value of the expression, if successfully evaluated */
-  value?: number;
+  value?: any;
   /** Memory reference string for values that represent addresses */
   memoryReference?: string;
   /** Type classification of the result for appropriate formatting */
@@ -179,8 +180,13 @@ export class EvaluateManager {
     } else if (resultType === EvaluateResultType.CUSTOM_REGISTER) {
       result = formatHex(value, 4);
     } else {
-      // default - show result as hex and decimal
-      result = formatHex(value, 0) + " = " + value;
+      // Default - parsed expression result
+      if (typeof value === 'number') {
+        // Show numeric result as hex and decimal
+        result = formatHex(value, 0) + " = " + value;
+      } else {
+        result = String(value);
+      }
     }
 
     return {
@@ -255,10 +261,10 @@ export class EvaluateManager {
 
   /**
    * Evaluates complex expressions with async function support.
-   * 
+   *
    * Handles expressions containing memory access functions like peekU32, peekU16, etc.
    * with proper recursive evaluation to support nested async calls.
-   * 
+   *
    * @param expression The expression string to evaluate
    * @param variables Variable lookup table
    * @returns Promise resolving to the expression result
@@ -267,30 +273,30 @@ export class EvaluateManager {
     // Check if expression contains async functions
     const asyncFunctions = ['peekU32', 'peekU16', 'peekU8', 'peekI32', 'peekI16', 'peekI8', 'poke32', 'poke16', 'poke8'];
     const hasAsyncFunctions = asyncFunctions.some(fn => expression.includes(fn));
-    
+
     if (!hasAsyncFunctions) {
       // No async functions, use standard expr-eval
       const expr = this.parser.parse(expression);
       return expr.evaluate(variables);
     }
-    
+
     // Find the innermost async function call (one with no nested async calls)
     const innermostCall = this.findInnermostAsyncCall(expression);
-    
+
     if (!innermostCall) {
       // No more async calls, evaluate normally
       const expr = this.parser.parse(expression);
       return expr.evaluate(variables);
     }
-    
+
     // Evaluate the innermost async call
     const callValue = await this.evaluateAsyncCall(innermostCall.func, innermostCall.args, variables);
-    
+
     // Replace the call with its value and recursively evaluate the rest
-    const newExpression = expression.substring(0, innermostCall.start) + 
-                         callValue.toString() + 
+    const newExpression = expression.substring(0, innermostCall.start) +
+                         callValue.toString() +
                          expression.substring(innermostCall.end);
-    
+
     return this.evaluateComplexExpression(newExpression, variables);
   }
 
@@ -301,17 +307,17 @@ export class EvaluateManager {
     const asyncFunctions = ['peekU32', 'peekU16', 'peekU8', 'peekI32', 'peekI16', 'peekI8', 'poke32', 'poke16', 'poke8'];
     const funcRegex = new RegExp(`(${asyncFunctions.join('|')})\\s*\\(`, 'g');
     let match;
-    
+
     while ((match = funcRegex.exec(expression)) !== null) {
       const funcName = match[1];
       const startPos = match.index;
       const openParenPos = match.index + match[0].length - 1;
-      
+
       // Find the matching closing parenthesis
       let parenCount = 1;
       let pos = openParenPos + 1;
       let argsStr = '';
-      
+
       while (pos < expression.length && parenCount > 0) {
         const char = expression[pos];
         if (char === '(') {
@@ -319,17 +325,17 @@ export class EvaluateManager {
         } else if (char === ')') {
           parenCount--;
         }
-        
+
         if (parenCount > 0) {
           argsStr += char;
         }
         pos++;
       }
-      
+
       if (parenCount === 0) {
         // Check if this call's arguments contain any async functions
         const hasNestedAsync = asyncFunctions.some(fn => argsStr.includes(fn));
-        
+
         if (!hasNestedAsync) {
           // This is an innermost call
           const args = funcName.startsWith('poke') ? argsStr.split(',').map(s => s.trim()) : [argsStr];
@@ -342,7 +348,7 @@ export class EvaluateManager {
         }
       }
     }
-    
+
     return null;
   }
 
