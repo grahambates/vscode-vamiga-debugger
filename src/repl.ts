@@ -98,6 +98,10 @@ export const memoryAccessFunctions: UsageDocs = {
     `${ansi.func("disassemble")}(${ansi.variable("addr")}[, ${ansi.variable("count")}])`,
     "Disassemble instructions with expandable view (default count: 1)",
   ],
+  disassembleCopper: [
+    `${ansi.func("disassembleCopper")}(${ansi.variable("addr")}[, ${ansi.variable("count")}])`,
+    "Disassemble instructions with expandable view (default count: 1)",
+  ],
 };
 
 export const typeFunctions: UsageDocs = {

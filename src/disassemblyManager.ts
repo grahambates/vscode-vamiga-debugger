@@ -7,7 +7,7 @@ import { Source } from "@vscode/debugadapter";
 
 /**
  * Manages instruction disassembly for the debug adapter.
- * 
+ *
  * Handles disassembly requests with support for:
  * - Variable-length instruction handling
  * - Positive and negative instruction offsets
@@ -17,7 +17,7 @@ import { Source } from "@vscode/debugadapter";
 export class DisassemblyManager {
   /**
    * Creates a new DisassemblyManager instance.
-   * 
+   *
    * @param vAmiga VAmiga instance for disassembly operations
    * @param sourceMap Source map for adding symbol information to instructions
    */
@@ -28,12 +28,12 @@ export class DisassemblyManager {
 
   /**
    * Disassembles instructions at the specified address with offset support.
-   * 
+   *
    * Handles complex offset calculations for variable-length instructions:
    * - Negative offsets: Estimates start address using worst-case instruction lengths
    * - Positive offsets: Fetches extra instructions and trims to requested range
    * - Padding: Adds invalid instructions when negative offset exceeds available code
-   * 
+   *
    * @param baseAddress Base memory address for disassembly
    * @param instructionOffset Instruction offset from base address (can be negative)
    * @param count Number of instructions to disassemble
@@ -118,6 +118,29 @@ export class DisassemblyManager {
       ) {
         disasm.presentationHint = "invalid";
       }
+
+      // Add symbol lookup if we have source map
+      if (this.sourceMap) {
+        const addr = parseInt(instr.addr, 16);
+        const loc = this.sourceMap.lookupAddress(addr);
+        if (loc) {
+          disasm.symbol = basename(loc.path) + ":" + loc.line;
+          disasm.location = new Source(basename(loc.path), loc.path);
+          disasm.line = loc.line;
+        }
+      }
+      return disasm;
+    });
+  }
+
+  public async disassembleCopper(address: number, instructionCount: number) {
+    const result = await this.vAmiga.disassembleCopper(address, instructionCount);
+    return result.instructions.map((instr: any) => {
+      const disasm: DebugProtocol.DisassembledInstruction = {
+        address: "0x" + instr.addr,
+        instruction: instr.instruction,
+        instructionBytes: instr.hex,
+      };
 
       // Add symbol lookup if we have source map
       if (this.sourceMap) {

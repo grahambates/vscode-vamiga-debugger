@@ -50,6 +50,45 @@ export enum EvaluateResultType {
   PARSED,
 }
 
+// Validate argument count for each function
+const requiredArgs: Record<
+  string,
+  { min: number; max: number; usage: string }
+> = {
+  peekU32: { min: 1, max: 1, usage: "peekU32(address)" },
+  peekU16: { min: 1, max: 1, usage: "peekU16(address)" },
+  peekU8: { min: 1, max: 1, usage: "peekU8(address)" },
+  peekI32: { min: 1, max: 1, usage: "peekI32(address)" },
+  peekI16: { min: 1, max: 1, usage: "peekI16(address)" },
+  peekI8: { min: 1, max: 1, usage: "peekI8(address)" },
+  poke32: { min: 2, max: 2, usage: "poke32(address, value)" },
+  poke16: { min: 2, max: 2, usage: "poke16(address, value)" },
+  poke8: { min: 2, max: 2, usage: "poke8(address, value)" },
+  readBytes: {
+    min: 2,
+    max: 3,
+    usage: "readBytes(address, count[, valuesPerLine])",
+  },
+  readWords: {
+    min: 2,
+    max: 3,
+    usage: "readWords(address, count[, valuesPerLine])",
+  },
+  readLongs: {
+    min: 2,
+    max: 3,
+    usage: "readLongs(address, count[, valuesPerLine])",
+  },
+  disassemble: { min: 1, max: 2, usage: "disassemble(address[, count])" },
+  disassembleCopper: {
+    min: 1,
+    max: 2,
+    usage: "disassembleCopper(address[, count])",
+  },
+};
+
+const asyncFunctions = Object.keys(requiredArgs);
+
 /**
  * Manages expression evaluation for the debug adapter.
  *
@@ -62,7 +101,17 @@ export enum EvaluateResultType {
  */
 export class EvaluateManager {
   private parser: Parser;
-  private arrayHandles = new Map<number, {elements?: number[], elementSize?: number, baseAddress: number, valuesPerLine?: number, instructions?: any[], type?: string}>();
+  private arrayHandles = new Map<
+    number,
+    {
+      elements?: number[];
+      elementSize?: number;
+      baseAddress: number;
+      valuesPerLine?: number;
+      instructions?: any[];
+      type?: string;
+    }
+  >();
   private nextArrayHandle = 1;
 
   /**
@@ -120,7 +169,7 @@ export class EvaluateManager {
     if (value === undefined) {
       // Empty result
       return {
-        result: '',
+        result: "",
         variablesReference: 0,
       };
     }
@@ -186,63 +235,70 @@ export class EvaluateManager {
       result = formatHex(value, 4);
     } else {
       // Default - parsed expression result
-      if (typeof value === 'object' && value.type === 'disassembly') {
+      if (typeof value === "object" && value.type === "disassembly") {
         // Handle disassembly results
         const instructions = value.instructions;
-        const firstInstruction = instructions.length > 0 ? instructions[0].instruction : 'no instructions';
-        const ellipsis = instructions.length > 1 ? '...' : '';
-        
+        const firstInstruction =
+          instructions.length > 0
+            ? instructions[0].instruction
+            : "no instructions";
+        const ellipsis = instructions.length > 1 ? "..." : "";
+
         result = `disassembly[${instructions.length}] @ ${formatHex(value.baseAddress)} = ${firstInstruction}${ellipsis}`;
-        
+
         // Create variables reference for expandable disassembly view
         const handle = this.nextArrayHandle++;
         this.arrayHandles.set(handle, {
           instructions: instructions,
           baseAddress: value.baseAddress,
-          type: 'disassembly'
+          type: "disassembly",
         });
-        
+
         return {
           result,
           memoryReference: formatHex(value.baseAddress),
           variablesReference: handle,
           indexedVariables: instructions.length,
         };
-      } else if (typeof value === 'object' && value.type === 'array') {
+      } else if (typeof value === "object" && value.type === "array") {
         // Handle array results
-        const elementTypeName = value.elementSize === 1 ? 'byte' : 
-                              value.elementSize === 2 ? 'word' : 'long';
-        
+        const elementTypeName =
+          value.elementSize === 1
+            ? "byte"
+            : value.elementSize === 2
+              ? "word"
+              : "long";
+
         // Create preview of first few elements
         const previewCount = Math.min(4, value.elements.length);
-        const previewElements = value.elements.slice(0, previewCount).map((val: number) => 
-          formatHex(val, value.elementSize * 2)
-        );
-        const preview = previewElements.join(' ');
-        const ellipsis = value.elements.length > previewCount ? '...' : '';
-        
+        const previewElements = value.elements
+          .slice(0, previewCount)
+          .map((val: number) => formatHex(val, value.elementSize * 2));
+        const preview = previewElements.join(" ");
+        const ellipsis = value.elements.length > previewCount ? "..." : "";
+
         result = `${elementTypeName}[${value.elements.length}] @ ${formatHex(value.baseAddress)} = [${preview}${ellipsis}]`;
-        
+
         // Create variables reference for expandable array view
         const handle = this.nextArrayHandle++;
         this.arrayHandles.set(handle, {
           elements: value.elements,
           elementSize: value.elementSize,
           baseAddress: value.baseAddress,
-          valuesPerLine: value.valuesPerLine
+          valuesPerLine: value.valuesPerLine,
         });
-        
+
         // Calculate number of rows for indexedVariables
         const valuesPerLine = value.valuesPerLine || 1;
         const numberOfRows = Math.ceil(value.elements.length / valuesPerLine);
-        
+
         return {
           result,
           memoryReference: formatHex(value.baseAddress),
           variablesReference: handle,
           indexedVariables: numberOfRows,
         };
-      } else if (typeof value === 'number') {
+      } else if (typeof value === "number") {
         // Show numeric result as hex and decimal
         result = formatHex(value, 0) + " = " + value;
       } else {
@@ -313,12 +369,18 @@ export class EvaluateManager {
         }
       } else {
         // Complex expression - handle async functions manually
-        const result = await this.evaluateComplexExpression(expression, numVars);
-        if (typeof result === 'object' && (result.type === 'array' || result.type === 'disassembly')) {
+        const result = await this.evaluateComplexExpression(
+          expression,
+          numVars,
+        );
+        if (
+          typeof result === "object" &&
+          (result.type === "array" || result.type === "disassembly")
+        ) {
           // Array or disassembly result - pass the object as the value for formatting
           return {
             value: result,
-            type: EvaluateResultType.PARSED
+            type: EvaluateResultType.PARSED,
           };
         } else {
           value = result as number;
@@ -339,10 +401,28 @@ export class EvaluateManager {
    * @param variables Variable lookup table
    * @returns Promise resolving to the expression result
    */
-  private async evaluateComplexExpression(expression: string, variables: Record<string, number>): Promise<number | {type: 'array', elements: number[], elementSize: number, baseAddress: number, valuesPerLine?: number} | {type: 'disassembly', instructions: DebugProtocol.DisassembledInstruction[], baseAddress: number}> {
+  private async evaluateComplexExpression(
+    expression: string,
+    variables: Record<string, number>,
+  ): Promise<
+    | number
+    | {
+        type: "array";
+        elements: number[];
+        elementSize: number;
+        baseAddress: number;
+        valuesPerLine?: number;
+      }
+    | {
+        type: "disassembly";
+        instructions: DebugProtocol.DisassembledInstruction[];
+        baseAddress: number;
+      }
+  > {
     // Check if expression contains async functions
-    const asyncFunctions = ['peekU32', 'peekU16', 'peekU8', 'peekI32', 'peekI16', 'peekI8', 'poke32', 'poke16', 'poke8', 'readBytes', 'readWords', 'readLongs', 'disassemble'];
-    const hasAsyncFunctions = asyncFunctions.some(fn => expression.includes(fn));
+    const hasAsyncFunctions = asyncFunctions.some((fn) =>
+      expression.includes(fn),
+    );
 
     if (!hasAsyncFunctions) {
       // No async functions, use standard expr-eval
@@ -360,23 +440,36 @@ export class EvaluateManager {
     }
 
     // Evaluate the innermost async call
-    const callValue = await this.evaluateAsyncCall(innermostCall.func, innermostCall.args, variables);
+    const callValue = await this.evaluateAsyncCall(
+      innermostCall.func,
+      innermostCall.args,
+      variables,
+    );
 
     // If this is an array or disassembly result and it's the whole expression, return it
-    if (typeof callValue === 'object' && (callValue.type === 'array' || callValue.type === 'disassembly')) {
+    if (
+      typeof callValue === "object" &&
+      (callValue.type === "array" || callValue.type === "disassembly")
+    ) {
       // Check if this function call is the entire expression
-      if (innermostCall.start === 0 && innermostCall.end === expression.length) {
+      if (
+        innermostCall.start === 0 &&
+        innermostCall.end === expression.length
+      ) {
         return callValue;
       } else {
         // Array and disassembly functions can't be part of larger expressions
-        throw new Error(`Functions like ${innermostCall.func} cannot be used in complex expressions`);
+        throw new Error(
+          `Functions like ${innermostCall.func} cannot be used in complex expressions`,
+        );
       }
     }
 
     // Replace the call with its value and recursively evaluate the rest
-    const newExpression = expression.substring(0, innermostCall.start) +
-                         (callValue as number).toString() +
-                         expression.substring(innermostCall.end);
+    const newExpression =
+      expression.substring(0, innermostCall.start) +
+      (callValue as number).toString() +
+      expression.substring(innermostCall.end);
 
     return this.evaluateComplexExpression(newExpression, variables);
   }
@@ -384,26 +477,27 @@ export class EvaluateManager {
   /**
    * Finds the innermost async function call (one with no nested async calls in its arguments).
    */
-  private findInnermostAsyncCall(expression: string): {start: number, end: number, func: string, args: string[]} | null {
-    const asyncFunctions = ['peekU32', 'peekU16', 'peekU8', 'peekI32', 'peekI16', 'peekI8', 'poke32', 'poke16', 'poke8', 'readBytes', 'readWords', 'readLongs', 'disassemble'];
-    const funcRegex = new RegExp(`(${asyncFunctions.join('|')})\\s*\\(`, 'g');
+  private findInnermostAsyncCall(
+    expression: string,
+  ): { start: number; end: number; func: string; args: string[] } | null {
+    const funcRegex = new RegExp(`(${asyncFunctions.join("|")})\\s*\\(`, "g");
     let match;
 
     while ((match = funcRegex.exec(expression)) !== null) {
-      const funcName = match[1];
-      const startPos = match.index;
+      const func = match[1];
+      const start = match.index;
       const openParenPos = match.index + match[0].length - 1;
 
       // Find the matching closing parenthesis
       let parenCount = 1;
       let pos = openParenPos + 1;
-      let argsStr = '';
+      let argsStr = "";
 
       while (pos < expression.length && parenCount > 0) {
         const char = expression[pos];
-        if (char === '(') {
+        if (char === "(") {
           parenCount++;
-        } else if (char === ')') {
+        } else if (char === ")") {
           parenCount--;
         }
 
@@ -415,23 +509,22 @@ export class EvaluateManager {
 
       if (parenCount === 0) {
         // Check if this call's arguments contain any async functions
-        const hasNestedAsync = asyncFunctions.some(fn => argsStr.includes(fn));
+        const hasNestedAsync = asyncFunctions.some((fn) =>
+          argsStr.includes(fn),
+        );
 
         if (!hasNestedAsync) {
           // This is an innermost call
-          // Split arguments for all multi-argument functions
-          const multiArgFunctions = ['poke32', 'poke16', 'poke8', 'readBytes', 'readWords', 'readLongs', 'disassemble'];
-          let args: string[];
-          if (multiArgFunctions.includes(funcName)) {
-            args = argsStr.trim() === '' ? [] : argsStr.split(',').map(s => s.trim());
-          } else {
-            args = argsStr.trim() === '' ? [] : [argsStr];
-          }
+          // Split arguments
+          const args = argsStr
+            .split(",")
+            .map((s) => s.trim())
+            .filter((s) => s !== "");
           return {
-            start: startPos,
+            start,
             end: pos,
-            func: funcName,
-            args
+            func,
+            args,
           };
         }
       }
@@ -443,113 +536,174 @@ export class EvaluateManager {
   /**
    * Evaluates a single async function call.
    */
-  private async evaluateAsyncCall(func: string, args: string[], variables: Record<string, number>): Promise<number | {type: 'array', elements: number[], elementSize: number, baseAddress: number, valuesPerLine?: number} | {type: 'disassembly', instructions: DebugProtocol.DisassembledInstruction[], baseAddress: number}> {
-    // Validate argument count for each function
-    const requiredArgs: Record<string, {min: number, max: number, usage: string}> = {
-      peekU32: {min: 1, max: 1, usage: 'peekU32(address)'},
-      peekU16: {min: 1, max: 1, usage: 'peekU16(address)'},
-      peekU8: {min: 1, max: 1, usage: 'peekU8(address)'},
-      peekI32: {min: 1, max: 1, usage: 'peekI32(address)'},
-      peekI16: {min: 1, max: 1, usage: 'peekI16(address)'},
-      peekI8: {min: 1, max: 1, usage: 'peekI8(address)'},
-      poke32: {min: 2, max: 2, usage: 'poke32(address, value)'},
-      poke16: {min: 2, max: 2, usage: 'poke16(address, value)'},
-      poke8: {min: 2, max: 2, usage: 'poke8(address, value)'},
-      readBytes: {min: 2, max: 3, usage: 'readBytes(address, count[, valuesPerLine])'},
-      readWords: {min: 2, max: 3, usage: 'readWords(address, count[, valuesPerLine])'},
-      readLongs: {min: 2, max: 3, usage: 'readLongs(address, count[, valuesPerLine])'},
-      disassemble: {min: 1, max: 2, usage: 'disassemble(address[, count])'}
-    };
-
+  private async evaluateAsyncCall(
+    func: string,
+    args: string[],
+    variables: Record<string, number>,
+  ): Promise<
+    | number
+    | {
+        type: "array";
+        elements: number[];
+        elementSize: number;
+        baseAddress: number;
+        valuesPerLine?: number;
+      }
+    | {
+        type: "disassembly";
+        instructions: DebugProtocol.DisassembledInstruction[];
+        baseAddress: number;
+      }
+  > {
     const argSpec = requiredArgs[func];
     if (argSpec) {
       if (args.length < argSpec.min) {
-        throw new Error(`${func}() requires at least ${argSpec.min} argument${argSpec.min > 1 ? 's' : ''}. Usage: ${argSpec.usage}`);
+        throw new Error(
+          `${func}() requires at least ${argSpec.min} argument${argSpec.min > 1 ? "s" : ""}. Usage: ${argSpec.usage}`,
+        );
       }
       if (args.length > argSpec.max) {
-        throw new Error(`${func}() accepts at most ${argSpec.max} argument${argSpec.max > 1 ? 's' : ''}. Usage: ${argSpec.usage}`);
+        throw new Error(
+          `${func}() accepts at most ${argSpec.max} argument${argSpec.max > 1 ? "s" : ""}. Usage: ${argSpec.usage}`,
+        );
       }
     }
 
     switch (func) {
-      case 'peekU32': {
-        const addrResult = await this.evaluateComplexExpression(args[0], variables);
-        if (typeof addrResult !== 'number') {
-          throw new Error('Peek function address must be a numeric expression');
+      case "peekU32": {
+        const addrResult = await this.evaluateComplexExpression(
+          args[0],
+          variables,
+        );
+        if (typeof addrResult !== "number") {
+          throw new Error("Peek function address must be a numeric expression");
         }
         return this.vAmiga.peek32(addrResult);
       }
-      case 'peekU16': {
-        const addrResult = await this.evaluateComplexExpression(args[0], variables);
-        if (typeof addrResult !== 'number') {
-          throw new Error('Peek function address must be a numeric expression');
+      case "peekU16": {
+        const addrResult = await this.evaluateComplexExpression(
+          args[0],
+          variables,
+        );
+        if (typeof addrResult !== "number") {
+          throw new Error("Peek function address must be a numeric expression");
         }
         return this.vAmiga.peek16(addrResult);
       }
-      case 'peekU8': {
-        const addrResult = await this.evaluateComplexExpression(args[0], variables);
-        if (typeof addrResult !== 'number') {
-          throw new Error('Peek function address must be a numeric expression');
+      case "peekU8": {
+        const addrResult = await this.evaluateComplexExpression(
+          args[0],
+          variables,
+        );
+        if (typeof addrResult !== "number") {
+          throw new Error("Peek function address must be a numeric expression");
         }
         return this.vAmiga.peek8(addrResult);
       }
-      case 'peekI32': {
-        const addrResult = await this.evaluateComplexExpression(args[0], variables);
-        if (typeof addrResult !== 'number') {
-          throw new Error('Peek function address must be a numeric expression');
+      case "peekI32": {
+        const addrResult = await this.evaluateComplexExpression(
+          args[0],
+          variables,
+        );
+        if (typeof addrResult !== "number") {
+          throw new Error("Peek function address must be a numeric expression");
         }
         return i32(await this.vAmiga.peek32(addrResult));
       }
-      case 'peekI16': {
-        const addrResult = await this.evaluateComplexExpression(args[0], variables);
-        if (typeof addrResult !== 'number') {
-          throw new Error('Peek function address must be a numeric expression');
+      case "peekI16": {
+        const addrResult = await this.evaluateComplexExpression(
+          args[0],
+          variables,
+        );
+        if (typeof addrResult !== "number") {
+          throw new Error("Peek function address must be a numeric expression");
         }
         return i16(await this.vAmiga.peek16(addrResult));
       }
-      case 'peekI8': {
-        const addrResult = await this.evaluateComplexExpression(args[0], variables);
-        if (typeof addrResult !== 'number') {
-          throw new Error('Peek function address must be a numeric expression');
+      case "peekI8": {
+        const addrResult = await this.evaluateComplexExpression(
+          args[0],
+          variables,
+        );
+        if (typeof addrResult !== "number") {
+          throw new Error("Peek function address must be a numeric expression");
         }
         return i8(await this.vAmiga.peek8(addrResult));
       }
-      case 'poke32': {
-        const addrResult = await this.evaluateComplexExpression(args[0], variables);
-        const valueResult = await this.evaluateComplexExpression(args[1], variables);
-        if (typeof addrResult !== 'number' || typeof valueResult !== 'number') {
-          throw new Error('Poke function arguments must be numeric expressions');
+      case "poke32": {
+        const addrResult = await this.evaluateComplexExpression(
+          args[0],
+          variables,
+        );
+        const valueResult = await this.evaluateComplexExpression(
+          args[1],
+          variables,
+        );
+        if (typeof addrResult !== "number" || typeof valueResult !== "number") {
+          throw new Error(
+            "Poke function arguments must be numeric expressions",
+          );
         }
         await this.vAmiga.poke32(addrResult, valueResult);
         return valueResult;
       }
-      case 'poke16': {
-        const addrResult = await this.evaluateComplexExpression(args[0], variables);
-        const valueResult = await this.evaluateComplexExpression(args[1], variables);
-        if (typeof addrResult !== 'number' || typeof valueResult !== 'number') {
-          throw new Error('Poke function arguments must be numeric expressions');
+      case "poke16": {
+        const addrResult = await this.evaluateComplexExpression(
+          args[0],
+          variables,
+        );
+        const valueResult = await this.evaluateComplexExpression(
+          args[1],
+          variables,
+        );
+        if (typeof addrResult !== "number" || typeof valueResult !== "number") {
+          throw new Error(
+            "Poke function arguments must be numeric expressions",
+          );
         }
         await this.vAmiga.poke16(addrResult, valueResult);
         return valueResult;
       }
-      case 'poke8': {
-        const addrResult = await this.evaluateComplexExpression(args[0], variables);
-        const valueResult = await this.evaluateComplexExpression(args[1], variables);
-        if (typeof addrResult !== 'number' || typeof valueResult !== 'number') {
-          throw new Error('Poke function arguments must be numeric expressions');
+      case "poke8": {
+        const addrResult = await this.evaluateComplexExpression(
+          args[0],
+          variables,
+        );
+        const valueResult = await this.evaluateComplexExpression(
+          args[1],
+          variables,
+        );
+        if (typeof addrResult !== "number" || typeof valueResult !== "number") {
+          throw new Error(
+            "Poke function arguments must be numeric expressions",
+          );
         }
         await this.vAmiga.poke8(addrResult, valueResult);
         return valueResult;
       }
-      case 'readBytes': {
-        const addrResult = await this.evaluateComplexExpression(args[0], variables);
-        const countResult = await this.evaluateComplexExpression(args[1], variables);
-        const valuesPerLineResult = args[2] ? await this.evaluateComplexExpression(args[2], variables) : 1;
-        
-        if (typeof addrResult !== 'number' || typeof countResult !== 'number' || typeof valuesPerLineResult !== 'number') {
-          throw new Error('Array function arguments must be numeric expressions');
+      case "readBytes": {
+        const addrResult = await this.evaluateComplexExpression(
+          args[0],
+          variables,
+        );
+        const countResult = await this.evaluateComplexExpression(
+          args[1],
+          variables,
+        );
+        const valuesPerLineResult = args[2]
+          ? await this.evaluateComplexExpression(args[2], variables)
+          : 1;
+
+        if (
+          typeof addrResult !== "number" ||
+          typeof countResult !== "number" ||
+          typeof valuesPerLineResult !== "number"
+        ) {
+          throw new Error(
+            "Array function arguments must be numeric expressions",
+          );
         }
-        
+
         const addr = addrResult;
         const count = countResult;
         const valuesPerLine = valuesPerLineResult;
@@ -559,22 +713,36 @@ export class EvaluateManager {
           elements.push(buffer.readUInt8(i));
         }
         return {
-          type: 'array',
+          type: "array",
           elements,
           elementSize: 1,
           baseAddress: addr,
-          valuesPerLine
+          valuesPerLine,
         };
       }
-      case 'readWords': {
-        const addrResult = await this.evaluateComplexExpression(args[0], variables);
-        const countResult = await this.evaluateComplexExpression(args[1], variables);
-        const valuesPerLineResult = args[2] ? await this.evaluateComplexExpression(args[2], variables) : 1;
-        
-        if (typeof addrResult !== 'number' || typeof countResult !== 'number' || typeof valuesPerLineResult !== 'number') {
-          throw new Error('Array function arguments must be numeric expressions');
+      case "readWords": {
+        const addrResult = await this.evaluateComplexExpression(
+          args[0],
+          variables,
+        );
+        const countResult = await this.evaluateComplexExpression(
+          args[1],
+          variables,
+        );
+        const valuesPerLineResult = args[2]
+          ? await this.evaluateComplexExpression(args[2], variables)
+          : 1;
+
+        if (
+          typeof addrResult !== "number" ||
+          typeof countResult !== "number" ||
+          typeof valuesPerLineResult !== "number"
+        ) {
+          throw new Error(
+            "Array function arguments must be numeric expressions",
+          );
         }
-        
+
         const addr = addrResult;
         const count = countResult;
         const valuesPerLine = valuesPerLineResult;
@@ -584,22 +752,36 @@ export class EvaluateManager {
           elements.push(buffer.readUInt16BE(i * 2));
         }
         return {
-          type: 'array',
+          type: "array",
           elements,
           elementSize: 2,
           baseAddress: addr,
-          valuesPerLine
+          valuesPerLine,
         };
       }
-      case 'readLongs': {
-        const addrResult = await this.evaluateComplexExpression(args[0], variables);
-        const countResult = await this.evaluateComplexExpression(args[1], variables);
-        const valuesPerLineResult = args[2] ? await this.evaluateComplexExpression(args[2], variables) : 1;
-        
-        if (typeof addrResult !== 'number' || typeof countResult !== 'number' || typeof valuesPerLineResult !== 'number') {
-          throw new Error('Array function arguments must be numeric expressions');
+      case "readLongs": {
+        const addrResult = await this.evaluateComplexExpression(
+          args[0],
+          variables,
+        );
+        const countResult = await this.evaluateComplexExpression(
+          args[1],
+          variables,
+        );
+        const valuesPerLineResult = args[2]
+          ? await this.evaluateComplexExpression(args[2], variables)
+          : 1;
+
+        if (
+          typeof addrResult !== "number" ||
+          typeof countResult !== "number" ||
+          typeof valuesPerLineResult !== "number"
+        ) {
+          throw new Error(
+            "Array function arguments must be numeric expressions",
+          );
         }
-        
+
         const addr = addrResult;
         const count = countResult;
         const valuesPerLine = valuesPerLineResult;
@@ -609,29 +791,64 @@ export class EvaluateManager {
           elements.push(buffer.readUInt32BE(i * 4));
         }
         return {
-          type: 'array',
+          type: "array",
           elements,
           elementSize: 4,
           baseAddress: addr,
-          valuesPerLine
+          valuesPerLine,
         };
       }
-      case 'disassemble': {
-        const addrResult = await this.evaluateComplexExpression(args[0], variables);
-        const countResult = args[1] ? await this.evaluateComplexExpression(args[1], variables) : 1;
-        
-        if (typeof addrResult !== 'number' || typeof countResult !== 'number') {
-          throw new Error('Disassemble function arguments must be numeric expressions');
+      case "disassemble": {
+        const baseAddress = await this.evaluateComplexExpression(
+          args[0],
+          variables,
+        );
+        const count = args[1]
+          ? await this.evaluateComplexExpression(args[1], variables)
+          : 1;
+
+        if (typeof baseAddress !== "number" || typeof count !== "number") {
+          throw new Error(
+            "Disassemble function arguments must be numeric expressions",
+          );
         }
-        
-        const addr = addrResult;
-        const count = countResult;
-        const instructions = await this.disassemblyManager.disassemble(addr, 0, count);
-        
+
+        const instructions = await this.disassemblyManager.disassemble(
+          baseAddress,
+          0,
+          count,
+        );
+
         return {
-          type: 'disassembly',
+          type: "disassembly",
           instructions,
-          baseAddress: addr
+          baseAddress,
+        };
+      }
+      case "disassembleCopper": {
+        const baseAddress = await this.evaluateComplexExpression(
+          args[0],
+          variables,
+        );
+        const count = args[1]
+          ? await this.evaluateComplexExpression(args[1], variables)
+          : 1;
+
+        if (typeof baseAddress !== "number" || typeof count !== "number") {
+          throw new Error(
+            "Disassemble function arguments must be numeric expressions",
+          );
+        }
+
+        const instructions = await this.disassemblyManager.disassembleCopper(
+          baseAddress,
+          count,
+        );
+
+        return {
+          type: "disassembly",
+          instructions,
+          baseAddress,
         };
       }
       default:
@@ -641,7 +858,7 @@ export class EvaluateManager {
 
   /**
    * Checks if a variables reference belongs to this evaluate manager (i.e., is an array reference).
-   * 
+   *
    * @param variablesReference The reference to check
    * @returns True if this reference is for an array from this manager
    */
@@ -651,36 +868,43 @@ export class EvaluateManager {
 
   /**
    * Gets variables for an array result from expression evaluation.
-   * 
+   *
    * @param variablesReference The reference returned from evaluateFormatted
    * @returns Array of DAP variables showing individual elements with formatting
    */
-  public getArrayVariables(variablesReference: number): DebugProtocol.Variable[] {
+  public getArrayVariables(
+    variablesReference: number,
+  ): DebugProtocol.Variable[] {
     const arrayData = this.arrayHandles.get(variablesReference);
     if (!arrayData) {
       return [];
     }
 
     // Handle disassembly results
-    if (arrayData.type === 'disassembly' && arrayData.instructions) {
+    if (arrayData.type === "disassembly" && arrayData.instructions) {
       const variables: DebugProtocol.Variable[] = [];
-      
+
       // Find the maximum width of instruction bytes for alignment
-      const maxHexWidth = Math.max(...arrayData.instructions.map((instr: any) => 
-        (instr.instructionBytes || '').length
-      ));
-      
+      const maxHexWidth = Math.max(
+        ...arrayData.instructions.map(
+          (instr: any) => (instr.instructionBytes || "").length,
+        ),
+      );
+
       for (let i = 0; i < arrayData.instructions.length; i++) {
         const instr = arrayData.instructions[i];
-        const address = instr.address || `0x${instr.addr || '00000000'}`;
-        const hexBytes = (instr.instructionBytes || '').padEnd(maxHexWidth, ' ');
-        
+        const address = instr.address || `0x${instr.addr || "00000000"}`;
+        const hexBytes = (instr.instructionBytes || "").padEnd(
+          maxHexWidth,
+          " ",
+        );
+
         variables.push({
           name: address,
           value: `${hexBytes} ${instr.instruction}`,
           memoryReference: address,
           variablesReference: 0,
-          presentationHint: { attributes: ['readOnly'] }
+          presentationHint: { attributes: ["readOnly"] },
         });
       }
       return variables;
@@ -691,54 +915,60 @@ export class EvaluateManager {
     if (!elements || !elementSize) {
       return [];
     }
-    
+
     const variables: DebugProtocol.Variable[] = [];
-    
+
     // Group elements by valuesPerLine
     for (let i = 0; i < elements.length; i += valuesPerLine) {
       const groupElements = elements.slice(i, i + valuesPerLine);
-      const groupStartAddr = baseAddress + (i * elementSize);
-      
+      const groupStartAddr = baseAddress + i * elementSize;
+
       if (valuesPerLine === 1) {
         // Single element per line - show both hex and decimal for better debugging
         const value = groupElements[0];
         const hexValue = formatHex(value, elementSize * 2);
-        
+
         let displayValue: string;
         if (elementSize === 4 && this.vAmiga.isValidAddress(value)) {
           displayValue = formatAddress(value, this.sourceMap);
         } else {
           displayValue = `${hexValue} = ${value}`;
         }
-        
+
         variables.push({
           name: `[${i}]`,
           value: displayValue,
           memoryReference: formatHex(groupStartAddr),
           variablesReference: 0,
-          presentationHint: { attributes: ['readOnly'] }
+          presentationHint: { attributes: ["readOnly"] },
         });
       } else {
         // Multiple elements per line - traditional hex listing style
-        const groupValues = groupElements.map(value => {
+        const groupValues = groupElements.map((value) => {
           if (elementSize === 4 && this.vAmiga.isValidAddress(value)) {
             return formatAddress(value, this.sourceMap);
           } else {
             // Remove 0x prefix for cleaner table view
-            return value.toString(16).padStart(elementSize * 2, '0').toUpperCase();
+            return value
+              .toString(16)
+              .padStart(elementSize * 2, "0")
+              .toUpperCase();
           }
         });
-        
+
         // Use hex offset as label for traditional hex dump style
-        const offsetLabel = groupStartAddr.toString(16).padStart(6, '0').toUpperCase();
-        const groupValue = groupValues.join(' ');
-        
+        const offsetLabel = groupStartAddr
+          .toString(16)
+          .padStart(6, "0")
+          .toUpperCase();
+        const groupValue = groupValues.join(" ");
+
         variables.push({
-          name: offsetLabel + ':',
+          name: offsetLabel + ":",
           value: groupValue,
           memoryReference: formatHex(groupStartAddr),
           variablesReference: 0,
-          presentationHint: { attributes: ['readOnly'] }
+          presentationHint: { attributes: ["readOnly"] },
         });
       }
     }

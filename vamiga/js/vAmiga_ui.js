@@ -2270,6 +2270,8 @@ postMessage({ type: 'ready' });
     // Memory debugging:
     // const char *wasm_disassemble(u32 addr, u32 count)
     wasm_disassemble = Module.cwrap('wasm_disassemble', 'string', ['number', 'number']);
+    // const char *wasm_disassemble_copper(u32 addr, u32 count)
+    wasm_disassemble_copper = Module.cwrap('wasm_disassemble_copper', 'string', ['number', 'number']);
     // const char *wasm_hex_dump(u32 addr, u32 bytes)
     wasm_hex_dump = Module.cwrap('wasm_hex_dump', 'string', ['number', 'number']);
     // const char *wasm_mem_dump(u32 addr, u32 bytes)
@@ -2644,6 +2646,9 @@ postMessage({ type: 'ready' });
                     break;
                 case 'disassemble':
                     rpcRequest(() => JSON.parse(wasm_disassemble(message.args.address, message.args.count)));
+                    break;
+                case 'disassembleCopper':
+                    rpcRequest(() => JSON.parse(wasm_disassemble_copper(message.args.address, message.args.count)));
                     break;
                 case 'peek32':
                     rpcRequest(() => wasm_peek32(message.args.address));
