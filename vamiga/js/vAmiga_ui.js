@@ -2671,10 +2671,6 @@ postMessage({ type: 'ready' });
                     break;
                 case 'load':
                     rpcRequest(async () => {
-                        Module._wasm_remove_all_breakpoints();
-                        Module._wasm_remove_all_watchpoints();
-                        Module._wasm_remove_all_catchpoints();
-
                         programUri = message.args?.fileUri || '';
                         if (programUri !== '') {
                             attached = false;

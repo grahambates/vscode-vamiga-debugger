@@ -1,13 +1,14 @@
 // TODO:
-// - step on entry after re-attach - just runs, step gets lost after jump?
+// - memory viewer
+// - trace
+// - step back
+// - memory to disk?
 // - beamtraps?
-// - Console commands:
-//   - disasm command for interactive disassembly
-//   - mem command for memory inspection
 // - Constants/symbols browser in variables view
 // - Copper debugging support
 // - Custom register display ordering
 // - Custom register offset prefix display
+// - Profiler
 
 import {
   logger,
@@ -197,9 +198,7 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
    */
   public dispose(): void {
     this.vAmiga.run(); // unpause emulator if we're leaving it open
-    if (this.breakpointManager) {
-      this.breakpointManager.clearAll();
-    }
+    this.breakpointManager?.clearAll();
     this.disposables.forEach((d) => d?.dispose());
     this.disposables = [];
   }
@@ -419,7 +418,7 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
   ): Promise<void> {
     try {
       let variables: DebugProtocol.Variable[];
-      
+
       // Check if this is an array reference from the evaluate manager
       if (this.getEvaluateManager().hasArrayReference(args.variablesReference)) {
         variables = this.getEvaluateManager().getArrayVariables(args.variablesReference);
@@ -428,7 +427,7 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
           args.variablesReference,
         );
       }
-      
+
       response.body = { variables };
       this.sendResponse(response);
     } catch (err) {
