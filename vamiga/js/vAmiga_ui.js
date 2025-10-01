@@ -11,7 +11,7 @@ let vscode;
 let stop_request_animation_frame = false;
 let call_param_openROMS=false;
 let call_param_gpu=null;
-let call_param_navbar=null;
+let call_param_navbar='hidden';
 let call_param_wide=null;
 let call_param_border=null;
 let call_param_touch=null;
@@ -2014,67 +2014,31 @@ function InitWrappers() {
 // Web Worker for consistent emulation timing
 // This worker runs unthrottled even when the webview tab is not active
 
-let running = false;
-let intervalId = null;
-let targetFPS = 60;
-let frameInterval = 1000 / targetFPS; // ~16.67ms for 60 FPS
-
-// High-resolution timer for consistent frame timing
-let lastFrameTime = 0;
-
-function emulationLoop() {
-    if (!running) return;
-
-    const now = performance.now();
-    const deltaTime = now - lastFrameTime;
-
-    // Only execute frame if enough time has passed
-    if (deltaTime >= frameInterval) {
-        // Send frame execution command to main thread
-        postMessage({
-            type: 'executeFrame',
-            timestamp: now,
-            deltaTime: deltaTime
-        });
-
-        lastFrameTime = now - (deltaTime % frameInterval); // Maintain consistent timing
-    }
-
-    // Schedule next check - use shorter interval for precision
-    setTimeout(emulationLoop, 1);
-}
+let intervalId;
+const targetFPS = 60;
+const frameInterval = 1000 / targetFPS;
 
 // Handle messages from main thread
 self.onmessage = function(event) {
-    const { command, data } = event.data;
+    const { command } = event.data;
 
     switch (command) {
         case 'start':
-            if (!running) {
-                running = true;
-                lastFrameTime = performance.now();
-                intervalId = setInterval(emulationLoop, 1);
-                postMessage({ type: 'started' });
+            if (!intervalId) {
+                intervalId = setInterval(() => {
+                    postMessage({
+                        type: 'executeFrame',
+                        timestamp: performance.now()
+                    });
+                }, frameInterval);
             }
             break;
 
         case 'stop':
-            running = false;
             if (intervalId) {
-                clearTimeout(intervalId);
+                setInterval(intervalId);
                 intervalId = null;
             }
-            postMessage({ type: 'stopped' });
-            break;
-
-        case 'setFPS':
-            targetFPS = data.fps || 60;
-            frameInterval = 1000 / targetFPS;
-            postMessage({ type: 'fpsSet', fps: targetFPS });
-            break;
-
-        case 'isRunning':
-            postMessage({ type: 'runningStatus', running: running });
             break;
 
         default:
@@ -2105,14 +2069,6 @@ postMessage({ type: 'ready' });
                                 tryExec();
                             }
                         }
-                        break;
-
-                    case 'started':
-                        console.log('Worker emulation started');
-                        break;
-
-                    case 'stopped':
-                        console.log('Worker emulation stopped');
                         break;
                 }
             };
