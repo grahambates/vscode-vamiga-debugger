@@ -160,181 +160,6 @@ export class EvaluateManager {
   }
 
   /**
-   * Evaluates an expression and returns formatted result for Debug Adapter Protocol.
-   *
-   * Formats results based on expression type:
-   * - Data registers: hex + decimal values
-   * - Address registers: formatted addresses with symbol information
-   * - Symbols: addresses with pointer dereferencing for known types
-   * - Custom registers: hex values
-   * - Parsed expressions: hex + decimal values
-   *
-   * @param args Evaluation request arguments from DAP
-   * @returns Formatted evaluation response for DAP
-   */
-  public async evaluateFormatted({
-    expression,
-    context,
-    source,
-    line,
-  }: DebugProtocol.EvaluateRequest["arguments"]): Promise<
-    DebugProtocol.EvaluateResponse["body"]
-  > {
-    const {
-      value,
-      memoryReference,
-      type: resultType,
-    } = await this.evaluate(expression);
-
-    if (value === undefined) {
-      // Empty result
-      return {
-        result: "",
-        variablesReference: 0,
-      };
-    }
-
-    let result: string;
-    let byteLength: number | undefined;
-    let signed = false;
-
-    // For hover context we can look at the source to determine how the value is used and get length/sign
-    if (context === "hover" && source?.path && line) {
-      const document = await vscode.workspace.openTextDocument(source.path);
-      const docLine = document.lineAt(line - 1);
-      const attrs = instructionAttrs(docLine.text);
-      signed = attrs.signed;
-      byteLength = attrs.byteLength;
-    }
-
-    if (resultType === EvaluateResultType.ADDRESS_REGISTER) {
-      result = formatAddress(value, this.sourceMap);
-    } else if (resultType === EvaluateResultType.DATA_REGISTER) {
-      let sizedValue: number;
-      // Length from hover context
-      if (byteLength === 1) {
-        sizedValue = signed ? i8(value) : u8(value);
-      } else if (byteLength === 2) {
-        sizedValue = signed ? i16(value) : u16(value);
-      } else {
-        // default to longword
-        sizedValue = signed ? i32(value) : u32(value);
-        byteLength = 4;
-      }
-      result = formatNumber(sizedValue, byteLength * 2);
-    } else if (resultType === EvaluateResultType.SYMBOL) {
-      // longword address
-      result = formatHex(value, 8);
-
-      // Show value for b/w/l pointer
-      // Get length from hover context or symbol lengths
-      if (!byteLength) {
-        const symbolLengths = this.sourceMap?.getSymbolLengths();
-        byteLength = symbolLengths?.[expression] ?? 0;
-      }
-
-      if (byteLength === 1 || byteLength === 2 || byteLength === 4) {
-        let ptrVal: number;
-        if (byteLength === 4) {
-          ptrVal = await this.vAmiga.peek32(value);
-          if (signed) ptrVal = i32(ptrVal);
-        } else if (byteLength === 2) {
-          ptrVal = await this.vAmiga.peek16(value);
-          if (signed) ptrVal = i16(ptrVal);
-        } else {
-          ptrVal = await this.vAmiga.peek8(value);
-          if (signed) ptrVal = i8(ptrVal);
-        }
-        if (byteLength === 4) {
-          result += " -> " + formatAddress(ptrVal, this.sourceMap);
-        } else {
-          result += " -> " + formatHex(ptrVal, byteLength * 2);
-        }
-      }
-    } else if (resultType === EvaluateResultType.CUSTOM_REGISTER) {
-      result = formatHex(value, 4);
-    } else {
-      // Default - parsed expression result
-      if (isDisassemblyValue(value)) {
-        return this.handleDisassemblyResult(value);
-      } else if (isMemoryArrayValue(value)) {
-        return this.handleMemArrayResult(value);
-      } else if (typeof value === "number") {
-        // Show numeric result as hex and decimal
-        result = formatNumber(value);
-      } else {
-        result = String(value);
-      }
-    }
-
-    return {
-      result,
-      memoryReference,
-      variablesReference: 0,
-    };
-  }
-
-  private handleMemArrayResult(
-    value: MemoryArrayValue,
-  ): DebugProtocol.EvaluateResponse["body"] {
-    // Handle array results
-    const elementTypeName =
-      value.elementSize === 1
-        ? "byte"
-        : value.elementSize === 2
-          ? "word"
-          : "long";
-
-    // Create preview of first few elements
-    const previewCount = Math.min(4, value.elements.length);
-    const previewElements = value.elements
-      .slice(0, previewCount)
-      .map((val: number) => formatHex(val, value.elementSize * 2));
-    const preview = previewElements.join(" ");
-    const ellipsis = value.elements.length > previewCount ? "..." : "";
-
-    const result = `${elementTypeName}[${value.elements.length}] @ ${formatHex(value.baseAddress)} = [${preview}${ellipsis}]`;
-
-    // Create variables reference for expandable array view
-    const handle = this.nextArrayHandle++;
-    this.arrayHandles.set(handle, value);
-
-    // Calculate number of rows for indexedVariables
-    const valuesPerLine = value.valuesPerLine || 1;
-    const numberOfRows = Math.ceil(value.elements.length / valuesPerLine);
-
-    return {
-      result,
-      memoryReference: formatHex(value.baseAddress),
-      variablesReference: handle,
-      indexedVariables: numberOfRows,
-    };
-  }
-
-  private handleDisassemblyResult(
-    value: DisassemblyValue,
-  ): DebugProtocol.EvaluateResponse["body"] {
-    // Handle disassembly results
-    const instructions = value.instructions;
-    const firstInstruction =
-      instructions.length > 0 ? instructions[0].instruction : "no instructions";
-    const ellipsis = instructions.length > 1 ? "..." : "";
-
-    const result = `disassembly[${instructions.length}] @ ${formatHex(value.baseAddress)} = ${firstInstruction}${ellipsis}`;
-
-    // Create variables reference for expandable disassembly view
-    const handle = this.nextArrayHandle++;
-    this.arrayHandles.set(handle, value);
-
-    return {
-      result,
-      memoryReference: formatHex(value.baseAddress),
-      variablesReference: handle,
-      indexedVariables: instructions.length,
-    };
-  }
-
-  /**
    * Evaluates an expression in the context of the current debug session.
    *
    * Supports:
@@ -407,6 +232,206 @@ export class EvaluateManager {
       }
     }
     return { value, memoryReference, type };
+  }
+
+  /**
+   * Evaluates an expression and returns formatted result for Debug Adapter Protocol.
+   *
+   * Formats results based on expression type:
+   * - Data registers: hex + decimal values
+   * - Address registers: formatted addresses with symbol information
+   * - Symbols: addresses with pointer dereferencing for known types
+   * - Custom registers: hex values
+   * - Parsed expressions: hex + decimal values
+   *
+   * @param args Evaluation request arguments from DAP
+   * @returns Formatted evaluation response for DAP
+   */
+  public async evaluateFormatted({
+    expression,
+    context,
+    source,
+    line,
+  }: DebugProtocol.EvaluateRequest["arguments"]): Promise<
+    DebugProtocol.EvaluateResponse["body"]
+  > {
+    const {
+      value,
+      memoryReference,
+      type: resultType,
+    } = await this.evaluate(expression);
+
+    if (value === undefined) {
+      // Empty result
+      return {
+        result: "",
+        variablesReference: 0,
+      };
+    }
+
+    let result: string;
+    let byteLength: number | undefined;
+    let signed = false;
+
+    // For hover context we can look at the source to determine how the value is used and get length/sign
+    if (context === "hover" && source?.path && line) {
+      const document = await vscode.workspace.openTextDocument(source.path);
+      const docLine = document.lineAt(line - 1);
+      const attrs = instructionAttrs(docLine.text);
+      signed = attrs.signed;
+      byteLength = attrs.byteLength;
+    }
+
+    if (resultType === EvaluateResultType.ADDRESS_REGISTER) {
+      result = formatAddress(value, this.sourceMap);
+    } else if (resultType === EvaluateResultType.DATA_REGISTER) {
+      result = this.formatDataRegister(value, signed, byteLength);
+    } else if (resultType === EvaluateResultType.SYMBOL) {
+      result = await this.formatSymbol(
+        value,
+        expression,
+        signed,
+        byteLength,
+      );
+    } else if (resultType === EvaluateResultType.CUSTOM_REGISTER) {
+      result = formatHex(value, 4);
+    } else {
+      // Default - parsed expression result
+      if (isDisassemblyValue(value)) {
+        return this.handleDisassemblyResult(value);
+      } else if (isMemoryArrayValue(value)) {
+        return this.handleMemArrayResult(value);
+      } else if (typeof value === "number") {
+        // Show numeric result as hex and decimal
+        result = formatNumber(value);
+      } else {
+        // Default
+        result = String(value);
+      }
+    }
+
+    return {
+      result,
+      memoryReference,
+      variablesReference: 0,
+    };
+  }
+
+  private formatDataRegister(
+    value: number,
+    signed: boolean,
+    byteLength?: number,
+  ): string {
+    let sizedValue: number;
+    // Length from hover context
+    if (byteLength === 1) {
+      sizedValue = signed ? i8(value) : u8(value);
+    } else if (byteLength === 2) {
+      sizedValue = signed ? i16(value) : u16(value);
+    } else {
+      // default to longword
+      sizedValue = signed ? i32(value) : u32(value);
+      byteLength = 4;
+    }
+    return formatNumber(sizedValue, byteLength * 2);
+  }
+
+  private async formatSymbol(
+    value: number,
+    symbolName: string,
+    signed: boolean,
+    byteLength?: number,
+  ): Promise<string> {
+    // longword address
+    let result = formatHex(value, 8);
+
+    // Show value for b/w/l pointer
+    // Get length from hover context or symbol lengths
+    if (!byteLength) {
+      const symbolLengths = this.sourceMap?.getSymbolLengths();
+      byteLength = symbolLengths?.[symbolName] ?? 0;
+    }
+
+    if (byteLength === 1 || byteLength === 2 || byteLength === 4) {
+      let ptrVal: number;
+      if (byteLength === 4) {
+        ptrVal = await this.vAmiga.peek32(value);
+        if (signed) ptrVal = i32(ptrVal);
+      } else if (byteLength === 2) {
+        ptrVal = await this.vAmiga.peek16(value);
+        if (signed) ptrVal = i16(ptrVal);
+      } else {
+        ptrVal = await this.vAmiga.peek8(value);
+        if (signed) ptrVal = i8(ptrVal);
+      }
+      if (byteLength === 4) {
+        result += " -> " + formatAddress(ptrVal, this.sourceMap);
+      } else {
+        result += " -> " + formatHex(ptrVal, byteLength * 2);
+      }
+    }
+
+    return result;
+  }
+
+  private handleMemArrayResult(
+    value: MemoryArrayValue,
+  ): DebugProtocol.EvaluateResponse["body"] {
+    // Handle array results
+    const elementTypeName =
+      value.elementSize === 1
+        ? "byte"
+        : value.elementSize === 2
+          ? "word"
+          : "long";
+
+    // Create preview of first few elements
+    const previewCount = Math.min(4, value.elements.length);
+    const previewElements = value.elements
+      .slice(0, previewCount)
+      .map((val: number) => formatHex(val, value.elementSize * 2));
+    const preview = previewElements.join(" ");
+    const ellipsis = value.elements.length > previewCount ? "..." : "";
+
+    const result = `${elementTypeName}[${value.elements.length}] @ ${formatHex(value.baseAddress)} = [${preview}${ellipsis}]`;
+
+    // Create variables reference for expandable array view
+    const handle = this.nextArrayHandle++;
+    this.arrayHandles.set(handle, value);
+
+    // Calculate number of rows for indexedVariables
+    const valuesPerLine = value.valuesPerLine || 1;
+    const numberOfRows = Math.ceil(value.elements.length / valuesPerLine);
+
+    return {
+      result,
+      memoryReference: formatHex(value.baseAddress),
+      variablesReference: handle,
+      indexedVariables: numberOfRows,
+    };
+  }
+
+  private handleDisassemblyResult(
+    value: DisassemblyValue,
+  ): DebugProtocol.EvaluateResponse["body"] {
+    // Handle disassembly results
+    const instructions = value.instructions;
+    const firstInstruction =
+      instructions.length > 0 ? instructions[0].instruction : "no instructions";
+    const ellipsis = instructions.length > 1 ? "..." : "";
+
+    const result = `disassembly[${instructions.length}] @ ${formatHex(value.baseAddress)} = ${firstInstruction}${ellipsis}`;
+
+    // Create variables reference for expandable disassembly view
+    const handle = this.nextArrayHandle++;
+    this.arrayHandles.set(handle, value);
+
+    return {
+      result,
+      memoryReference: formatHex(value.baseAddress),
+      variablesReference: handle,
+      indexedVariables: instructions.length,
+    };
   }
 
   /**
