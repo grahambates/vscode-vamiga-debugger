@@ -37,12 +37,12 @@
         {
           "command": "vamiga-debugger.eof",
           "when": "debugType == 'vamiga'",
-          "group": "navigation@41"
+          "group": "navigation@51"
         },
         {
           "command": "vamiga-debugger.eol",
           "when": "debugType == 'vamiga'",
-          "group": "navigation@42"
+          "group": "navigation@52"
         }
       ]
     },

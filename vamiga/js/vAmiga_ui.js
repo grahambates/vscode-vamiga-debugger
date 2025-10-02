@@ -8,6 +8,10 @@ let workerInitialized = false;
 // vscode api instance
 let vscode;
 
+// Backward stepping snapshot history
+const MAX_SNAPSHOTS = 50; // Maximum number of snapshots to keep
+let snapshotHistory = [];
+
 let stop_request_animation_frame = false;
 let call_param_openROMS=false;
 let call_param_gpu=null;
@@ -1986,6 +1990,25 @@ function InitWrappers() {
         return attached;
     };
 
+    // Take a snapshot for backward stepping
+    const takeStepSnapshot = function() {
+        try {
+            const snap = JSON.parse(wasm_take_user_snapshot());
+            const snapshot_buffer = new Uint8Array(Module.HEAPU8.buffer, snap.address, snap.size).slice(0, snap.size);
+
+            // Add to history with circular buffer behavior
+            snapshotHistory.push(snapshot_buffer);
+            if (snapshotHistory.length > MAX_SNAPSHOTS) {
+                snapshotHistory.shift(); // Remove oldest snapshot
+            }
+
+            wasm_delete_user_snapshot();
+            console.log(`Snapshot taken. ${snap.size} bytes, History length: ${snapshotHistory.length}`);
+        } catch (err) {
+            console.error("Failed to take snapshot:", err);
+        }
+    }
+
     // Callback for error thrown during frame, which is likely to be a breakpoint or similar.
     // There's a message available via wasm that contains the reason for the stop.
     const handleStop = function (e) {
@@ -1995,6 +2018,8 @@ function InitWrappers() {
         }
         console.log("Execution stopped (breakpoint or exception):", e);
         wasm_halt(false);
+        takeStepSnapshot();
+
         // Get current message for stop
         const message = JSON.parse(wasm_get_current_message());
         vscode.postMessage({ type: 'emulator-state', state: 'stopped', message });
@@ -2541,9 +2566,11 @@ postMessage({ type: 'ready' });
             switch (message.command) {
                 case 'pause':
                     wasm_halt();
+                    takeStepSnapshot();
                     break;
                 case 'run':
                     wasm_run();
+                    snapshotHistory = []; // Clear snapshot history
                     break;
                 case 'setBreakpoint':
                     wasm_set_breakpoint(message.args.address, message.args.ignores);
@@ -2574,6 +2601,21 @@ postMessage({ type: 'ready' });
                 case 'stepInto':
                     wasm_step_into();
                     wasm_run();
+                    break;
+                case 'stepBack':
+                    rpcRequest(() => {
+                        if (snapshotHistory.length >= 2) {
+                            // Remove current snapshot (the one we just took when stopping)
+                            snapshotHistory.pop();
+                            // Get and remove the previous snapshot
+                            const previousSnapshot = snapshotHistory[snapshotHistory.length - 1];
+                            // Load the previous snapshot
+                            wasm_loadfile('stepback.vAmiga', previousSnapshot);
+                            console.log(`Stepped back. History size: ${snapshotHistory.length}`);
+                        } else {
+                            throw new Error("No previous snapshot available for stepping back");
+                        }
+                    });
                     break;
                 case 'getCpuInfo':
                     rpcRequest(() => JSON.parse(wasm_get_cpu_info()));

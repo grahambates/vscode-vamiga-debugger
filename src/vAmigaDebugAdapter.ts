@@ -77,7 +77,7 @@ interface LaunchRequestArguments extends DebugProtocol.LaunchRequestArguments {
   /** Inject program directly into memory */
   fastLoad?: boolean;
   /** Options to pass when opening vAmiga */
-  emulatorOptions?: Exclude<OpenOptions,'programPath'>,
+  emulatorOptions?: Exclude<OpenOptions, "programPath">;
 }
 
 /**
@@ -224,6 +224,7 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
     response.body.supportsEvaluateForHovers = true;
     response.body.supportsCompletionsRequest = true;
     response.body.supportsFunctionBreakpoints = true;
+    response.body.supportsStepBack = true;
 
     response.body.exceptionBreakpointFilters = exceptionBreakpointFilters;
 
@@ -291,7 +292,10 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
         this.vAmiga.open(args.emulatorOptions);
       } else {
         // Traditional loading via floppy disk emulation
-        this.vAmiga.open({ programPath: this.programPath, ...args.emulatorOptions });
+        this.vAmiga.open({
+          programPath: this.programPath,
+          ...args.emulatorOptions,
+        });
       }
 
       // Add listeners to emulator
@@ -552,6 +556,31 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
         err,
       );
     }
+  }
+
+  protected async stepBackRequest(
+    response: DebugProtocol.StepBackResponse,
+  ): Promise<void> {
+    try {
+      await this.vAmiga.stepBack();
+      this.sendEvent(new StoppedEvent("step", VamigaDebugAdapter.THREAD_ID));
+      this.sendResponse(response);
+    } catch (err) {
+      this.sendError(
+        response,
+        ErrorCode.STEP_ERROR,
+        "Step operation failed",
+        err,
+      );
+    }
+  }
+
+  protected async reverseContinueRequest(response: DebugProtocol.ReverseContinueResponse): Promise<void> {
+    this.sendError(
+      response,
+      ErrorCode.STEP_ERROR,
+      "Reverse continue is not supported",
+    );
   }
 
   protected async setBreakPointsRequest(

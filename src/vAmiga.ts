@@ -522,6 +522,14 @@ export class VAmiga {
   }
 
   /**
+   * Restore previous stopped state
+   */
+  public async stepBack(): Promise<boolean> {
+    this.invalidateCache();
+    return this.sendRpcCommand("stepBack");
+  }
+
+  /**
    * Run to end of frame
    */
   public eof(): void {
