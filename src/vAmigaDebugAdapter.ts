@@ -36,6 +36,7 @@ import {
   EmulatorStateMessage,
   StopMessage,
   isExecReadyMessage,
+  OpenOptions,
 } from "./vAmiga";
 import { Hunk, parseHunks } from "./amigaHunkParser";
 import { DWARFData, parseDwarf } from "./dwarfParser";
@@ -75,6 +76,8 @@ interface LaunchRequestArguments extends DebugProtocol.LaunchRequestArguments {
   trace?: boolean;
   /** Inject program directly into memory */
   fastLoad?: boolean;
+  /** Options to pass when opening vAmiga */
+  emulatorOptions?: Exclude<OpenOptions,'programPath'>,
 }
 
 /**
@@ -285,10 +288,10 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
         // Use fast loading - inject program directly into memory
         logger.log("Using fast memory injection mode");
         // Start emulator with no program
-        this.vAmiga.open();
+        this.vAmiga.open(args.emulatorOptions);
       } else {
         // Traditional loading via floppy disk emulation
-        this.vAmiga.openFile(this.programPath);
+        this.vAmiga.open({ programPath: this.programPath, ...args.emulatorOptions });
       }
 
       // Add listeners to emulator
@@ -420,8 +423,12 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
       let variables: DebugProtocol.Variable[];
 
       // Check if this is an array reference from the evaluate manager
-      if (this.getEvaluateManager().hasArrayReference(args.variablesReference)) {
-        variables = this.getEvaluateManager().getArrayVariables(args.variablesReference);
+      if (
+        this.getEvaluateManager().hasArrayReference(args.variablesReference)
+      ) {
+        variables = this.getEvaluateManager().getArrayVariables(
+          args.variablesReference,
+        );
       } else {
         variables = await this.getVariablesManager().getVariables(
           args.variablesReference,

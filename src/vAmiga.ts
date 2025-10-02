@@ -205,6 +205,54 @@ export function isRpcResponseMessage(
   return message.type === "rpcResponse";
 }
 
+/**
+ * Subset of JSON params that can be passed to vAmiga in URL hash
+ */
+export interface VAmigsOptions {
+  AROS?: boolean;
+  navbar?: boolean;
+  wide?: boolean;
+  dark?: boolean;
+  mouse?: boolean;
+  display?: 'viewport tracking' | 'borderless' | 'narrow' | 'standard' | 'wider' | 'overscan' | 'extreme';
+  gpu?: boolean;
+  //// These aren't useful to us:
+  // dialog_on_missing_roms?: boolean;
+  // dialog_on_disk?: boolean;
+  // border?: boolean | number;
+  // touch?: boolean;
+  // warpto?: number;
+  // wait_for_kickstart_injection?: boolean;
+  /// These get created from paths:
+  // url?: string;
+  // kickstart_rom_url?: string;
+  // kickstart_ext_url?: string;
+}
+
+/**
+ * User options input using absolute file paths
+ */
+export interface OpenOptions extends VAmigsOptions {
+  // Paths will need to be converted to URIs
+  programPath?: string;
+  kickstartRomPath?: string;
+  kickstartExtPath?: string;
+}
+
+/**
+ * Paths are converted to URIs
+ */
+interface CallParams extends VAmigsOptions {
+  url?: string;
+  kickstart_rom_url?: string;
+  kickstart_ext_url?: string;
+}
+
+const defaultOptions: VAmigsOptions = {
+  navbar: false,
+  mouse: true,
+}
+
 export class VAmiga {
   public static readonly viewType = "vamiga-debugger.webview";
   private _panel?: vscode.WebviewPanel;
@@ -226,31 +274,17 @@ export class VAmiga {
   /**
    * Opens the VAmiga emulator webview panel
    */
-  public open(): void {
+  public open(options?: OpenOptions): void {
+    const optionsWithDefaults = {
+      ...defaultOptions,
+      ...options,
+    }
     if (!this._panel) {
-      return this.initPanel();
+      return this.initPanel(optionsWithDefaults);
     } else {
       this.reveal();
-      this.sendCommand("load", {});
-    }
-  }
-
-  /**
-   * Opens a file in the VAmiga emulator webview panel
-   * @param filePath Absolute path to the file to open
-   * @throws Error if file does not exist
-   */
-  public openFile(filePath: string): void {
-    if (!existsSync(filePath)) {
-      throw new Error(`File not found: ${filePath}`);
-    }
-
-    if (!this._panel) {
-      return this.initPanel(filePath);
-    } else {
-      this.reveal();
-      const programUri = this.absolutePathToWebviewUri(filePath);
-      this.sendCommand("load", { fileUri: programUri.toString() });
+      const callParams = this.optionsToCallParams(optionsWithDefaults);
+      this.sendCommand("load", callParams);
     }
   }
 
@@ -654,7 +688,7 @@ export class VAmiga {
 
   // Helper methods:
 
-  private initPanel(filePath?: string) {
+  private initPanel(options: OpenOptions) {
     const column = this.getConfiguredViewColumn();
 
     // Create new panel
@@ -673,7 +707,8 @@ export class VAmiga {
       },
     );
 
-    this._panel.webview.html = this._getHtmlForWebview(filePath);
+    const callParams = this.optionsToCallParams(options);
+    this._panel.webview.html = this.getHtmlForWebview(callParams);
 
     // Handle webview lifecycle
     this._panel.onDidDispose(() => {
@@ -728,11 +763,14 @@ export class VAmiga {
     if (!this._panel) {
       throw new Error("Panel not initialized");
     }
+    if (!existsSync(absolutePath)) {
+      throw new Error(`File not found: ${absolutePath}`);
+    }
     const fileUri = vscode.Uri.file(absolutePath);
     return this._panel.webview.asWebviewUri(fileUri);
   }
 
-  private _getHtmlForWebview(filePath?: string): string {
+  private getHtmlForWebview(callParams: CallParams): string {
     if (!this._panel) {
       throw new Error("Panel not initialized");
     }
@@ -749,16 +787,25 @@ export class VAmiga {
     );
     let htmlContent = readFileSync(templatePath, "utf8");
 
-    const programUri = filePath ? this.absolutePathToWebviewUri(filePath) : "";
-
     // Replace template variables
     htmlContent = htmlContent.replace(/\$\{vamigaUri\}/g, vamigaUri.toString());
     htmlContent = htmlContent.replace(
-      /\$\{programUri\}/g,
-      programUri?.toString(),
+      '__CALL_PARAMS__',
+      JSON.stringify(callParams),
     );
 
     return htmlContent;
+  }
+
+  private optionsToCallParams(options: OpenOptions): CallParams {
+    const {programPath, kickstartRomPath, kickstartExtPath, ...params} = options ?? {};
+
+    return {
+      url: programPath ? this.absolutePathToWebviewUri(programPath).toString() : undefined,
+      kickstart_rom_url: kickstartRomPath ? this.absolutePathToWebviewUri(kickstartRomPath).toString() : undefined,
+      kickstart_ext_url: kickstartExtPath ? this.absolutePathToWebviewUri(kickstartExtPath).toString() : undefined,
+      ...params,
+    }
   }
 
   private invalidateCache() {

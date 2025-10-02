@@ -107,6 +107,50 @@
                 "type": "boolean",
                 "description": "Inject program directly into memory",
                 "default": false
+              },
+              "emulatorOptions": {
+                "type": "object",
+                "properties": {
+                  "navbar": {
+                    "type": "boolean",
+                    "description": "Navbar initially visible"
+                  },
+                  "wide": {
+                    "type": "boolean",
+                    "description": "Stretch to full width, regardless of aspect ratio"
+                  },
+                  "dark": {
+                    "type": "boolean",
+                    "description": "Dark mode"
+                  },
+                  "mouse": {
+                    "type": "boolean",
+                    "description": "Enable mouse"
+                  },
+                  "display": {
+                    "type": "string",
+                    "enum": [
+                      "viewport tracking", "borderless", "narrow", "standard", "wider", "overscan", "extreme"
+                    ],
+                    "description": "Display overscan mode"
+                  },
+                  "gpu": {
+                    "type": "boolean",
+                    "description": "Render with GPU, rather than software"
+                  },
+                  "kickstartRomPath": {
+                    "type": "string",
+                    "description": "Local path to kickstart ROM"
+                  },
+                  "kickstartExtPath": {
+                    "type": "string",
+                    "description": "Local path to extended kickstart ROM"
+                  },
+                  "AROS": {
+                    "type": "boolean",
+                    "description": "Use free AROS ROMs"
+                  }
+                }
               }
             }
           }

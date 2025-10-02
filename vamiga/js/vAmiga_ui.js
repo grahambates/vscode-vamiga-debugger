@@ -11,7 +11,7 @@ let vscode;
 let stop_request_animation_frame = false;
 let call_param_openROMS=false;
 let call_param_gpu=null;
-let call_param_navbar='hidden';
+let call_param_navbar=null;
 let call_param_wide=null;
 let call_param_border=null;
 let call_param_touch=null;
@@ -1944,7 +1944,7 @@ function InitWrappers() {
             !isSupervisor
         ) {
             execReady = true;
-            const fastLoad = programUri === '';
+            const fastLoad = !callParams.url;
             if (fastLoad) {
                 // Fast load mode - emulator will inject program into RAM
                 console.log('exec ready - stopping for fastLoad mode');
@@ -2632,17 +2632,19 @@ postMessage({ type: 'ready' });
                     break;
                 case 'load':
                     rpcRequest(async () => {
-                        programUri = message.args?.fileUri || '';
-                        if (programUri !== '') {
+                        callParams = message.args;
+                        if (callParams.url) {
+                            // Load program exe/adf
                             attached = false;
                             execReady = false;
-                            const res = await fetch(programUri);
+                            const res = await fetch(callParams.url);
                             const data = await res.arrayBuffer();
-                            const filename = programUri.split('/').pop();
+                            const filename = callParams.url.split('/').pop();
                             wasm_loadfile(filename, new Uint8Array(data), 0);
                             wasm_reset();
                             wasm_configure('WARP_MODE', 'ALWAYS');
                         } else if (startSnapshot) {
+                            // Fast load - restore initial snapshot and wait for injection
                             wasm_loadfile('start.vAmiga', startSnapshot);
                             wasm_halt(false);
                             wasm_configure('WARP_MODE', 'NEVER');
