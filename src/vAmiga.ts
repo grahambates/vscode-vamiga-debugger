@@ -216,6 +216,17 @@ export interface VAmigsOptions {
   mouse?: boolean;
   display?: 'viewport tracking' | 'borderless' | 'narrow' | 'standard' | 'wider' | 'overscan' | 'extreme';
   gpu?: boolean;
+  // Hardware configuration options
+  agnus_revision?: 'OCS_OLD' | 'OCS' | 'ECS_1MB' | 'ECS_2MB';
+  denise_revision?: 'OCS' | 'ECS';
+  cpu_revision?: 0 | 1 | 2 | 4;
+  cpu_overclocking?: 0 | 2 | 3 | 4 | 5 | 6 | 8 | 12 | 14;
+  chip_ram?: 256 | 512 | 1024 | 2048;
+  slow_ram?: 0 | 256 | 512;
+  fast_ram?: 0 | 256 | 512 | 1024 | 2048 | 8192;
+  blitter_accuracy?: '0' | '1' | '2';
+  floppy_drive_count?: 1 | 2 | 3 | 4;
+  drive_speed?: -1 | 1 | 2 | 4 | 8;
   //// These aren't useful to us:
   // dialog_on_missing_roms?: boolean;
   // dialog_on_disk?: boolean;

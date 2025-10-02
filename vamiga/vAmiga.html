@@ -1502,6 +1502,18 @@
 		<script>
 		let callParams = __CALL_PARAMS__;
 		window.location.hash = JSON.stringify(callParams);
+
+		// Pre-save hardware configuration to localStorage so bind_config_choice can load them
+		if (callParams.agnus_revision !== undefined) localStorage.setItem("OPT_AGNUS_REVISION", callParams.agnus_revision);
+		if (callParams.denise_revision !== undefined) localStorage.setItem("OPT_DENISE_REVISION", callParams.denise_revision);
+		if (callParams.cpu_revision !== undefined) localStorage.setItem("OPT_CPU_REVISION", callParams.cpu_revision);
+		if (callParams.cpu_overclocking !== undefined) localStorage.setItem("OPT_CPU_OVERCLOCKING", callParams.cpu_overclocking);
+		if (callParams.chip_ram !== undefined) localStorage.setItem("OPT_CHIP_RAM", callParams.chip_ram);
+		if (callParams.slow_ram !== undefined) localStorage.setItem("OPT_SLOW_RAM", callParams.slow_ram);
+		if (callParams.fast_ram !== undefined) localStorage.setItem("OPT_FAST_RAM", callParams.fast_ram);
+		if (callParams.blitter_accuracy !== undefined) localStorage.setItem("OPT_BLITTER_ACCURACY", callParams.blitter_accuracy);
+		if (callParams.floppy_drive_count !== undefined) localStorage.setItem("OPT_floppy_drive_count", callParams.floppy_drive_count);
+		if (callParams.drive_speed !== undefined) localStorage.setItem("OPT_DRIVE_SPEED", callParams.drive_speed);
 		</script>
 		<script src=vAmiga.js async></script>
 	</body>

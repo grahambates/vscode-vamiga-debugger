@@ -174,7 +174,6 @@ function get_parameter_link()
         #{"buttons":[{"position":"top:10vh;left:90vw","title":"hello","key":"h","run":true,"script":"d2hpbGUobm90X3N0b3BwZWQodGhpc19pZCkpIHthd2FpdCBhY3Rpb24oIkE9Pjk5OW1zIik7fQ=="}]}
         */
         call_obj = JSON.parse(param_part.substring(1), (key, value) => {
-            console.log(key);
             if(key=='script_base64')
             {//base64decode
                 return atob(value);

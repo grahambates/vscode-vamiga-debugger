@@ -149,6 +149,56 @@
                   "AROS": {
                     "type": "boolean",
                     "description": "Use free AROS ROMs"
+                  },
+                  "agnus_revision": {
+                    "type": "string",
+                    "enum": ["OCS_OLD", "OCS", "ECS_1MB", "ECS_2MB"],
+                    "description": "Agnus chip revision (OCS_OLD: A1000/Early A2000, OCS: Early A500/A2000, ECS_1MB: Later A500/A2000, ECS_2MB: A500+/A600)"
+                  },
+                  "denise_revision": {
+                    "type": "string",
+                    "enum": ["OCS", "ECS"],
+                    "description": "Denise chip revision"
+                  },
+                  "cpu_revision": {
+                    "type": "number",
+                    "enum": [0, 1, 2, 4],
+                    "description": "CPU model (0: 68000, 1: 68010, 2: 68020, 4: fake 68030)"
+                  },
+                  "cpu_overclocking": {
+                    "type": "number",
+                    "enum": [0, 2, 3, 4, 5, 6, 8, 12, 14],
+                    "description": "CPU speed multiplier (0: 7.09MHz stock, 14: ~100MHz)"
+                  },
+                  "chip_ram": {
+                    "type": "number",
+                    "enum": [256, 512, 1024, 2048],
+                    "description": "Chip RAM in KB"
+                  },
+                  "slow_ram": {
+                    "type": "number",
+                    "enum": [0, 256, 512],
+                    "description": "Slow RAM in KB"
+                  },
+                  "fast_ram": {
+                    "type": "number",
+                    "enum": [0, 256, 512, 1024, 2048, 8192],
+                    "description": "Fast RAM in KB"
+                  },
+                  "blitter_accuracy": {
+                    "type": "string",
+                    "enum": ["0", "1", "2"],
+                    "description": "Blitter accuracy level"
+                  },
+                  "floppy_drive_count": {
+                    "type": "number",
+                    "enum": [1, 2, 3, 4],
+                    "description": "Number of floppy drives"
+                  },
+                  "drive_speed": {
+                    "type": "number",
+                    "enum": [-1, 1, 2, 4, 8],
+                    "description": "Floppy drive speed multiplier (-1: auto)"
                   }
                 }
               }
