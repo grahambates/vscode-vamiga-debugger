@@ -206,63 +206,111 @@ export function isRpcResponseMessage(
 }
 
 /**
+ * User options input using absolute file paths
+ */
+export interface OpenOptions {
+  // Paths will need to be converted to URIs
+  programPath?: string;
+  kickstartRomPath?: string;
+  kickstartExtPath?: string;
+  useArosRom?: boolean;
+  showNavBar?: boolean;
+  wideScreen?: boolean;
+  darkMode?: boolean;
+  enableMouse?: boolean;
+  displayZoom?:
+    | "viewport tracking"
+    | "borderless"
+    | "narrow"
+    | "standard"
+    | "wider"
+    | "overscan"
+    | "extreme";
+  useGpu?: boolean;
+  // Hardware configuration options
+  agnusRevision?: "OCS_OLD" | "OCS" | "ECS_1MB" | "ECS_2MB";
+  deniseRevision?: "OCS" | "ECS";
+  cpuRevision?: "68000" | "68010" | "68020" | "fake_68030";
+  cpuSpeed?:
+    | "7MHz"
+    | "14Hz"
+    | "21Hz"
+    | "28Hz"
+    | "35Hz"
+    | "43Hz"
+    | "57Hz"
+    | "85Hz"
+    | "99Hz";
+  chipRam?: "256k" | "512k" | "1M" | "2M";
+  slowRam?: "0" | "256k" | "512k";
+  fastRam?: "0" | "256k" | "512k" | "1M" | "2M" | "8M";
+  blitterAccuracy?: 0 | 1 | 2;
+  floppyDriveCount?: 1 | 2 | 3 | 4;
+  driveSpeed?: -1 | 1 | 2 | 4 | 8;
+}
+
+// Option enums to call param values:
+const cpuRevision = { "68000": 0, "68010": 1, "68020": 2, fake_68030: 4 };
+const cpuSpeed = {
+  "7MHz": 0,
+  "14Hz": 2,
+  "21Hz": 3,
+  "28Hz": 4,
+  "35Hz": 5,
+  "43Hz": 6,
+  "57Hz": 8,
+  "85Hz": 12,
+  "99Hz": 14,
+};
+const chipRam = { "256k": 256, "512k": 512, "1M": 1024, "2M": 2048 };
+const slowRam = { "0": 0, "256k": 256, "512k": 512 };
+const fastRam = {
+  "0": 0,
+  "256k": 256,
+  "512k": 512,
+  "1M": 1024,
+  "2M": 2048,
+  "8M": 8192,
+};
+
+/**
  * Subset of JSON params that can be passed to vAmiga in URL hash
  */
-export interface VAmigsOptions {
+interface CallParams {
+  url?: string;
+  kickstart_rom_url?: string;
+  kickstart_ext_url?: string;
   AROS?: boolean;
   navbar?: boolean;
   wide?: boolean;
   dark?: boolean;
   mouse?: boolean;
-  display?: 'viewport tracking' | 'borderless' | 'narrow' | 'standard' | 'wider' | 'overscan' | 'extreme';
+  display?:
+    | "viewport tracking"
+    | "borderless"
+    | "narrow"
+    | "standard"
+    | "wider"
+    | "overscan"
+    | "extreme";
   gpu?: boolean;
   // Hardware configuration options
-  agnus_revision?: 'OCS_OLD' | 'OCS' | 'ECS_1MB' | 'ECS_2MB';
-  denise_revision?: 'OCS' | 'ECS';
-  cpu_revision?: 0 | 1 | 2 | 4;
-  cpu_overclocking?: 0 | 2 | 3 | 4 | 5 | 6 | 8 | 12 | 14;
-  chip_ram?: 256 | 512 | 1024 | 2048;
-  slow_ram?: 0 | 256 | 512;
-  fast_ram?: 0 | 256 | 512 | 1024 | 2048 | 8192;
-  blitter_accuracy?: '0' | '1' | '2';
-  floppy_drive_count?: 1 | 2 | 3 | 4;
-  drive_speed?: -1 | 1 | 2 | 4 | 8;
-  //// These aren't useful to us:
-  // dialog_on_missing_roms?: boolean;
-  // dialog_on_disk?: boolean;
-  // border?: boolean | number;
-  // touch?: boolean;
-  // warpto?: number;
-  // wait_for_kickstart_injection?: boolean;
-  /// These get created from paths:
-  // url?: string;
-  // kickstart_rom_url?: string;
-  // kickstart_ext_url?: string;
+  agnus_revision?: "OCS_OLD" | "OCS" | "ECS_1MB" | "ECS_2MB";
+  denise_revision?: "OCS" | "ECS";
+  cpu_revision?: number;
+  cpu_overclocking?: number;
+  chip_ram?: number;
+  slow_ram?: number;
+  fast_ram?: number;
+  blitter_accuracy?: number;
+  floppy_drive_count?: number;
+  drive_speed?: number;
 }
 
-/**
- * User options input using absolute file paths
- */
-export interface OpenOptions extends VAmigsOptions {
-  // Paths will need to be converted to URIs
-  programPath?: string;
-  kickstartRomPath?: string;
-  kickstartExtPath?: string;
-}
-
-/**
- * Paths are converted to URIs
- */
-interface CallParams extends VAmigsOptions {
-  url?: string;
-  kickstart_rom_url?: string;
-  kickstart_ext_url?: string;
-}
-
-const defaultOptions: VAmigsOptions = {
-  navbar: false,
-  mouse: true,
-}
+const defaultOptions: OpenOptions = {
+  showNavBar: false,
+  enableMouse: true,
+};
 
 export class VAmiga {
   public static readonly viewType = "vamiga-debugger.webview";
@@ -289,7 +337,7 @@ export class VAmiga {
     const optionsWithDefaults = {
       ...defaultOptions,
       ...options,
-    }
+    };
     if (!this._panel) {
       return this.initPanel(optionsWithDefaults);
     } else {
@@ -371,7 +419,9 @@ export class VAmiga {
       const timeout = setTimeout(() => {
         const pending = this.cleanupPendingRpc(id);
         if (pending) {
-          pending.reject(new Error(`RPC timeout after ${timeoutMs}ms: ${command}`));
+          pending.reject(
+            new Error(`RPC timeout after ${timeoutMs}ms: ${command}`),
+          );
         }
       }, timeoutMs);
 
@@ -737,13 +787,15 @@ export class VAmiga {
             pending.resolve(message.result);
           }
         }
-      } else if (message.type === 'exec-ready') {
+      } else if (message.type === "exec-ready") {
         // Only need to fetch memory info once on load
-        this.getMemoryInfo().then((memoryInfo) => {
-          this.memoryInfo = memoryInfo;
-        }).catch((error) => {
-          console.error('Failed to fetch memory info on exec-ready:', error);
-        });
+        this.getMemoryInfo()
+          .then((memoryInfo) => {
+            this.memoryInfo = memoryInfo;
+          })
+          .catch((error) => {
+            console.error("Failed to fetch memory info on exec-ready:", error);
+          });
       }
     });
   }
@@ -801,7 +853,7 @@ export class VAmiga {
     // Replace template variables
     htmlContent = htmlContent.replace(/\$\{vamigaUri\}/g, vamigaUri.toString());
     htmlContent = htmlContent.replace(
-      '__CALL_PARAMS__',
+      "__CALL_PARAMS__",
       JSON.stringify(callParams),
     );
 
@@ -809,14 +861,32 @@ export class VAmiga {
   }
 
   private optionsToCallParams(options: OpenOptions): CallParams {
-    const {programPath, kickstartRomPath, kickstartExtPath, ...params} = options ?? {};
-
-    return {
-      url: programPath ? this.absolutePathToWebviewUri(programPath).toString() : undefined,
-      kickstart_rom_url: kickstartRomPath ? this.absolutePathToWebviewUri(kickstartRomPath).toString() : undefined,
-      kickstart_ext_url: kickstartExtPath ? this.absolutePathToWebviewUri(kickstartExtPath).toString() : undefined,
-      ...params,
-    }
+    const params: CallParams = {
+      AROS: options.useArosRom,
+      navbar: options.showNavBar,
+      wide: options.wideScreen,
+      dark: options.darkMode,
+      mouse: options.enableMouse,
+      display: options.displayZoom,
+      gpu: options.useGpu,
+      agnus_revision: options.agnusRevision,
+      denise_revision: options.deniseRevision,
+      cpu_revision: options.cpuRevision ? cpuRevision[options.cpuRevision] : undefined,
+      cpu_overclocking: options.cpuSpeed ? cpuSpeed[options.cpuSpeed] : undefined,
+      chip_ram: options.chipRam ? chipRam[options.chipRam] : undefined,
+      slow_ram: options.slowRam ? slowRam[options.slowRam] : undefined,
+      fast_ram: options.fastRam ? fastRam[options.fastRam] : undefined,
+      url: options.programPath
+        ? this.absolutePathToWebviewUri(options.programPath).toString()
+        : undefined,
+      kickstart_rom_url: options.kickstartRomPath
+        ? this.absolutePathToWebviewUri(options.kickstartRomPath).toString()
+        : undefined,
+      kickstart_ext_url: options.kickstartExtPath
+        ? this.absolutePathToWebviewUri(options.kickstartExtPath).toString()
+        : undefined,
+    };
+    return params;
   }
 
   private invalidateCache() {
