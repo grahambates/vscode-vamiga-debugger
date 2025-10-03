@@ -41,29 +41,50 @@ async function main() {
     }
   }
 
-  const ctx = await esbuild.context({
+  // Build extension
+  const extensionCtx = await esbuild.context({
     entryPoints: [
       'src/extension.ts'
     ],
     bundle: true,
     format: 'cjs',
     minify: production,
-    sourcemap: !production, // Enable source maps for debugging
+    sourcemap: !production,
     sourcesContent: false,
     platform: 'node',
     outdir: 'out',
     external: ['vscode'],
     logLevel: 'silent',
     plugins: [
-      /* add to the end of plugins array */
+      esbuildProblemMatcherPlugin,
+    ],
+  });
+
+  // Build webview
+  const webviewCtx = await esbuild.context({
+    entryPoints: [
+      'src/webview/memoryViewer/main.ts'
+    ],
+    bundle: true,
+    format: 'iife',
+    minify: production,
+    sourcemap: !production,
+    sourcesContent: false,
+    platform: 'browser',
+    outdir: 'out/webview',
+    logLevel: 'silent',
+    plugins: [
       esbuildProblemMatcherPlugin,
     ],
   });
   if (watch) {
-    await ctx.watch();
+    await extensionCtx.watch();
+    await webviewCtx.watch();
   } else {
-    await ctx.rebuild();
-    await ctx.dispose();
+    await extensionCtx.rebuild();
+    await webviewCtx.rebuild();
+    await extensionCtx.dispose();
+    await webviewCtx.dispose();
   }
 }
 

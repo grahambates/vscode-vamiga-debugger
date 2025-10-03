@@ -151,7 +151,13 @@
                   "displayZoom": {
                     "type": "string",
                     "enum": [
-                      "viewport tracking", "borderless", "narrow", "standard", "wider", "overscan", "extreme"
+                      "viewport tracking",
+                      "borderless",
+                      "narrow",
+                      "standard",
+                      "wider",
+                      "overscan",
+                      "extreme"
                     ],
                     "description": "Display zoom mode"
                   },
@@ -161,52 +167,106 @@
                   },
                   "agnusRevision": {
                     "type": "string",
-                    "enum": ["OCS_OLD", "OCS", "ECS_1MB", "ECS_2MB"],
+                    "enum": [
+                      "OCS_OLD",
+                      "OCS",
+                      "ECS_1MB",
+                      "ECS_2MB"
+                    ],
                     "description": "Agnus chip revision"
                   },
                   "deniseRevision": {
                     "type": "string",
-                    "enum": ["OCS", "ECS"],
+                    "enum": [
+                      "OCS",
+                      "ECS"
+                    ],
                     "description": "Denise chip revision"
                   },
                   "cpuRevision": {
                     "type": "string",
-                    "enum": ["68000", "68010", "68020", "fake_68030"],
+                    "enum": [
+                      "68000",
+                      "68010",
+                      "68020",
+                      "fake_68030"
+                    ],
                     "description": "CPU model"
                   },
                   "cpuSpeed": {
                     "type": "string",
-                    "enum": ["7MHz", "14Hz", "21Hz", "28Hz", "35Hz", "43Hz", "57Hz", "85Hz", "99Hz"],
+                    "enum": [
+                      "7MHz",
+                      "14Hz",
+                      "21Hz",
+                      "28Hz",
+                      "35Hz",
+                      "43Hz",
+                      "57Hz",
+                      "85Hz",
+                      "99Hz"
+                    ],
                     "description": "CPU speed"
                   },
                   "chipRam": {
                     "type": "string",
-                    "enum": ["256k", "512k", "1M", "2M"],
+                    "enum": [
+                      "256k",
+                      "512k",
+                      "1M",
+                      "2M"
+                    ],
                     "description": "Chip RAM size"
                   },
                   "slowRam": {
                     "type": "string",
-                    "enum": ["0", "256k", "512k"],
+                    "enum": [
+                      "0",
+                      "256k",
+                      "512k"
+                    ],
                     "description": "Slow RAM size"
                   },
                   "fastRam": {
                     "type": "string",
-                    "enum": ["0", "256k", "512k", "1M", "2M", "8M"],
+                    "enum": [
+                      "0",
+                      "256k",
+                      "512k",
+                      "1M",
+                      "2M",
+                      "8M"
+                    ],
                     "description": "Fast RAM size"
                   },
                   "blitterAccuracy": {
                     "type": "number",
-                    "enum": [0, 1, 2],
+                    "enum": [
+                      0,
+                      1,
+                      2
+                    ],
                     "description": "Blitter accuracy level"
                   },
                   "floppyDriveCount": {
                     "type": "number",
-                    "enum": [1, 2, 3, 4],
+                    "enum": [
+                      1,
+                      2,
+                      3,
+                      4
+                    ],
                     "description": "Number of floppy drives"
                   },
                   "driveSpeed": {
                     "type": "number",
-                    "enum": [-1, 1, 2, 4, 8],
+                    "enum": [
+                      -1,
+                      1,
+                      2,
+                      4,
+                      8
+                    ],
                     "description": "Floppy drive speed multiplier (-1: auto)"
                   }
                 }
@@ -265,6 +325,7 @@
     "@types/vscode": "^1.104.0",
     "@typescript-eslint/eslint-plugin": "^8.43.0",
     "@typescript-eslint/parser": "^8.43.0",
+    "@vscode-elements/elements": "^2.3.1",
     "@vscode/test-cli": "^0.0.11",
     "@vscode/test-electron": "^2.5.2",
     "esbuild": "^0.25.10",

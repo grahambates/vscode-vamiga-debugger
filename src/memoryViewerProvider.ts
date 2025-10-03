@@ -1,5 +1,7 @@
 import * as vscode from 'vscode';
 import { VAmiga, isEmulatorStateMessage } from './vAmiga';
+import { readFileSync } from 'fs';
+import { join } from 'path';
 
 /**
  * Provides a webview for viewing emulator memory in different formats
@@ -229,171 +231,57 @@ export class MemoryViewerProvider {
   }
 
   private getHtmlContent(content: string, error?: string): string {
-    const escapedContent = content.replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Memory Viewer</title>
-  <style>
-    body {
-      padding: 20px;
-      font-family: var(--vscode-font-family);
-      color: var(--vscode-foreground);
-      background-color: var(--vscode-editor-background);
-      margin: 0;
-    }
-    .header {
-      margin-bottom: 20px;
-      padding-bottom: 10px;
-      border-bottom: 1px solid var(--vscode-panel-border);
-    }
-    .address-input {
-      display: flex;
-      gap: 10px;
-      align-items: center;
-      margin-bottom: 10px;
-    }
-    .address-input input {
-      background: var(--vscode-input-background);
-      color: var(--vscode-input-foreground);
-      border: 1px solid var(--vscode-input-border);
-      padding: 4px 8px;
-      font-family: var(--vscode-editor-font-family);
-      width: 100px;
-    }
-    .address-input button {
-      background: var(--vscode-button-background);
-      color: var(--vscode-button-foreground);
-      border: none;
-      padding: 4px 12px;
-      cursor: pointer;
-    }
-    .address-input button:hover {
-      background: var(--vscode-button-hoverBackground);
-    }
-    .view-mode-selector {
-      display: flex;
-      gap: 10px;
-    }
-    .view-mode-selector button {
-      background: var(--vscode-button-secondaryBackground);
-      color: var(--vscode-button-secondaryForeground);
-      border: none;
-      padding: 6px 12px;
-      cursor: pointer;
-    }
-    .view-mode-selector button:hover {
-      background: var(--vscode-button-secondaryHoverBackground);
-    }
-    .view-mode-selector button.active {
-      background: var(--vscode-button-background);
-      color: var(--vscode-button-foreground);
-    }
-    .content {
-      font-family: var(--vscode-editor-font-family);
-      font-size: var(--vscode-editor-font-size);
-      line-height: 1.4;
-      white-space: pre;
-      overflow-x: auto;
-    }
-    .error {
-      padding: 20px;
-      background-color: var(--vscode-inputValidation-errorBackground);
-      border: 1px solid var(--vscode-inputValidation-errorBorder);
-      color: var(--vscode-errorForeground);
-      border-radius: 4px;
-    }
-    .placeholder {
-      padding: 40px;
-      text-align: center;
-      color: var(--vscode-descriptionForeground);
-      font-style: italic;
-    }
-  </style>
-</head>
-<body>
-  <div class="header">
-    <div class="address-input">
-      <label for="address">Address:</label>
-      <input
-        type="text"
-        id="address"
-        value="${this._currentAddress.toString(16).toUpperCase().padStart(6, '0')}"
-        placeholder="000000"
-      />
-      <button onclick="goToAddress()">Go</button>
-    </div>
-    <div class="view-mode-selector">
-      <button class="${this._viewMode === 'hex' ? 'active' : ''}" onclick="changeViewMode('hex')">Hex Dump</button>
-      <button class="${this._viewMode === 'visual' ? 'active' : ''}" onclick="changeViewMode('visual')">Visual</button>
-      <button class="${this._viewMode === 'disassembly' ? 'active' : ''}" onclick="changeViewMode('disassembly')">Disassembly</button>
-      <button class="${this._viewMode === 'copper' ? 'active' : ''}" onclick="changeViewMode('copper')">Copper</button>
-    </div>
-    <div style="margin-top: 10px;">
-      <label>
-        <input type="checkbox" id="liveUpdate" ${this._liveUpdate ? 'checked' : ''} onchange="toggleLiveUpdate()">
-        Live Update (refresh while running)
-      </label>
-    </div>
-  </div>
-  <div class="content">
-    ${error ? `<div class="error">Error: ${error}</div>` : escapedContent || '<div class="placeholder">No content</div>'}
-  </div>
-  <script>
-    const vscode = acquireVsCodeApi();
-
-    function goToAddress() {
-      const addressInput = document.getElementById('address');
-      const address = parseInt(addressInput.value, 16);
-      if (!isNaN(address)) {
-        vscode.postMessage({
-          command: 'changeAddress',
-          address: address
-        });
-      }
+    if (!this._panel) {
+      throw new Error('Panel not initialized');
     }
 
-    function changeViewMode(mode) {
-      vscode.postMessage({
-        command: 'changeViewMode',
-        mode: mode
-      });
-    }
+    const webview = this._panel.webview;
 
-    function toggleLiveUpdate() {
-      const checkbox = document.getElementById('liveUpdate');
-      vscode.postMessage({
-        command: 'toggleLiveUpdate',
-        enabled: checkbox.checked
-      });
-    }
+    // Get URIs for bundled resources
+    const scriptUri = webview.asWebviewUri(
+      vscode.Uri.joinPath(this._extensionUri, 'out', 'webview', 'main.js')
+    );
+    const styleUri = webview.asWebviewUri(
+      vscode.Uri.joinPath(this._extensionUri, 'src', 'webview', 'memoryViewer', 'styles.css')
+    );
 
-    document.getElementById('address').addEventListener('keypress', (e) => {
-      if (e.key === 'Enter') {
-        goToAddress();
-      }
-    });
+    // Read HTML template
+    const htmlPath = join(
+      this._extensionUri.fsPath,
+      'src',
+      'webview',
+      'memoryViewer',
+      'index.html'
+    );
+    let html = readFileSync(htmlPath, 'utf8');
 
-    // Listen for content updates from extension
-    window.addEventListener('message', event => {
-      const message = event.data;
-      if (message.command === 'updateContent') {
-        const contentDiv = document.querySelector('.content');
-        if (message.error) {
-          contentDiv.innerHTML = '<div class="error">Error: ' + message.error + '</div>';
-        } else if (message.content) {
-          // Escape HTML and preserve formatting
-          const escaped = message.content.replace(/</g, '&lt;').replace(/>/g, '&gt;');
-          contentDiv.textContent = escaped;
-        } else {
-          contentDiv.innerHTML = '<div class="placeholder">No content</div>';
-        }
-      }
-    });
-  </script>
-</body>
-</html>`;
+    // Replace placeholders
+    const cspSource = webview.cspSource;
+
+    const initialContent = error
+      ? `<div class="error">Error: ${escapeHtml(error)}</div>`
+      : content
+      ? escapeHtml(content)
+      : '<div class="placeholder">Loading...</div>';
+
+    html = html
+      .replace(/{{cspSource}}/g, cspSource)
+      .replace(/{{styleUri}}/g, styleUri.toString())
+      .replace(/{{scriptUri}}/g, scriptUri.toString())
+      .replace(/{{currentAddress}}/g, this._currentAddress.toString(16).toUpperCase().padStart(6, '0'))
+      .replace(/{{hexActive}}/g, this._viewMode === 'hex' ? 'active' : '')
+      .replace(/{{visualActive}}/g, this._viewMode === 'visual' ? 'active' : '')
+      .replace(/{{disassemblyActive}}/g, this._viewMode === 'disassembly' ? 'active' : '')
+      .replace(/{{copperActive}}/g, this._viewMode === 'copper' ? 'active' : '')
+      .replace(/{{liveUpdateChecked}}/g, this._liveUpdate ? 'checked' : '')
+      .replace(/{{initialContent}}/g, initialContent);
+
+    return html;
   }
 }
+
+function escapeHtml(text: string): string {
+  return text.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+// Old inline template removed - now using external HTML/CSS/TS files
