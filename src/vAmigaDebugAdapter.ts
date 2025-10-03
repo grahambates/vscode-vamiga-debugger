@@ -427,20 +427,10 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
     args: DebugProtocol.VariablesArguments,
   ): Promise<void> {
     try {
-      let variables: DebugProtocol.Variable[];
-
-      // Check if this is an array reference from the evaluate manager
-      if (
-        this.getEvaluateManager().hasArrayReference(args.variablesReference)
-      ) {
-        variables = this.getEvaluateManager().getArrayVariables(
-          args.variablesReference,
-        );
-      } else {
-        variables = await this.getVariablesManager().getVariables(
-          args.variablesReference,
-        );
-      }
+      // VariablesManager now handles all variable references including arrays from EvaluateManager
+      const variables = await this.getVariablesManager().getVariables(
+        args.variablesReference,
+      );
 
       response.body = { variables };
       this.sendResponse(response);
@@ -671,13 +661,17 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
         const id = this.getVariablesManager().getVariableReference(
           args.variablesReference,
         );
-        const result = this.getBreakpointManager().getDataBreakpointInfo(
-          id,
-          args.name,
-        );
-        if (result) {
-          response.body = result;
-          this.sendResponse(response);
+        // Only string IDs support data breakpoints (not array values)
+        if (typeof id === "string") {
+          const result = this.getBreakpointManager().getDataBreakpointInfo(
+            id,
+            args.name,
+          );
+          if (result) {
+            response.body = result;
+            this.sendResponse(response);
+            return;
+          }
         }
       }
 

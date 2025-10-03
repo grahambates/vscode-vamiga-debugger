@@ -51,7 +51,7 @@ export enum EvaluateResultType {
   PARSED,
 }
 
-interface MemoryArrayValue {
+export interface MemoryArrayValue {
   type: "memArray";
   elements: number[];
   elementSize: number;
@@ -59,13 +59,11 @@ interface MemoryArrayValue {
   valuesPerLine?: number;
 }
 
-interface DisassemblyValue {
+export interface DisassemblyValue {
   type: "disassembly";
   instructions: DebugProtocol.DisassembledInstruction[];
   baseAddress: number;
 }
-
-type ArrayValue = MemoryArrayValue | DisassemblyValue;
 
 export function isMemoryArrayValue(value: unknown): value is MemoryArrayValue {
   return (
@@ -131,15 +129,13 @@ const asyncFunctions = Object.keys(requiredArgs);
  */
 export class EvaluateManager {
   private parser: Parser;
-  private arrayHandles = new Map<number, ArrayValue>();
-  private nextArrayHandle = 1;
 
   /**
    * Creates a new EvaluateManager instance.
    *
    * @param vAmiga VAmiga instance for memory access and register reads
    * @param sourceMap Source map for symbol resolution and address formatting
-   * @param variablesManager Variables manager for accessing flat variable data
+   * @param variablesManager Variables manager for accessing flat variable data and registering array handles
    * @param disassemblyManager Disassembly manager for code inspection
    */
   constructor(
@@ -395,9 +391,11 @@ export class EvaluateManager {
 
     const result = `${elementTypeName}[${value.elements.length}] @ ${formatHex(value.baseAddress)} = [${preview}${ellipsis}]`;
 
-    // Create variables reference for expandable array view
-    const handle = this.nextArrayHandle++;
-    this.arrayHandles.set(handle, value);
+    // Register with variables manager for handle management
+    const handle = this.variablesManager.createArrayHandle({
+      type: "memArray",
+      data: value,
+    });
 
     // Calculate number of rows for indexedVariables
     const valuesPerLine = value.valuesPerLine || 1;
@@ -422,9 +420,11 @@ export class EvaluateManager {
 
     const result = `disassembly[${instructions.length}] @ ${formatHex(value.baseAddress)} = ${firstInstruction}${ellipsis}`;
 
-    // Create variables reference for expandable disassembly view
-    const handle = this.nextArrayHandle++;
-    this.arrayHandles.set(handle, value);
+    // Register with variables manager for handle management
+    const handle = this.variablesManager.createArrayHandle({
+      type: "disassembly",
+      data: value,
+    });
 
     return {
       result,
@@ -806,132 +806,5 @@ export class EvaluateManager {
       default:
         throw new Error(`Unknown async function: ${func}`);
     }
-  }
-
-  /**
-   * Checks if a variables reference belongs to this evaluate manager (i.e., is an array reference).
-   *
-   * @param variablesReference The reference to check
-   * @returns True if this reference is for an array from this manager
-   */
-  public hasArrayReference(variablesReference: number): boolean {
-    return this.arrayHandles.has(variablesReference);
-  }
-
-  /**
-   * Gets variables for an array result from expression evaluation.
-   *
-   * @param variablesReference The reference returned from evaluateFormatted
-   * @returns Array of DAP variables showing individual elements with formatting
-   */
-  public getArrayVariables(
-    variablesReference: number,
-  ): DebugProtocol.Variable[] {
-    const arrayData = this.arrayHandles.get(variablesReference);
-    if (!arrayData) {
-      return [];
-    }
-    if (isDisassemblyValue(arrayData)) {
-      return this.getDisassemblyVariables(arrayData);
-    } else if (isMemoryArrayValue(arrayData)) {
-      return this.getMemArrayVariables(arrayData);
-    } else {
-      throw new Error("Unsupported type");
-    }
-  }
-
-  private getDisassemblyVariables(
-    arrayData: DisassemblyValue,
-  ): DebugProtocol.Variable[] {
-    const variables: DebugProtocol.Variable[] = [];
-    // Find the maximum width of instruction bytes for alignment
-    const maxHexWidth = Math.max(
-      ...arrayData.instructions.map(
-        (instr: any) => (instr.instructionBytes || "").length,
-      ),
-    );
-
-    for (let i = 0; i < arrayData.instructions.length; i++) {
-      const instr = arrayData.instructions[i];
-      const address = instr.address;
-      const hexBytes = (instr.instructionBytes || "").padEnd(maxHexWidth, " ");
-
-      variables.push({
-        name: address,
-        value: `${hexBytes} ${instr.instruction}`,
-        memoryReference: address,
-        variablesReference: 0,
-        presentationHint: { attributes: ["readOnly"] },
-      });
-    }
-
-    return variables;
-  }
-
-  private getMemArrayVariables(
-    arrayData: MemoryArrayValue,
-  ): DebugProtocol.Variable[] {
-    // Handle array results
-    const { elements, elementSize, baseAddress, valuesPerLine = 1 } = arrayData;
-    if (!elements || !elementSize) {
-      return [];
-    }
-
-    const variables: DebugProtocol.Variable[] = [];
-
-    // Group elements by valuesPerLine
-    for (let i = 0; i < elements.length; i += valuesPerLine) {
-      const groupElements = elements.slice(i, i + valuesPerLine);
-      const groupStartAddr = baseAddress + i * elementSize;
-
-      if (valuesPerLine === 1) {
-        // Single element per line - show both hex and decimal for better debugging
-        const value = groupElements[0];
-
-        let displayValue: string;
-        if (elementSize === 4 && this.vAmiga.isValidAddress(value)) {
-          displayValue = formatAddress(value, this.sourceMap);
-        } else {
-          displayValue = formatNumber(value, elementSize * 2);
-        }
-
-        variables.push({
-          name: `[${i}]`,
-          value: displayValue,
-          memoryReference: formatHex(groupStartAddr),
-          variablesReference: 0,
-          presentationHint: { attributes: ["readOnly"] },
-        });
-      } else {
-        // Multiple elements per line - traditional hex listing style
-        const groupValues = groupElements.map((value) => {
-          if (elementSize === 4 && this.vAmiga.isValidAddress(value)) {
-            return formatAddress(value, this.sourceMap);
-          } else {
-            // Remove 0x prefix for cleaner table view
-            return value
-              .toString(16)
-              .padStart(elementSize * 2, "0")
-              .toUpperCase();
-          }
-        });
-
-        // Use hex offset as label for traditional hex dump style
-        const offsetLabel = groupStartAddr
-          .toString(16)
-          .padStart(8, "0")
-          .toUpperCase();
-        const groupValue = groupValues.join(" ");
-
-        variables.push({
-          name: offsetLabel,
-          value: groupValue,
-          memoryReference: formatHex(groupStartAddr),
-          variablesReference: 0,
-          presentationHint: { attributes: ["readOnly"], kind: "virtual" },
-        });
-      }
-    }
-    return variables;
   }
 }

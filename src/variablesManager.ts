@@ -13,8 +13,10 @@ import {
   i8,
   formatAddress,
   formatBin,
+  formatNumber,
 } from "./numbers";
 import * as registerParsers from "./amigaRegisterParsers";
+import { DisassemblyValue, MemoryArrayValue } from "./evaluateManager";
 
 /**
  * Manages variable inspection and scoping for the debug adapter.
@@ -26,8 +28,15 @@ import * as registerParsers from "./amigaRegisterParsers";
  * - Source symbols with pointer dereferencing
  * - Memory segments information
  */
+// Type for array values from evaluate manager
+export interface ArrayValue {
+  type: "memArray" | "disassembly";
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  data: any;
+}
+
 export class VariablesManager {
-  private variableHandles = new Handles<string>();
+  private variableHandles = new Handles<string | ArrayValue>();
   private locationHandles = new Handles<Location>();
 
   /**
@@ -54,8 +63,8 @@ export class VariablesManager {
         false,
       ),
       new Scope("Vectors", this.variableHandles.create("vectors"), false),
-              new Scope("Symbols", this.variableHandles.create("symbols"), false),
-        new Scope("Segments", this.variableHandles.create("segments"), false),
+      new Scope("Symbols", this.variableHandles.create("symbols"), false),
+      new Scope("Segments", this.variableHandles.create("segments"), false),
     ];
   }
 
@@ -63,6 +72,12 @@ export class VariablesManager {
     variableReference: number,
   ): Promise<DebugProtocol.Variable[]> {
     const id = this.variableHandles.get(variableReference);
+
+    // Check if this is an array value from evaluate manager
+    if (typeof id === "object" && id !== null) {
+      return this.getArrayVariables(id as ArrayValue);
+    }
+
     if (id === "registers") {
       return await this.registerVariables();
     } else if (id.startsWith("data_reg_")) {
@@ -140,9 +155,7 @@ export class VariablesManager {
     });
   }
 
-  public async dataRegVariables(
-    id: string,
-  ): Promise<DebugProtocol.Variable[]> {
+  public async dataRegVariables(id: string): Promise<DebugProtocol.Variable[]> {
     const info = await this.vAmiga.getCpuInfo();
     const name = id.replace("data_reg_", "");
     const value = Number(info[name as keyof CpuInfo]);
@@ -160,7 +173,7 @@ export class VariablesManager {
     const info = await this.vAmiga.getCpuInfo();
     const sr = Number(info.sr);
 
-        // Extract individual CPU flags from status register (68000 format)
+    // Extract individual CPU flags from status register (68000 format)
     const boolFlags = [
       { name: "carry", value: (sr & 0x0001) !== 0 }, // C flag (bit 0)
       { name: "overflow", value: (sr & 0x0002) !== 0 }, // V flag (bit 1)
@@ -364,7 +377,7 @@ export class VariablesManager {
    *
    * @returns Record mapping variable names to their numeric values
    */
-  public async getFlatVariables(): Promise<Record<string,number>> {
+  public async getFlatVariables(): Promise<Record<string, number>> {
     const variables: Record<string, number> = {};
     const cpuInfo = await this.vAmiga.getCpuInfo();
     const customRegs = await this.vAmiga.getAllCustomRegisters();
@@ -382,12 +395,33 @@ export class VariablesManager {
     return variables;
   }
 
-  public getVariableReference(variableReference: number): string {
+  public getVariableReference(variableReference: number): string | ArrayValue {
     return this.variableHandles.get(variableReference);
   }
 
   public getLocationReference(locationReference: number): Location {
     return this.locationHandles.get(locationReference);
+  }
+
+  /**
+   * Creates a handle for array values from evaluate manager.
+   * @param arrayValue The array value to register
+   * @returns The variables reference handle
+   */
+  public createArrayHandle(arrayValue: ArrayValue): number {
+    return this.variableHandles.create(arrayValue);
+  }
+
+  /**
+   * Gets variables for an array value registered by evaluate manager.
+   */
+  private getArrayVariables(arrayValue: ArrayValue): DebugProtocol.Variable[] {
+    if (arrayValue.type === "disassembly") {
+      return this.getDisassemblyVariables(arrayValue.data);
+    } else if (arrayValue.type === "memArray") {
+      return this.getMemArrayVariables(arrayValue.data);
+    }
+    return [];
   }
 
   private castIntVar(
@@ -400,5 +434,100 @@ export class VariablesManager {
       variablesReference: 0,
       presentationHint: { attributes: ["readOnly"] },
     };
+  }
+
+  private getDisassemblyVariables(
+    arrayData: DisassemblyValue,
+  ): DebugProtocol.Variable[] {
+    const variables: DebugProtocol.Variable[] = [];
+    // Find the maximum width of instruction bytes for alignment
+    const maxHexWidth = Math.max(
+      ...arrayData.instructions.map(
+        (instr) => (instr.instructionBytes || "").length,
+      ),
+    );
+
+    for (let i = 0; i < arrayData.instructions.length; i++) {
+      const instr = arrayData.instructions[i];
+      const address = instr.address;
+      const hexBytes = (instr.instructionBytes || "").padEnd(maxHexWidth, " ");
+
+      variables.push({
+        name: address,
+        value: `${hexBytes} ${instr.instruction}`,
+        memoryReference: address,
+        variablesReference: 0,
+        presentationHint: { attributes: ["readOnly"] },
+      });
+    }
+
+    return variables;
+  }
+
+  private getMemArrayVariables(
+    arrayData: MemoryArrayValue,
+  ): DebugProtocol.Variable[] {
+    // Handle array results
+    const { elements, elementSize, baseAddress, valuesPerLine = 1 } = arrayData;
+    if (!elements || !elementSize) {
+      return [];
+    }
+
+    const variables: DebugProtocol.Variable[] = [];
+
+    // Group elements by valuesPerLine
+    for (let i = 0; i < elements.length; i += valuesPerLine) {
+      const groupElements = elements.slice(i, i + valuesPerLine);
+      const groupStartAddr = baseAddress + i * elementSize;
+
+      if (valuesPerLine === 1) {
+        // Single element per line - show both hex and decimal for better debugging
+        const value = groupElements[0];
+
+        let displayValue: string;
+        if (elementSize === 4 && this.vAmiga.isValidAddress(value)) {
+          displayValue = formatAddress(value, this.sourceMap);
+        } else {
+          displayValue = formatNumber(value, elementSize * 2);
+        }
+
+        variables.push({
+          name: `[${i}]`,
+          value: displayValue,
+          memoryReference: formatHex(groupStartAddr),
+          variablesReference: 0,
+          presentationHint: { attributes: ["readOnly"] },
+        });
+      } else {
+        // Multiple elements per line - traditional hex listing style
+        const groupValues = groupElements.map((value) => {
+          if (elementSize === 4 && this.vAmiga.isValidAddress(value)) {
+            return formatAddress(value, this.sourceMap);
+          } else {
+            // Remove 0x prefix for cleaner table view
+            return value
+              .toString(16)
+              .padStart(elementSize * 2, "0")
+              .toUpperCase();
+          }
+        });
+
+        // Use hex offset as label for traditional hex dump style
+        const offsetLabel = groupStartAddr
+          .toString(16)
+          .padStart(8, "0")
+          .toUpperCase();
+        const groupValue = groupValues.join(" ");
+
+        variables.push({
+          name: offsetLabel,
+          value: groupValue,
+          memoryReference: formatHex(groupStartAddr),
+          variablesReference: 0,
+          presentationHint: { attributes: ["readOnly"], kind: "virtual" },
+        });
+      }
+    }
+    return variables;
   }
 }
