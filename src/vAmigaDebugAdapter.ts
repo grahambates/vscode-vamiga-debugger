@@ -576,11 +576,18 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
   }
 
   protected async reverseContinueRequest(response: DebugProtocol.ReverseContinueResponse): Promise<void> {
-    this.sendError(
-      response,
-      ErrorCode.STEP_ERROR,
-      "Reverse continue is not supported",
-    );
+    try {
+      await this.vAmiga.continueReverse();
+      this.sendEvent(new StoppedEvent("step", VamigaDebugAdapter.THREAD_ID));
+      this.sendResponse(response);
+    } catch (err) {
+      this.sendError(
+        response,
+        ErrorCode.STEP_ERROR,
+        "Step operation failed",
+        err,
+      );
+    }
   }
 
   protected async setBreakPointsRequest(

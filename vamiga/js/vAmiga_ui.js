@@ -1994,16 +1994,17 @@ function InitWrappers() {
     const takeStepSnapshot = function() {
         try {
             const snap = JSON.parse(wasm_take_user_snapshot());
-            const snapshot_buffer = new Uint8Array(Module.HEAPU8.buffer, snap.address, snap.size).slice(0, snap.size);
+            const data = new Uint8Array(Module.HEAPU8.buffer, snap.address, snap.size).slice(0, snap.size);
+            const { pc } = JSON.parse(wasm_get_cpu_info());
 
             // Add to history with circular buffer behavior
-            snapshotHistory.push(snapshot_buffer);
+            snapshotHistory.push({ data, pc: Number(pc) });
             if (snapshotHistory.length > MAX_SNAPSHOTS) {
                 snapshotHistory.shift(); // Remove oldest snapshot
             }
 
             wasm_delete_user_snapshot();
-            console.log(`Snapshot taken. ${snap.size} bytes, History length: ${snapshotHistory.length}`);
+            console.log(`Snapshot taken at ${pc}. ${snap.size} bytes, History length: ${snapshotHistory.length}`);
         } catch (err) {
             console.error("Failed to take snapshot:", err);
         }
@@ -2546,6 +2547,9 @@ postMessage({ type: 'ready' });
 
     vscode = acquireVsCodeApi();
 
+    // Track breakpoints for reverse continue
+    const breakpoints = new Set();
+
     window.addEventListener('message', event => {
         // Debugger commands:
         if (event.data.command) {
@@ -2574,9 +2578,11 @@ postMessage({ type: 'ready' });
                     break;
                 case 'setBreakpoint':
                     wasm_set_breakpoint(message.args.address, message.args.ignores);
+                    breakpoints.add(message.args.address);
                     break;
                 case 'removeBreakpoint':
                     wasm_remove_breakpoint(message.args.address);
+                    breakpoints.delete(message.args.address);
                     break;
                 case 'setWatchpoint':
                     wasm_set_watchpoint(message.args.address, message.args.ignores);
@@ -2607,11 +2613,33 @@ postMessage({ type: 'ready' });
                         if (snapshotHistory.length >= 2) {
                             // Remove current snapshot (the one we just took when stopping)
                             snapshotHistory.pop();
-                            // Get and remove the previous snapshot
+                            // Get and load the previous snapshot
                             const previousSnapshot = snapshotHistory[snapshotHistory.length - 1];
+                            wasm_loadfile('stepback.vAmiga', previousSnapshot.data);
+                            console.log(`Stepped back. PC: ${previousSnapshot.pc}, History size: ${snapshotHistory.length}`);
+                        } else {
+                            throw new Error("No previous snapshot available for stepping back");
+                        }
+                    });
+                    break;
+                case 'continueReverse':
+                    rpcRequest(() => {
+                        if (snapshotHistory.length >= 2) {
+                            // Remove current snapshot (the one we just took when stopping)
+                            snapshotHistory.pop();
+                            // keep stepping back until we hit a breakpoint, of run out of snapshots
+                            let previousSnapshot;
+                            while (true) {
+                                previousSnapshot = snapshotHistory[snapshotHistory.length - 1];
+                                if (breakpoints.has(previousSnapshot.pc) || snapshotHistory.length == 1) {
+                                    break;
+                                } else {
+                                    snapshotHistory.pop();
+                                }
+                            }
                             // Load the previous snapshot
-                            wasm_loadfile('stepback.vAmiga', previousSnapshot);
-                            console.log(`Stepped back. History size: ${snapshotHistory.length}`);
+                            wasm_loadfile('stepback.vAmiga', previousSnapshot.data);
+                            console.log(`Stepped back. PC: ${previousSnapshot.pc}, History size: ${snapshotHistory.length}`);
                         } else {
                             throw new Error("No previous snapshot available for stepping back");
                         }

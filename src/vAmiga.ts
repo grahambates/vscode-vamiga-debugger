@@ -530,6 +530,14 @@ export class VAmiga {
   }
 
   /**
+   * Continue stepping back until breakpoint, or start of history
+   */
+  public async continueReverse(): Promise<boolean> {
+    this.invalidateCache();
+    return this.sendRpcCommand("continueReverse");
+  }
+
+  /**
    * Run to end of frame
    */
   public eof(): void {
