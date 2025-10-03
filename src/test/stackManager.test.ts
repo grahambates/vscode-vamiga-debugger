@@ -51,7 +51,7 @@ describe('StackManager - Comprehensive Tests', () => {
       // Setup: Mock CPU state and empty stack
       const mockCpuInfo = createMockCpuInfo({ pc: '0x1000', a7: '0x8000' });
       mockVAmiga.getCpuInfo.resolves(mockCpuInfo);
-      mockVAmiga.readMemoryBuffer.resolves(Buffer.alloc(128));
+      mockVAmiga.readMemory.resolves(Buffer.alloc(128));
       mockVAmiga.isValidAddress.returns(false); // No valid return addresses in stack
 
       // Test: Get stack frames
@@ -66,7 +66,7 @@ describe('StackManager - Comprehensive Tests', () => {
       // Setup: Mock CPU state, stack, and source map
       const mockCpuInfo = createMockCpuInfo({ pc: '0x1000', a7: '0x8000' });
       mockVAmiga.getCpuInfo.resolves(mockCpuInfo);
-      mockVAmiga.readMemoryBuffer.resolves(Buffer.alloc(128));
+      mockVAmiga.readMemory.resolves(Buffer.alloc(128));
 
       // Mock source location lookup
       mockSourceMap.lookupAddress.withArgs(0x1000).returns({
@@ -95,7 +95,7 @@ describe('StackManager - Comprehensive Tests', () => {
       // Setup: Mock CPU state with no source mapping
       const mockCpuInfo = createMockCpuInfo({ pc: '0x1000', a7: '0x8000' });
       mockVAmiga.getCpuInfo.resolves(mockCpuInfo);
-      mockVAmiga.readMemoryBuffer.resolves(Buffer.alloc(128));
+      mockVAmiga.readMemory.resolves(Buffer.alloc(128));
 
       // No source location found
       mockSourceMap.lookupAddress.returns(null);
@@ -163,7 +163,7 @@ describe('StackManager - Comprehensive Tests', () => {
       // Setup: Mock CPU state
       const mockCpuInfo = createMockCpuInfo({ pc: '0x1000', a7: '0x8000' });
       mockVAmiga.getCpuInfo.resolves(mockCpuInfo);
-      mockVAmiga.readMemoryBuffer.resolves(Buffer.alloc(128));
+      mockVAmiga.readMemory.resolves(Buffer.alloc(128));
       mockVAmiga.isValidAddress.returns(false);
 
       // Test: Analyze stack
@@ -182,7 +182,7 @@ describe('StackManager - Comprehensive Tests', () => {
       // Create stack buffer with return address at offset 0
       const stackBuffer = Buffer.alloc(128);
       stackBuffer.writeInt32BE(0x2000, 0); // Return address to 0x2000
-      mockVAmiga.readMemoryBuffer.withArgs(0x8000, 128).resolves(stackBuffer);
+      mockVAmiga.readMemory.withArgs(0x8000, 128).resolves(stackBuffer);
 
       // Mock valid address check
       mockVAmiga.isValidAddress.withArgs(0x2000).returns(true);
@@ -190,7 +190,7 @@ describe('StackManager - Comprehensive Tests', () => {
       // Mock instruction bytes showing JSR at 0x2000-2
       const instrBuffer = Buffer.alloc(6);
       instrBuffer.writeUInt16BE(0x4e80, 4); // JSR instruction at offset 4 (0x2000-2)
-      mockVAmiga.readMemoryBuffer.withArgs(0x2000 - 6, 6).resolves(instrBuffer);
+      mockVAmiga.readMemory.withArgs(0x2000 - 6, 6).resolves(instrBuffer);
 
       // Test: Analyze stack
       const addresses = await stackManager.guessStack(5);
@@ -208,14 +208,14 @@ describe('StackManager - Comprehensive Tests', () => {
 
       const stackBuffer = Buffer.alloc(128);
       stackBuffer.writeInt32BE(0x2004, 0); // Return address after BSR
-      mockVAmiga.readMemoryBuffer.withArgs(0x8000, 128).resolves(stackBuffer);
+      mockVAmiga.readMemory.withArgs(0x8000, 128).resolves(stackBuffer);
 
       mockVAmiga.isValidAddress.withArgs(0x2004).returns(true);
 
       // Mock BSR instruction bytes
       const instrBuffer = Buffer.alloc(6);
       instrBuffer.writeUInt16BE(0x6100, 2); // BSR instruction at offset 2
-      mockVAmiga.readMemoryBuffer.withArgs(0x2004 - 6, 6).resolves(instrBuffer);
+      mockVAmiga.readMemory.withArgs(0x2004 - 6, 6).resolves(instrBuffer);
 
       // Test: Analyze stack
       const addresses = await stackManager.guessStack(5);
@@ -234,7 +234,7 @@ describe('StackManager - Comprehensive Tests', () => {
       stackBuffer.writeInt32BE(0x1001, 0);    // Odd address - should skip
       stackBuffer.writeInt32BE(0x2000, 4);    // Valid even address
       stackBuffer.writeUInt32BE(0xFFFFFFFF, 8); // Invalid address (use unsigned)
-      mockVAmiga.readMemoryBuffer.withArgs(0x8000, 128).resolves(stackBuffer);
+      mockVAmiga.readMemory.withArgs(0x8000, 128).resolves(stackBuffer);
 
       // Mock address validation
       mockVAmiga.isValidAddress.withArgs(0x1001).returns(false); // Odd
@@ -244,7 +244,7 @@ describe('StackManager - Comprehensive Tests', () => {
       // Mock JSR for valid address
       const instrBuffer = Buffer.alloc(6);
       instrBuffer.writeUInt16BE(0x4e80, 4);
-      mockVAmiga.readMemoryBuffer.withArgs(0x2000 - 6, 6).resolves(instrBuffer);
+      mockVAmiga.readMemory.withArgs(0x2000 - 6, 6).resolves(instrBuffer);
 
       // Test: Analyze stack
       const addresses = await stackManager.guessStack(5);
@@ -261,12 +261,12 @@ describe('StackManager - Comprehensive Tests', () => {
 
       const stackBuffer = Buffer.alloc(128);
       stackBuffer.writeInt32BE(0x2000, 0);
-      mockVAmiga.readMemoryBuffer.withArgs(0x8000, 128).resolves(stackBuffer);
+      mockVAmiga.readMemory.withArgs(0x8000, 128).resolves(stackBuffer);
 
       mockVAmiga.isValidAddress.withArgs(0x2000).returns(true);
 
       // Mock memory read failure when checking for JSR/BSR
-      mockVAmiga.readMemoryBuffer.withArgs(0x2000 - 6, 6).rejects(new Error('Invalid memory'));
+      mockVAmiga.readMemory.withArgs(0x2000 - 6, 6).rejects(new Error('Invalid memory'));
 
       // Test: Analyze stack (should not throw)
       const addresses = await stackManager.guessStack(5);
@@ -286,7 +286,7 @@ describe('StackManager - Comprehensive Tests', () => {
       for (let i = 0; i < 20; i++) {
         stackBuffer.writeInt32BE(0x2000 + i * 4, i * 4);
       }
-      mockVAmiga.readMemoryBuffer.withArgs(0x8000, 128).resolves(stackBuffer);
+      mockVAmiga.readMemory.withArgs(0x8000, 128).resolves(stackBuffer);
 
       // Mock all as valid with JSR instructions
       mockVAmiga.isValidAddress.returns(true);
@@ -296,7 +296,7 @@ describe('StackManager - Comprehensive Tests', () => {
       // Mock instruction reads for each potential return address
       for (let i = 0; i < 20; i++) {
         const retAddr = 0x2000 + i * 4;
-        mockVAmiga.readMemoryBuffer.withArgs(retAddr - 6, 6).resolves(instrBuffer);
+        mockVAmiga.readMemory.withArgs(retAddr - 6, 6).resolves(instrBuffer);
       }
 
       // Test: Limit to 3 frames

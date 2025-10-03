@@ -100,7 +100,7 @@ describe('VamigaDebugAdapter - Simplified Tests', () => {
       // Setup: Mock memory read
       const mockBuffer = Buffer.alloc(4);
       mockBuffer.writeUInt32BE(0x12345678, 0);
-      mockVAmiga.readMemoryBuffer.resolves(mockBuffer);
+      mockVAmiga.readMemory.resolves(mockBuffer);
       setupMockCpuState();
       const mockSourceMap = setupMockSourceMap();
       const mockVariablesManager = setupMockVariablesManager();
@@ -112,7 +112,7 @@ describe('VamigaDebugAdapter - Simplified Tests', () => {
       const result = await evaluateManager.evaluate('0x1000');
 
       // Verify: Memory was read and result formatted correctly
-      assert.ok(mockVAmiga.readMemoryBuffer.calledWith(0x1000, 4));
+      assert.ok(mockVAmiga.readMemory.calledWith(0x1000, 4));
       assert.strictEqual(result.value, 0x12345678);
       assert.strictEqual(result.memoryReference, '0x00001000');
     });

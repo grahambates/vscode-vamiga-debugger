@@ -772,8 +772,8 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
       if (count) {
         const result = await this.vAmiga.readMemory(address, count);
         response.body = {
-          address: result.address,
-          data: result.data, // Already base64 encoded
+          address: formatHex(address),
+          data: result.toString('base64'),
           unreadableBytes: 0,
         };
       }
@@ -797,11 +797,12 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
     );
     try {
       const address = Number(args.memoryReference) + (args.offset || 0);
-      const result = await this.vAmiga.writeMemory(address, args.data); // Pass base64 data directly
+      const buf = Buffer.from(args.data, "base64");
+      const result = await this.vAmiga.writeMemory(address, buf); // Pass base64 data directly
       response.body = {
         offset: args.offset,
         bytesWritten:
-          result.bytesWritten || Buffer.from(args.data, "base64").length,
+          result.bytesWritten || buf.length,
       };
       this.sendResponse(response);
     } catch (err) {

@@ -166,9 +166,8 @@ export class AmigaHunkLoader {
     while (offset < data.length) {
       const chunkSize = Math.min(CHUNK_SIZE, data.length - offset);
       const chunk = data.subarray(offset, offset + chunkSize);
-      const base64Chunk = chunk.toString('base64');
 
-      await this.vAmiga.writeMemory(address + offset, base64Chunk);
+      await this.vAmiga.writeMemory(address + offset, chunk);
       offset += chunkSize;
     }
   }

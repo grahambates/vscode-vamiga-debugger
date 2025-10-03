@@ -313,10 +313,7 @@ describe('VamigaDebugAdapter Integration Tests', () => {
 
   describe('Memory Operations', () => {
     it('readMemoryRequest should read memory from emulator', async () => {
-      const mockMemResult = {
-        address: '0x1000',
-        data: Buffer.from('hello').toString('base64')
-      };
+      const mockMemResult = Buffer.from('hello');
       mockVAmiga.readMemory.resolves(mockMemResult);
 
       const response: DebugProtocol.ReadMemoryResponse = {
@@ -336,7 +333,7 @@ describe('VamigaDebugAdapter Integration Tests', () => {
 
       assert.ok(response.body);
       assert.strictEqual(response.body.address, '0x1000');
-      assert.strictEqual(response.body.data, mockMemResult.data);
+      assert.strictEqual(response.body.data, mockMemResult.toString('base64'));
       assert.strictEqual(response.body.unreadableBytes, 0);
       assert.ok(mockVAmiga.readMemory.calledWith(0x1000, 5));
     });
@@ -353,10 +350,10 @@ describe('VamigaDebugAdapter Integration Tests', () => {
         success: true
       };
 
-      const data = Buffer.from('hello').toString('base64');
+      const data = Buffer.from('hello');
       const args: DebugProtocol.WriteMemoryArguments = {
         memoryReference: '0x1000',
-        data: data
+        data: data.toString('base64')
       };
 
       await (adapter as any).writeMemoryRequest(response, args);

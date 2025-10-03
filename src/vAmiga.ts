@@ -628,34 +628,25 @@ export class VAmiga {
    * Reads memory from the specified address
    * @param address Starting memory address
    * @param count Number of bytes to read
-   * @returns Promise resolving to memory data (base64 encoded)
-   */
-  public async readMemory(address: number, count: number): Promise<MemResult> {
-    return this.sendRpcCommand("readMemory", { address, count });
-  }
-
-  /**
-   * Reads memory from the specified address to a Buffer
-   * @param address Starting memory address
-   * @param count Number of bytes to read
    * @returns Promise resolving to memory data (Buffer)
    */
-  public async readMemoryBuffer(
+  public async readMemory(
     address: number,
     count: number,
   ): Promise<Buffer> {
-    return Buffer.from((await this.readMemory(address, count)).data, "base64");
+    const res = await this.sendRpcCommand("readMemory", { address, count });
+    return Buffer.from(res.data);
   }
 
   /**
    * Writes memory at the specified address
    * @param address Starting memory address
-   * @param data Base64 encoded data to write
+   * @param data Data buffer to write
    * @returns Promise resolving to write result
    */
   public async writeMemory(
     address: number,
-    data: string,
+    data: Buffer,
   ): Promise<WriteMemResult> {
     return this.sendRpcCommand("writeMemory", { address, data });
   }

@@ -2664,10 +2664,14 @@ postMessage({ type: 'ready' });
                     rpcRequest(() => wasm_poke_custom32(message.args.address, message.args.value));
                     break;
                 case 'readMemory':
-                    rpcRequest(() => JSON.parse(wasm_read_memory(message.args.address, message.args.count)));
+                    rpcRequest(() => {
+                        const res = JSON.parse(wasm_read_memory(message.args.address, message.args.count));
+                        res.data = Uint8Array.from(res.data);
+                        return res;
+                    });
                     break;
                 case 'writeMemory':
-                    rpcRequest(() => JSON.parse(wasm_write_memory(message.args.address, message.args.data)));
+                    rpcRequest(() => JSON.parse(wasm_write_memory(message.args.address, message.args.data.toString('base64'))));
                     break;
                 case 'disassemble':
                     rpcRequest(() => JSON.parse(wasm_disassemble(message.args.address, message.args.count)));

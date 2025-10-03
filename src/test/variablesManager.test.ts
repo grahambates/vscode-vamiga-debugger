@@ -358,7 +358,7 @@ describe('VariablesManager - Comprehensive Tests', () => {
       vectorData.writeInt32BE(0x00003000, 12);   // Address Error at vector 3
 
       mockVAmiga.getCpuInfo.resolves(mockCpuInfo);
-      mockVAmiga.readMemoryBuffer.resolves(vectorData);
+      mockVAmiga.readMemory.resolves(vectorData);
       mockSourceMap.findSymbolOffset.withArgs(0x1004).returns({ symbol: 'start', offset: 0 });
 
       const variables = await variablesManager.vectorVariables();
@@ -580,7 +580,7 @@ describe('VariablesManager - Comprehensive Tests', () => {
         cacr: '0x0', caar: '0x0'
       };
       mockVAmiga.getCpuInfo.resolves(mockCpuInfo);
-      mockVAmiga.readMemoryBuffer.rejects(new Error('Memory read failed'));
+      mockVAmiga.readMemory.rejects(new Error('Memory read failed'));
 
       try {
         await variablesManager.vectorVariables();

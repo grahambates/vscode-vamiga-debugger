@@ -74,12 +74,12 @@ describe('EvaluateManager - Comprehensive Tests', () => {
       // Setup: Mock memory read
       const mockBuffer = Buffer.alloc(4);
       mockBuffer.writeUInt32BE(0x12345678, 0);
-      mockVAmiga.readMemoryBuffer.resolves(mockBuffer);
+      mockVAmiga.readMemory.resolves(mockBuffer);
 
       const result = await evaluateManager.evaluate('0x1000');
 
       // Verify: Memory read and correct result
-      assert.ok(mockVAmiga.readMemoryBuffer.calledWith(0x1000, 4));
+      assert.ok(mockVAmiga.readMemory.calledWith(0x1000, 4));
       assert.strictEqual(result.value, 0x12345678);
       assert.strictEqual(result.memoryReference, '0x00001000');
       assert.strictEqual(result.type, EvaluateResultType.UNKNOWN);
@@ -88,11 +88,11 @@ describe('EvaluateManager - Comprehensive Tests', () => {
     it('should handle uppercase hex addresses', async () => {
       const mockBuffer = Buffer.alloc(4);
       mockBuffer.writeUInt32BE(0xABCDEF01, 0);
-      mockVAmiga.readMemoryBuffer.resolves(mockBuffer);
+      mockVAmiga.readMemory.resolves(mockBuffer);
 
       const result = await evaluateManager.evaluate('0xABCD');
 
-      assert.ok(mockVAmiga.readMemoryBuffer.calledWith(0xABCD, 4));
+      assert.ok(mockVAmiga.readMemory.calledWith(0xABCD, 4));
       assert.strictEqual(result.value, 0xABCDEF01);
       assert.strictEqual(result.memoryReference, '0x0000abcd');
     });
@@ -100,11 +100,11 @@ describe('EvaluateManager - Comprehensive Tests', () => {
     it('should handle mixed case hex addresses', async () => {
       const mockBuffer = Buffer.alloc(4);
       mockBuffer.writeUInt32BE(0x00000042, 0);
-      mockVAmiga.readMemoryBuffer.resolves(mockBuffer);
+      mockVAmiga.readMemory.resolves(mockBuffer);
 
       const result = await evaluateManager.evaluate('0xaBc1');
 
-      assert.ok(mockVAmiga.readMemoryBuffer.calledWith(0xaBc1, 4));
+      assert.ok(mockVAmiga.readMemory.calledWith(0xaBc1, 4));
       assert.strictEqual(result.value, 0x00000042);
     });
   });
@@ -381,7 +381,7 @@ describe('EvaluateManager - Comprehensive Tests', () => {
     });
 
     it('should handle memory read errors', async () => {
-      mockVAmiga.readMemoryBuffer.rejects(new Error('Memory access error'));
+      mockVAmiga.readMemory.rejects(new Error('Memory access error'));
 
       try {
         await evaluateManager.evaluate('0x1000');

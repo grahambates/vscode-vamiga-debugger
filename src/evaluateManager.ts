@@ -188,7 +188,7 @@ export class EvaluateManager {
       // Interpret hex as address:
       const address = Number(expression);
       // Read longword value at address
-      const memData = await this.vAmiga.readMemoryBuffer(address, 4);
+      const memData = await this.vAmiga.readMemory(address, 4);
       value = memData.readUInt32BE(0);
       memoryReference = formatHex(address);
     } else {
@@ -677,7 +677,7 @@ export class EvaluateManager {
         const addr = addrResult;
         const count = countResult;
         const valuesPerLine = valuesPerLineResult;
-        const buffer = await this.vAmiga.readMemoryBuffer(addr, count);
+        const buffer = await this.vAmiga.readMemory(addr, count);
         const elements: number[] = [];
         for (let i = 0; i < count; i++) {
           elements.push(buffer.readUInt8(i));
@@ -710,7 +710,7 @@ export class EvaluateManager {
         const addr = addrResult;
         const count = countResult;
         const valuesPerLine = valuesPerLineResult;
-        const buffer = await this.vAmiga.readMemoryBuffer(addr, count * 2);
+        const buffer = await this.vAmiga.readMemory(addr, count * 2);
         const elements: number[] = [];
         for (let i = 0; i < count; i++) {
           elements.push(buffer.readUInt16BE(i * 2));
@@ -743,7 +743,7 @@ export class EvaluateManager {
         const addr = addrResult;
         const count = countResult;
         const valuesPerLine = valuesPerLineResult;
-        const buffer = await this.vAmiga.readMemoryBuffer(addr, count * 4);
+        const buffer = await this.vAmiga.readMemory(addr, count * 4);
         const elements: number[] = [];
         for (let i = 0; i < count; i++) {
           elements.push(buffer.readUInt32BE(i * 4));

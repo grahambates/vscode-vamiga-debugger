@@ -263,7 +263,7 @@ export class VariablesManager {
   public async vectorVariables() {
     const variables: DebugProtocol.Variable[] = [];
     const cpuInfo = await this.vAmiga.getCpuInfo();
-    const mem = await this.vAmiga.readMemoryBuffer(
+    const mem = await this.vAmiga.readMemory(
       Number(cpuInfo.vbr),
       vectors.length * 4,
     );

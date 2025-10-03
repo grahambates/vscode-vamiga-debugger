@@ -6,7 +6,7 @@ import { SourceMap } from "./sourceMap";
 
 /**
  * Manages stack frame analysis and generation for the debug adapter.
- * 
+ *
  * Provides stack trace functionality by:
  * - Analyzing stack memory to identify return addresses
  * - Detecting JSR/BSR call patterns in the stack
@@ -16,7 +16,7 @@ import { SourceMap } from "./sourceMap";
 export class StackManager {
   /**
    * Creates a new StackManager instance.
-   * 
+   *
    * @param vAmiga VAmiga instance for reading CPU state and memory
    * @param sourceMap Source map for resolving addresses to source locations
    */
@@ -27,11 +27,11 @@ export class StackManager {
 
   /**
    * Generates stack frames for the debug adapter.
-   * 
+   *
    * Creates stack frames by analyzing the stack memory and resolving addresses
    * to source locations when available. Falls back to disassembly frames
    * when source information is not available.
-   * 
+   *
    * @param startFrame Starting frame index for pagination
    * @param maxLevels Maximum number of frames to return
    * @returns Array of stack frames with source or disassembly information
@@ -96,7 +96,7 @@ export class StackManager {
     // vAmiga doesn't currently track stack frames, so we'll need to look at the stack data and guess...
     // Fetch data from sp, up to a reasonable length
     const maxSize = 128;
-    const stackData = await this.vAmiga.readMemoryBuffer(
+    const stackData = await this.vAmiga.readMemory(
       Number(cpuInfo.a7),
       128,
     );
@@ -114,7 +114,7 @@ export class StackManager {
       ) {
         try {
           // Look at previous 3 words, and check if they look like a jsr or bsr
-          const prevBytes = await this.vAmiga.readMemoryBuffer(addr - 6, 6);
+          const prevBytes = await this.vAmiga.readMemory(addr - 6, 6);
           for (let i = 0; i < 3; i++) {
             const w = prevBytes.readUInt16BE(i * 2);
             if (
