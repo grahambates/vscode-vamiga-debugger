@@ -110,6 +110,7 @@ export class StackManager {
       const addr = stackData.readInt32BE(offset);
       if (
         this.vAmiga.isValidAddress(addr) &&
+        addr > 0x100 &&
         !(addr & 1) // even address
       ) {
         try {
