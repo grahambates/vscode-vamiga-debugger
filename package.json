@@ -30,6 +30,11 @@
         "title": "End of Line",
         "icon": "$(debug-line-by-line)",
         "enablement": "debugType == 'vamiga' && debugState == 'stopped'"
+      },
+      {
+        "command": "vamiga-debugger.openMemoryViewer",
+        "title": "VAmiga: Open Memory Viewer",
+        "icon": "$(symbol-array)"
       }
     ],
     "menus": {

@@ -1,17 +1,18 @@
 // TODO: bugs
 // - bp ignores not working - implemented in vamiga?
-// - step on first instruction in non-fast mode reattach?
+// - step on first instruction in non-fast mode
 // TODO: features
-// - conditional breakpoints
 // - memory viewer
+// - Variable display ordering - alpha or address for custom, symbols
 // - trace
 // - memory to disk?
 // - beamtraps?
 // - Constants/symbols browser in variables view
 // - Copper debugging support
-// - Custom register display ordering
 // - Custom register offset prefix display
 // - Profiler
+// - Control warp from Amiga
+// - conditional breakpoints
 
 import {
   logger,

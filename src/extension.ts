@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { VamigaDebugAdapter } from './vAmigaDebugAdapter';
 import { VAmiga } from './vAmiga';
+import { MemoryViewerProvider } from './memoryViewerProvider';
 
 /**
  * Activates the VAmiga debugger VS Code extension.
@@ -13,6 +14,7 @@ import { VAmiga } from './vAmiga';
  */
 export function activate(context: vscode.ExtensionContext) {
   const vAmiga = new VAmiga(context.extensionUri);
+  const memoryViewer = new MemoryViewerProvider(context.extensionUri, vAmiga);
 
   // Register the debug adapter
   context.subscriptions.push(
@@ -40,6 +42,47 @@ export function activate(context: vscode.ExtensionContext) {
       vAmiga.eol();
     })
   );
+
+  // Register memory viewer command
+  context.subscriptions.push(
+    vscode.commands.registerCommand('vamiga-debugger.openMemoryViewer', async (address?: string) => {
+      let memoryAddress = 0;
+
+      if (address) {
+        // Parse address from parameter
+        memoryAddress = parseInt(address, 16);
+      } else {
+        // Prompt user for address
+        const input = await vscode.window.showInputBox({
+          prompt: 'Enter memory address (hexadecimal)',
+          placeHolder: '000000',
+          validateInput: (value) => {
+            const parsed = parseInt(value, 16);
+            if (isNaN(parsed)) {
+              return 'Please enter a valid hexadecimal address';
+            }
+            if (parsed < 0 || parsed > 0xFFFFFF) {
+              return 'Address must be between 000000 and FFFFFF';
+            }
+            return null;
+          }
+        });
+
+        if (!input) {
+          return; // User cancelled
+        }
+
+        memoryAddress = parseInt(input, 16);
+      }
+
+      await memoryViewer.show(memoryAddress);
+    })
+  );
+
+  // Clean up memory viewer on deactivation
+  context.subscriptions.push({
+    dispose: () => memoryViewer.dispose()
+  });
 }
 
 /**

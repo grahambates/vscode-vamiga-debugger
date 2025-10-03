@@ -310,8 +310,8 @@ const defaultOptions: OpenOptions = {
 
 export class VAmiga {
   public static readonly viewType = "vamiga-debugger.webview";
-  private _panel?: vscode.WebviewPanel;
-  private _pendingRpcs = new Map<
+  private panel?: vscode.WebviewPanel;
+  private pendingRpcs = new Map<
     string,
     {
       resolve: (result: any) => void;
@@ -319,12 +319,13 @@ export class VAmiga {
       timeout: NodeJS.Timeout;
     }
   >();
+  private messageListeners: Set<(message: EmulatorMessage) => void> = new Set();
 
   memoryInfo?: MemoryInfo;
   cpuInfo?: CpuInfo;
   customRegisters?: CustomRegisters;
 
-  constructor(private readonly _extensionUri: vscode.Uri) {}
+  constructor(private readonly extensionUri: vscode.Uri) {}
 
   /**
    * Opens the VAmiga emulator webview panel
@@ -334,7 +335,7 @@ export class VAmiga {
       ...defaultOptions,
       ...options,
     };
-    if (!this._panel) {
+    if (!this.panel) {
       return this.initPanel(optionsWithDefaults);
     } else {
       this.reveal();
@@ -347,17 +348,42 @@ export class VAmiga {
    * Brings the VAmiga webview panel to the foreground
    */
   public reveal(): void {
-    this._panel?.reveal();
+    this.panel?.reveal();
   }
 
+  /**
+   * Registers a listener for emulator messages
+   * Unlike the panel's onDidReceiveMessage, this works even when panel is not yet open
+   * @param callback Function to call when messages are received
+   * @returns Disposable to unregister the listener
+   */
   public onDidReceiveMessage(
-    callback: (data: any) => void,
-  ): vscode.Disposable | undefined {
-    return this._panel?.webview.onDidReceiveMessage(callback);
+    callback: (message: EmulatorMessage) => void,
+  ): vscode.Disposable {
+    this.messageListeners.add(callback);
+    return {
+      dispose: () => {
+        this.messageListeners.delete(callback);
+      },
+    };
+  }
+
+  /**
+   * Notifies all registered message listeners
+   * @param message The emulator message to broadcast
+   */
+  private notifyMessageListeners(message: EmulatorMessage): void {
+    for (const listener of this.messageListeners) {
+      try {
+        listener(message);
+      } catch (error) {
+        console.error('Error in message listener:', error);
+      }
+    }
   }
 
   public onDidDispose(callback: () => void): vscode.Disposable | undefined {
-    return this._panel?.onDidDispose(callback);
+    return this.panel?.onDidDispose(callback);
   }
 
   /**
@@ -366,8 +392,8 @@ export class VAmiga {
    * @param args Optional command arguments
    */
   public sendCommand<A = any>(command: string, args?: A): void {
-    if (this._panel) {
-      this._panel.webview.postMessage({ command, args });
+    if (this.panel) {
+      this.panel.webview.postMessage({ command, args });
     } else {
       vscode.window.showErrorMessage("Emulator panel is not open");
     }
@@ -384,10 +410,10 @@ export class VAmiga {
     reject: (err: Error) => void;
     timeout: NodeJS.Timeout;
   } | null {
-    const pending = this._pendingRpcs.get(rpcId);
+    const pending = this.pendingRpcs.get(rpcId);
     if (!pending) return null; // Already cleaned up
 
-    this._pendingRpcs.delete(rpcId);
+    this.pendingRpcs.delete(rpcId);
     clearTimeout(pending.timeout);
     return pending;
   }
@@ -406,7 +432,7 @@ export class VAmiga {
     timeoutMs = 5000,
   ): Promise<T> {
     return new Promise<T>((resolve, reject) => {
-      if (!this._panel) {
+      if (!this.panel) {
         reject(new Error("Emulator panel is not open"));
         return;
       }
@@ -421,8 +447,8 @@ export class VAmiga {
         }
       }, timeoutMs);
 
-      this._pendingRpcs.set(id, { resolve, reject, timeout });
-      this._panel.webview.postMessage({
+      this.pendingRpcs.set(id, { resolve, reject, timeout });
+      this.panel.webview.postMessage({
         command,
         args: { ...args, _rpcId: id },
       });
@@ -431,13 +457,13 @@ export class VAmiga {
 
   public dispose(): void {
     // Clean up any pending RPCs
-    for (const [_, pending] of this._pendingRpcs) {
+    for (const [_, pending] of this.pendingRpcs) {
       clearTimeout(pending.timeout);
       pending.reject(new Error("Webview disposed"));
     }
-    this._pendingRpcs.clear();
+    this.pendingRpcs.clear();
 
-    this._panel?.dispose();
+    this.panel?.dispose();
   }
 
   // Wasm commands:
@@ -755,7 +781,7 @@ export class VAmiga {
     const column = this.getConfiguredViewColumn();
 
     // Create new panel
-    this._panel = vscode.window.createWebviewPanel(
+    this.panel = vscode.window.createWebviewPanel(
       VAmiga.viewType,
       "VAmiga",
       column,
@@ -763,7 +789,7 @@ export class VAmiga {
         enableScripts: true,
         retainContextWhenHidden: true, // Keep webview alive when hidden
         localResourceRoots: [
-          this._extensionUri,
+          this.extensionUri,
           ...(vscode.workspace.workspaceFolders?.map((folder) => folder.uri) ||
             []),
         ],
@@ -771,15 +797,15 @@ export class VAmiga {
     );
 
     const callParams = this.optionsToCallParams(options);
-    this._panel.webview.html = this.getHtmlForWebview(callParams);
+    this.panel.webview.html = this.getHtmlForWebview(callParams);
 
     // Handle webview lifecycle
-    this._panel.onDidDispose(() => {
-      this._panel = undefined;
+    this.panel.onDidDispose(() => {
+      this.panel = undefined;
     });
 
-    // Set up RPC response handler
-    this._panel.webview.onDidReceiveMessage((message) => {
+    // Set up RPC response handler and message delegation
+    this.panel.webview.onDidReceiveMessage((message) => {
       if (message.type === "rpcResponse") {
         const pending = this.cleanupPendingRpc(message.id);
         if (pending) {
@@ -799,6 +825,9 @@ export class VAmiga {
             console.error("Failed to fetch memory info on exec-ready:", error);
           });
       }
+
+      // Notify all registered listeners about this message
+      this.notifyMessageListeners(message);
     });
   }
 
@@ -825,28 +854,28 @@ export class VAmiga {
   }
 
   private absolutePathToWebviewUri(absolutePath: string): vscode.Uri {
-    if (!this._panel) {
+    if (!this.panel) {
       throw new Error("Panel not initialized");
     }
     if (!existsSync(absolutePath)) {
       throw new Error(`File not found: ${absolutePath}`);
     }
     const fileUri = vscode.Uri.file(absolutePath);
-    return this._panel.webview.asWebviewUri(fileUri);
+    return this.panel.webview.asWebviewUri(fileUri);
   }
 
   private getHtmlForWebview(callParams: CallParams): string {
-    if (!this._panel) {
+    if (!this.panel) {
       throw new Error("Panel not initialized");
     }
 
-    const vamigaUri = this._panel.webview.asWebviewUri(
-      vscode.Uri.joinPath(this._extensionUri, "vamiga"),
+    const vamigaUri = this.panel.webview.asWebviewUri(
+      vscode.Uri.joinPath(this.extensionUri, "vamiga"),
     );
 
     // Read the HTML template from the vamiga directory
     const templatePath = join(
-      this._extensionUri.fsPath,
+      this.extensionUri.fsPath,
       "vamiga",
       "vAmiga.html",
     );
