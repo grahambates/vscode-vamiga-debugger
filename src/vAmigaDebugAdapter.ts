@@ -798,11 +798,10 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
     try {
       const address = Number(args.memoryReference) + (args.offset || 0);
       const buf = Buffer.from(args.data, "base64");
-      const result = await this.vAmiga.writeMemory(address, buf); // Pass base64 data directly
+      await this.vAmiga.writeMemory(address, buf); // Pass base64 data directly
       response.body = {
         offset: args.offset,
-        bytesWritten:
-          result.bytesWritten || buf.length,
+        bytesWritten: buf.length,
       };
       this.sendResponse(response);
     } catch (err) {

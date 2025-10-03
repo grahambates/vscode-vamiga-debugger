@@ -2284,11 +2284,30 @@ postMessage({ type: 'ready' });
     wasm_get_current_process = Module.cwrap('wasm_get_current_process', 'string');
     wasm_get_call_stack = Module.cwrap('wasm_get_call_stack', 'string');
     wasm_debug_emulator_state =  Module.cwrap('wasm_debug_emulator_state', 'string');
-    wasm_read_memory =  Module.cwrap('wasm_read_memory', 'string', ['number', 'number']); // address, count
-    wasm_write_memory =  Module.cwrap('wasm_write_memory', 'string', ['number', 'string']); // address, data
     wasm_get_current_message =  Module.cwrap('wasm_get_current_message', 'string');
     wasm_clear_current_message =  Module.cwrap('wasm_clear_current_message', 'undefined');
     wasm_jump =  Module.cwrap('wasm_jump', 'string', ['number']);
+
+    wasm_read_memory = function (address, count) {
+        const dataPtr = Module._wasm_read_memory_ptr(address, count);
+        if (!dataPtr) {
+            throw new Error(`Error getting memory ptr for address 0x${address.toString(16)}`);
+        }
+        const data = new Uint8Array(Module.HEAPU8.buffer, dataPtr, count);
+        const dataCopy = new Uint8Array(data);
+        Module._free(dataPtr);
+        return dataCopy;
+    }
+    wasm_write_memory = function (address, dataToWrite) {
+        console.log(`writing ${dataToWrite.length} bytes at 0x${address.toString(16)}`);
+        const writePtr = Module._malloc(dataToWrite.length);
+        Module.HEAPU8.set(dataToWrite, writePtr);
+        const success = Module._wasm_write_memory_ptr(address, writePtr, dataToWrite.length);
+        Module._free(writePtr);
+        if (!success) {
+            throw new Error(`Error writing memory at address 0x${address.toString(16)}`);
+        }
+    }
 
     // Initialize worker after all WASM functions are available - failure is fatal
     initEmulationWorker();
@@ -2664,14 +2683,10 @@ postMessage({ type: 'ready' });
                     rpcRequest(() => wasm_poke_custom32(message.args.address, message.args.value));
                     break;
                 case 'readMemory':
-                    rpcRequest(() => {
-                        const res = JSON.parse(wasm_read_memory(message.args.address, message.args.count));
-                        res.data = Uint8Array.from(res.data);
-                        return res;
-                    });
+                    rpcRequest(() => ({ data: wasm_read_memory(message.args.address, message.args.count) }));
                     break;
                 case 'writeMemory':
-                    rpcRequest(() => JSON.parse(wasm_write_memory(message.args.address, message.args.data.toString('base64'))));
+                    rpcRequest(() => wasm_write_memory(message.args.address, message.args.data));
                     break;
                 case 'disassemble':
                     rpcRequest(() => JSON.parse(wasm_disassemble(message.args.address, message.args.count)));

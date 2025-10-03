@@ -87,10 +87,6 @@ export interface MemResult {
   data: string;
 }
 
-export interface WriteMemResult {
-  bytesWritten: number;
-}
-
 export interface Disassembly {
   instructions: Array<{
     addr: string;
@@ -642,13 +638,12 @@ export class VAmiga {
    * Writes memory at the specified address
    * @param address Starting memory address
    * @param data Data buffer to write
-   * @returns Promise resolving to write result
    */
   public async writeMemory(
     address: number,
     data: Buffer,
-  ): Promise<WriteMemResult> {
-    return this.sendRpcCommand("writeMemory", { address, data });
+  ): Promise<void> {
+    return this.sendRpcCommand("writeMemory", { address, data: new Uint8Array(data) });
   }
 
   /**

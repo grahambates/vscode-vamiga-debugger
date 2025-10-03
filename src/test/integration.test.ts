@@ -339,8 +339,7 @@ describe('VamigaDebugAdapter Integration Tests', () => {
     });
 
     it('writeMemoryRequest should write memory to emulator', async () => {
-      const mockWriteResult = { bytesWritten: 5 };
-      mockVAmiga.writeMemory.resolves(mockWriteResult);
+      mockVAmiga.writeMemory.resolves();
 
       const response: DebugProtocol.WriteMemoryResponse = {
         seq: 1,
@@ -359,7 +358,6 @@ describe('VamigaDebugAdapter Integration Tests', () => {
       await (adapter as any).writeMemoryRequest(response, args);
 
       assert.ok(response.body);
-      assert.strictEqual(response.body.bytesWritten, 5);
       assert.ok(mockVAmiga.writeMemory.calledWith(0x1000, data));
     });
   });
