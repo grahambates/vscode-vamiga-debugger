@@ -2635,6 +2635,7 @@ postMessage({ type: 'ready' });
                             // Get and load the previous snapshot
                             const previousSnapshot = snapshotHistory[snapshotHistory.length - 1];
                             wasm_loadfile('stepback.vAmiga', previousSnapshot.data);
+                            wasm_configure('WARP_MODE', 'NEVER'); // Prevents bug where warp is enabled after stepping back to first instruction
                             console.log(`Stepped back. PC: ${previousSnapshot.pc}, History size: ${snapshotHistory.length}`);
                         } else {
                             throw new Error("No previous snapshot available for stepping back");
@@ -2658,6 +2659,7 @@ postMessage({ type: 'ready' });
                             }
                             // Load the previous snapshot
                             wasm_loadfile('stepback.vAmiga', previousSnapshot.data);
+                            wasm_configure('WARP_MODE', 'NEVER');
                             console.log(`Stepped back. PC: ${previousSnapshot.pc}, History size: ${snapshotHistory.length}`);
                         } else {
                             throw new Error("No previous snapshot available for stepping back");
@@ -2716,6 +2718,7 @@ postMessage({ type: 'ready' });
                     rpcRequest(() => {
                         wasm_jump(message.args.address);
                         wasm_set_register('sr', 0);
+                        takeStepSnapshot();
                     });
                     break;
                 case 'load':
