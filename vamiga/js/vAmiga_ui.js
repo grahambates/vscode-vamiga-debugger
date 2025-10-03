@@ -2289,7 +2289,7 @@ postMessage({ type: 'ready' });
     wasm_jump =  Module.cwrap('wasm_jump', 'string', ['number']);
 
     wasm_read_memory = function (address, count) {
-        const dataPtr = Module._wasm_read_memory_ptr(address, count);
+        const dataPtr = Module._wasm_read_memory(address, count);
         if (!dataPtr) {
             throw new Error(`Error getting memory ptr for address 0x${address.toString(16)}`);
         }
@@ -2302,7 +2302,7 @@ postMessage({ type: 'ready' });
         console.log(`writing ${dataToWrite.length} bytes at 0x${address.toString(16)}`);
         const writePtr = Module._malloc(dataToWrite.length);
         Module.HEAPU8.set(dataToWrite, writePtr);
-        const success = Module._wasm_write_memory_ptr(address, writePtr, dataToWrite.length);
+        const success = Module._wasm_write_memory(address, writePtr, dataToWrite.length);
         Module._free(writePtr);
         if (!success) {
             throw new Error(`Error writing memory at address 0x${address.toString(16)}`);
