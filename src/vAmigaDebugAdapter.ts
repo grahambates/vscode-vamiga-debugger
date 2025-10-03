@@ -1,7 +1,10 @@
-// TODO:
+// TODO: bugs
+// - bp ignores not working - implemented in vamiga?
+// - step on first instruction in non-fast mode reattach?
+// TODO: features
+// - conditional breakpoints
 // - memory viewer
 // - trace
-// - step back
 // - memory to disk?
 // - beamtraps?
 // - Constants/symbols browser in variables view
