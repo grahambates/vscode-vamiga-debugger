@@ -185,6 +185,82 @@ describe('VamigaDebugAdapter - Simplified Tests', () => {
       assert.ok(response.message);
     });
 
+    it('should handle readMemory request', async () => {
+      // Setup: Mock memory read
+      const mockBuffer = Buffer.alloc(16);
+      for (let i = 0; i < 16; i++) {
+        mockBuffer[i] = i * 0x10;
+      }
+      mockVAmiga.readMemory.resolves(mockBuffer);
+
+      const response = createMockResponse<DebugProtocol.ReadMemoryResponse>('readMemory');
+      const args: DebugProtocol.ReadMemoryArguments = {
+        memoryReference: '0x1000',
+        count: 16
+      };
+
+      // Test: Read memory
+      await (adapter as any).readMemoryRequest(response, args);
+
+      // Verify: Memory read was called and result encoded
+      assert.ok(mockVAmiga.readMemory.calledWith(0x1000, 16));
+      assert.strictEqual(response.success, true);
+      assert.ok(response.body?.data);
+      assert.strictEqual(response.body?.address, '0x00001000'); // formatHex returns padded hex
+    });
+
+    it('should handle writeMemory request', async () => {
+      // Setup: Mock memory write
+      mockVAmiga.writeMemory.resolves();
+
+      const response = createMockResponse<DebugProtocol.WriteMemoryResponse>('writeMemory');
+      const testData = Buffer.from([0x12, 0x34, 0x56, 0x78]).toString('base64');
+      const args: DebugProtocol.WriteMemoryArguments = {
+        memoryReference: '0x2000',
+        data: testData
+      };
+
+      // Test: Write memory
+      await (adapter as any).writeMemoryRequest(response, args);
+
+      // Verify: Memory write was called
+      assert.ok(mockVAmiga.writeMemory.calledOnce);
+      const writeCall = mockVAmiga.writeMemory.getCall(0);
+      assert.strictEqual(writeCall.args[0], 0x2000);
+      assert.deepStrictEqual(writeCall.args[1], Buffer.from([0x12, 0x34, 0x56, 0x78]));
+      assert.strictEqual(response.success, true);
+    });
+
+    it('should handle completions request for registers', async () => {
+      // Setup: Mock CPU state and VariablesManager
+      setupMockCpuState({ d0: '0x100', d1: '0x200' });
+      const mockVariablesManager = setupMockVariablesManager({
+        d0: 0x100,
+        d1: 0x200,
+        a0: 0x3000
+      });
+      (adapter as any).variablesManager = mockVariablesManager;
+
+      const response = createMockResponse<DebugProtocol.CompletionsResponse>('completions');
+      const args: DebugProtocol.CompletionsArguments = {
+        text: 'd',
+        column: 2 // column is 1-based, cursor after 'd'
+      };
+
+      // Test: Get completions
+      await (adapter as any).completionsRequest(response, args);
+
+      // Verify: Returns register completions
+      assert.strictEqual(response.success, true);
+      assert.ok(response.body?.targets);
+      const targets = response.body!.targets;
+
+      // Should include data registers that start with 'd'
+      const d0Completion = targets.find(t => t.label === 'd0');
+      assert.ok(d0Completion, 'Should include d0 register');
+      assert.strictEqual(d0Completion?.type, 'variable');
+    });
+
     it('should set breakpoints through DAP when source map available', async () => {
       // Setup: Create proper mock instances instead of bypassing type system
       const mockSourceMap = createMockSourceMap({
@@ -234,6 +310,186 @@ describe('VamigaDebugAdapter - Simplified Tests', () => {
 
       // Note: Comprehensive variable testing is in VariablesManager test suite
       // This test verifies DAP integration without requiring full debugger launch
+    });
+  });
+
+  describe('Stepping and Execution Control', () => {
+    it('should handle stepIn request', async () => {
+      // Setup: Mock stepInto functionality
+      mockVAmiga.stepInto.returns(undefined);
+
+      const response = createMockResponse<DebugProtocol.StepInResponse>('stepIn');
+      const args: DebugProtocol.StepInArguments = {
+        threadId: 1
+      };
+
+      // Test: Execute stepIn request
+      await (adapter as any).stepInRequest(response, args);
+
+      // Verify: stepInto was called
+      assert.ok(mockVAmiga.stepInto.calledOnce);
+      assert.strictEqual(response.success, true);
+    });
+
+    it('should handle next (step over) request with JSR instruction', async () => {
+      // Setup: Mock CPU state and disassembly showing JSR
+      setupMockCpuState({ pc: '0x1000' });
+      const mockBreakpointManager = sinon.createStubInstance(BreakpointManager);
+      (adapter as any).breakpointManager = mockBreakpointManager;
+
+      mockVAmiga.disassemble.resolves({
+        instructions: [
+          { addr: '0x00001000', instruction: 'jsr $2000', hex: '000000' },
+          { addr: '0x00001006', instruction: 'move.l d0,d1', hex: '00' }
+        ]
+      });
+      mockVAmiga.run.resolves();
+
+      const response = createMockResponse<DebugProtocol.NextResponse>('next');
+
+      // Test: Execute next request
+      await (adapter as any).nextRequest(response);
+
+      // Verify: Breakpoint set on next instruction and run called
+      assert.ok(mockBreakpointManager.setTmpBreakpoint.called);
+      assert.ok(mockVAmiga.run.called);
+      assert.strictEqual(response.success, true);
+    });
+
+    it('should handle next (step over) request with non-call instruction', async () => {
+      // Setup: Mock CPU state with move instruction (not a call)
+      setupMockCpuState({ pc: '0x1000' });
+      mockVAmiga.stepInto.returns(undefined);
+
+      mockVAmiga.disassemble.resolves({
+        instructions: [
+          { addr: '0x00001000', instruction: 'move.l d0,d1', hex: '0000' },
+          { addr: '0x00001002', instruction: 'add.l d2,d3',  hex: '0000' }
+        ]
+      });
+
+      const response = createMockResponse<DebugProtocol.NextResponse>('next');
+
+      // Test: Execute next request with non-call instruction
+      await (adapter as any).nextRequest(response);
+
+      // Verify: Just calls stepInto for non-call instructions
+      assert.ok(mockVAmiga.stepInto.called);
+      assert.strictEqual(response.success, true);
+    });
+
+    it('should handle stepOut request', async () => {
+      // Setup: Mock stack manager and breakpoint manager
+      setupMockCpuState({ pc: '0x1000', a7: '0x8000' });
+      const mockStackManager = {
+        guessStack: sinon.stub().resolves([
+          [0x1000, 0x1000], // Current PC
+          [0x2000, 0x2010]  // Return address
+        ])
+      };
+      const mockBreakpointManager = sinon.createStubInstance(BreakpointManager);
+
+      (adapter as any).stackManager = mockStackManager;
+      (adapter as any).breakpointManager = mockBreakpointManager;
+      mockVAmiga.run.returns(undefined);
+
+      const response = createMockResponse<DebugProtocol.StepOutResponse>('stepOut');
+
+      // Test: Execute stepOut request
+      await (adapter as any).stepOutRequest(response);
+
+      // Verify: Breakpoint set at return address and run called
+      assert.ok(mockBreakpointManager.setTmpBreakpoint.calledWith(0x2010, 'step'));
+      assert.ok(mockVAmiga.run.calledOnce);
+      assert.strictEqual(response.success, true);
+    });
+
+    it('should handle continue request', async () => {
+      // Setup: Mock continue functionality
+      mockVAmiga.run.resolves();
+
+      const response = createMockResponse<DebugProtocol.ContinueResponse>('continue');
+
+      // Test: Execute continue request
+      (adapter as any).continueRequest(response);
+
+      // Verify: run was called
+      assert.ok(mockVAmiga.run.calledOnce);
+      assert.strictEqual(response.success, true);
+    });
+
+    it('should handle pause request', async () => {
+      // Setup: Mock pause functionality
+      mockVAmiga.pause.resolves();
+
+      const response = createMockResponse<DebugProtocol.PauseResponse>('pause');
+
+      // Test: Execute pause request
+      (adapter as any).pauseRequest(response);
+
+      // Verify: pause was called
+      assert.ok(mockVAmiga.pause.calledOnce);
+      assert.strictEqual(response.success, true);
+    });
+  });
+
+  describe('Reverse Debugging Features', () => {
+    it('should handle stepBack request', async () => {
+      // Setup: Mock stepBack functionality
+      mockVAmiga.stepBack.resolves();
+
+      const response = createMockResponse<DebugProtocol.StepBackResponse>('stepBack');
+
+      // Test: Execute stepBack request
+      await (adapter as any).stepBackRequest(response);
+
+      // Verify: stepBack was called and stopped event sent
+      assert.ok(mockVAmiga.stepBack.calledOnce);
+      assert.strictEqual(response.success, true);
+    });
+
+    it('should handle stepBack errors gracefully', async () => {
+      // Setup: Mock stepBack to fail
+      mockVAmiga.stepBack.rejects(new Error('Step back failed'));
+
+      const response = createMockResponse<DebugProtocol.StepBackResponse>('stepBack');
+
+      // Test: Execute stepBack with error
+      await (adapter as any).stepBackRequest(response);
+
+      // Verify: Error response is sent
+      assert.strictEqual(response.success, false);
+      assert.ok(response.message);
+      assert.ok(response.message.includes('Step operation failed'));
+    });
+
+    it('should handle reverseContinue request', async () => {
+      // Setup: Mock reverseContinue functionality
+      mockVAmiga.continueReverse.resolves();
+
+      const response = createMockResponse<DebugProtocol.ReverseContinueResponse>('reverseContinue');
+
+      // Test: Execute reverseContinue request
+      await (adapter as any).reverseContinueRequest(response);
+
+      // Verify: continueReverse was called and stopped event sent
+      assert.ok(mockVAmiga.continueReverse.calledOnce);
+      assert.strictEqual(response.success, true);
+    });
+
+    it('should handle reverseContinue errors gracefully', async () => {
+      // Setup: Mock reverseContinue to fail
+      mockVAmiga.continueReverse.rejects(new Error('Reverse continue failed'));
+
+      const response = createMockResponse<DebugProtocol.ReverseContinueResponse>('reverseContinue');
+
+      // Test: Execute reverseContinue with error
+      await (adapter as any).reverseContinueRequest(response);
+
+      // Verify: Error response is sent
+      assert.strictEqual(response.success, false);
+      assert.ok(response.message);
+      assert.ok(response.message.includes('Step operation failed'));
     });
   });
 
