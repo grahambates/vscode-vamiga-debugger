@@ -283,12 +283,7 @@ export class EvaluateManager {
     } else if (resultType === EvaluateResultType.DATA_REGISTER) {
       result = this.formatDataRegister(value, signed, byteLength);
     } else if (resultType === EvaluateResultType.SYMBOL) {
-      result = await this.formatSymbol(
-        value,
-        expression,
-        signed,
-        byteLength,
-      );
+      result = await this.formatSymbol(value, expression, signed, byteLength);
     } else if (resultType === EvaluateResultType.CUSTOM_REGISTER) {
       result = formatHex(value, 4);
     } else {

@@ -31,8 +31,8 @@ export interface ComponentInfo {
 // Helper to strip comments and normalize whitespace from regex strings
 function rx(template: string): string {
   return template
-    .replace(/\s*#.*$/gm, '')  // Remove comments (# to end of line)
-    .replace(/\s+/g, '');      // Remove all whitespace
+    .replace(/\s*#.*$/gm, "") // Remove comments (# to end of line)
+    .replace(/\s+/g, ""); // Remove all whitespace
 }
 
 // Assembly line parsing regex - built from documented components
@@ -86,7 +86,10 @@ const commentGroup = rx(String.raw`
   (\s*(?<comment>.+))?         # Comment (any trailing text)
 `);
 
-const pattern = new RegExp(`^${labelGroup}${instructionGroup}${commentGroup}$`, 'i');
+const pattern = new RegExp(
+  `^${labelGroup}${instructionGroup}${commentGroup}$`,
+  "i",
+);
 
 /**
  * Parse a single line of source code into positional components
@@ -179,11 +182,11 @@ const bitOps = ["bchg", "bset", "bclr", "btst"];
 
 /**
  * Determines the byte length and signedness attributes of an assembly instruction.
- * 
+ *
  * Analyzes the instruction size suffix (.b, .w, .l) and mnemonic to determine
  * the appropriate data size and whether the operation is signed or unsigned.
  * Used for proper formatting of expression evaluation results.
- * 
+ *
  * @param line Assembly source line to analyze
  * @returns Object containing byteLength (1, 2, or 4) and signed (boolean)
  */

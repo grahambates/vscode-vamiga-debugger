@@ -79,17 +79,17 @@ export class AmigaMemoryMapper {
     let safetyCounter = 0;
     while (memHeader !== 0 && safetyCounter < 10) {
       // Validate memHeader address is reasonable
-      if (memHeader > 0xFFFFFF) {
+      if (memHeader > 0xffffff) {
         break;
       }
 
       const nodeType = await this.vAmiga.peek8(memHeader + 0x08);
 
       if (nodeType === NT_MEMORY) {
-        const attributes = await this.vAmiga.peek16(memHeader + 0x0E);
+        const attributes = await this.vAmiga.peek16(memHeader + 0x0e);
         const lower = await this.vAmiga.peek32(memHeader + 0x14);
         const upper = await this.vAmiga.peek32(memHeader + 0x18);
-        const free = await this.vAmiga.peek32(memHeader + 0x1C);
+        const free = await this.vAmiga.peek32(memHeader + 0x1c);
         const firstChunk = await this.vAmiga.peek32(memHeader + 0x10);
 
         // Validate memory region makes sense
@@ -120,7 +120,7 @@ export class AmigaMemoryMapper {
       totalFast,
       freeChip,
       freeFast,
-      blocks
+      blocks,
     };
   }
 
@@ -130,12 +130,13 @@ export class AmigaMemoryMapper {
   private async walkFreeChunks(
     firstChunk: number,
     attributes: number,
-    blocks: MemoryBlock[]
+    blocks: MemoryBlock[],
   ): Promise<void> {
     let chunk = firstChunk;
     let chunkCount = 0;
 
-    while (chunk !== 0 && chunkCount < 20) { // Safety limit
+    while (chunk !== 0 && chunkCount < 20) {
+      // Safety limit
       const size = await this.vAmiga.peek32(chunk + 0x04);
       const nextChunk = await this.vAmiga.peek32(chunk);
 
@@ -143,7 +144,7 @@ export class AmigaMemoryMapper {
         address: chunk,
         size,
         free: true,
-        attributes
+        attributes,
       });
 
       chunk = nextChunk;
@@ -154,31 +155,35 @@ export class AmigaMemoryMapper {
   /**
    * Find a suitable free memory block for allocation
    */
-  async findFreeBlock(size: number, memType: MemoryType): Promise<MemoryBlock | null> {
+  async findFreeBlock(
+    size: number,
+    memType: MemoryType,
+  ): Promise<MemoryBlock | null> {
     const memInfo = await this.getMemoryInfo();
 
     if (memType === MemoryType.CHIP) {
       // CHIP memory specifically requested
-      return memInfo.blocks.find(block =>
-        block.free &&
-        block.size >= size &&
-        (block.attributes & MEMF_CHIP)
-      ) || null;
+      return (
+        memInfo.blocks.find(
+          (block) =>
+            block.free && block.size >= size && block.attributes & MEMF_CHIP,
+        ) || null
+      );
     } else if (memType === MemoryType.FAST) {
       // FAST memory specifically requested
-      return memInfo.blocks.find(block =>
-        block.free &&
-        block.size >= size &&
-        (block.attributes & MEMF_FAST)
-      ) || null;
+      return (
+        memInfo.blocks.find(
+          (block) =>
+            block.free && block.size >= size && block.attributes & MEMF_FAST,
+        ) || null
+      );
     } else {
       // MEMF_ANY - prefer FAST RAM over CHIP RAM to preserve chip memory
 
       // First try to find fast RAM
-      const fastBlock = memInfo.blocks.find(block =>
-        block.free &&
-        block.size >= size &&
-        (block.attributes & MEMF_FAST)
+      const fastBlock = memInfo.blocks.find(
+        (block) =>
+          block.free && block.size >= size && block.attributes & MEMF_FAST,
       );
 
       if (fastBlock) {
@@ -186,11 +191,12 @@ export class AmigaMemoryMapper {
       }
 
       // Fall back to chip RAM if no fast RAM available
-      return memInfo.blocks.find(block =>
-        block.free &&
-        block.size >= size &&
-        (block.attributes & MEMF_CHIP)
-      ) || null;
+      return (
+        memInfo.blocks.find(
+          (block) =>
+            block.free && block.size >= size && block.attributes & MEMF_CHIP,
+        ) || null
+      );
     }
   }
 
@@ -203,7 +209,9 @@ export class AmigaMemoryMapper {
 
     const block = await this.findFreeBlock(alignedSize, memType);
     if (!block) {
-      throw new Error(`No suitable ${memType} memory block found for ${alignedSize} bytes`);
+      throw new Error(
+        `No suitable ${memType} memory block found for ${alignedSize} bytes`,
+      );
     }
 
     // If block is exactly the right size, remove it entirely
@@ -217,8 +225,10 @@ export class AmigaMemoryMapper {
       const newChunkSize = block.size - alignedSize;
 
       // Validate new chunk address is reasonable
-      if (newChunkAddr > 0xFFFFFF) {
-        throw new Error(`New chunk address 0x${newChunkAddr.toString(16)} is not a valid 24-bit address`);
+      if (newChunkAddr > 0xffffff) {
+        throw new Error(
+          `New chunk address 0x${newChunkAddr.toString(16)} is not a valid 24-bit address`,
+        );
       }
 
       // Get next chunk pointer from original
@@ -249,7 +259,10 @@ export class AmigaMemoryMapper {
   /**
    * Update the free byte count in the MemHeader that contains the given address
    */
-  private async updateMemHeaderFreeCount(address: number, delta: number): Promise<void> {
+  private async updateMemHeaderFreeCount(
+    address: number,
+    delta: number,
+  ): Promise<void> {
     const execBase = await this.getExecBase();
     const memListAddr = execBase + 0x142;
 
@@ -257,7 +270,7 @@ export class AmigaMemoryMapper {
 
     let safetyCounter = 0;
     while (memHeader !== 0 && safetyCounter < 10) {
-      if (memHeader > 0xFFFFFF) break; // Safety check
+      if (memHeader > 0xffffff) break; // Safety check
 
       const nodeType = await this.vAmiga.peek8(memHeader + 0x08);
 
@@ -267,7 +280,7 @@ export class AmigaMemoryMapper {
 
         if (address >= lower && address < upper) {
           // Found the correct MemHeader - update free count
-          const freeAddr = memHeader + 0x1C;
+          const freeAddr = memHeader + 0x1c;
           const currentFree = await this.vAmiga.peek32(freeAddr);
           const newFree = currentFree + delta;
 
@@ -280,7 +293,9 @@ export class AmigaMemoryMapper {
       safetyCounter++;
     }
 
-    throw new Error(`Could not find MemHeader for address 0x${address.toString(16)}`);
+    throw new Error(
+      `Could not find MemHeader for address 0x${address.toString(16)}`,
+    );
   }
 
   /**
@@ -288,7 +303,7 @@ export class AmigaMemoryMapper {
    */
   private async updatePreviousChunkPointer(
     oldChunk: number,
-    newChunk: number
+    newChunk: number,
   ): Promise<void> {
     // Need to find what points to oldChunk and update it to point to newChunk
     // This requires walking the free lists to find the previous pointer
@@ -299,7 +314,7 @@ export class AmigaMemoryMapper {
 
     let safetyCounter = 0;
     while (memHeader !== 0 && safetyCounter < 10) {
-      if (memHeader > 0xFFFFFF) break; // Safety check
+      if (memHeader > 0xffffff) break; // Safety check
 
       const nodeType = await this.vAmiga.peek8(memHeader + 0x08);
 
@@ -348,7 +363,7 @@ export class AmigaMemoryMapper {
 
     let safetyCounter = 0;
     while (memHeader !== 0 && safetyCounter < 10) {
-      if (memHeader > 0xFFFFFF) break; // Safety check
+      if (memHeader > 0xffffff) break; // Safety check
 
       const nodeType = await this.vAmiga.peek8(memHeader + 0x08);
 
@@ -369,7 +384,7 @@ export class AmigaMemoryMapper {
           await this.vAmiga.poke32(firstChunkAddr, address);
 
           // Update free bytes count
-          const freeAddr = memHeader + 0x1C;
+          const freeAddr = memHeader + 0x1c;
           const currentFree = await this.vAmiga.peek32(freeAddr);
           await this.vAmiga.poke32(freeAddr, currentFree + alignedSize);
 
@@ -381,6 +396,8 @@ export class AmigaMemoryMapper {
       safetyCounter++;
     }
 
-    throw new Error(`Address ${address.toString(16)} not found in any memory region`);
+    throw new Error(
+      `Address ${address.toString(16)} not found in any memory region`,
+    );
   }
 }

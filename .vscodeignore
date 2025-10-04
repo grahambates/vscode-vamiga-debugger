@@ -1,16 +1,10 @@
-.vscode/**
-.vscode-test/**
-src/**
-node_modules/**
-esbuild.js
-.gitignore
-.prettierignore
-.vscode-test.mjs
-eslint.config.mjs
-**/tsconfig.json
-**/.eslintrc.json
+**/.*
+**/*.mjs
+**/*.json
 **/*.ts
-# Keep only the bundled extension files
-out/**
-!out/extension.js
-!out/extension.js.map
+**/*.tsx
+src/test
+coverage
+node_modules
+esbuild.js
+**/tsconfig.tsbuildinfo

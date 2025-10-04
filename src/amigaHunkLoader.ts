@@ -8,7 +8,7 @@ import { Hunk, HunkType, RelocInfo32 } from "./amigaHunkParser";
 import {
   AmigaMemoryMapper,
   AllocatedHunk,
-  LoadedProgram
+  LoadedProgram,
 } from "./amigaMemoryMapper";
 
 export class AmigaHunkLoader {
@@ -38,13 +38,15 @@ export class AmigaHunkLoader {
     const totalSize = allocations.reduce((sum, alloc) => sum + alloc.size, 0);
 
     // Find the first CODE hunk as entry point, fallback to first hunk if no CODE hunk found
-    const codeHunk = allocations.find(alloc => alloc.hunk.hunkType === HunkType.CODE);
+    const codeHunk = allocations.find(
+      (alloc) => alloc.hunk.hunkType === HunkType.CODE,
+    );
     const entryPoint = codeHunk?.address || allocations[0]?.address || 0;
 
     return {
       entryPoint,
       allocations,
-      totalSize
+      totalSize,
     };
   }
 
@@ -55,20 +57,24 @@ export class AmigaHunkLoader {
     const allocations: AllocatedHunk[] = [];
 
     for (const hunk of hunks) {
-      console.log(`Allocating ${hunk.allocSize} bytes of ${hunk.memType} memory for hunk ${hunk.index}`);
+      console.log(
+        `Allocating ${hunk.allocSize} bytes of ${hunk.memType} memory for hunk ${hunk.index}`,
+      );
 
       const address = await this.memoryMapper.allocateMemory(
         hunk.allocSize,
-        hunk.memType
+        hunk.memType,
       );
 
       allocations.push({
         hunk,
         address,
-        size: hunk.allocSize
+        size: hunk.allocSize,
       });
 
-      console.log(`Hunk ${hunk.index} allocated at address $${address.toString(16)}`);
+      console.log(
+        `Hunk ${hunk.index} allocated at address $${address.toString(16)}`,
+      );
     }
 
     return allocations;
@@ -79,7 +85,7 @@ export class AmigaHunkLoader {
    */
   private async applyRelocations(
     hunks: Hunk[],
-    allocations: AllocatedHunk[]
+    allocations: AllocatedHunk[],
   ): Promise<void> {
     // Create lookup table for hunk addresses
     const hunkAddresses = new Map<number, number>();
@@ -91,12 +97,16 @@ export class AmigaHunkLoader {
       const hunk = alloc.hunk;
 
       if (hunk.reloc32.length > 0) {
-        console.log(`Applying ${hunk.reloc32.length} relocation groups for hunk ${hunk.index}`);
+        console.log(
+          `Applying ${hunk.reloc32.length} relocation groups for hunk ${hunk.index}`,
+        );
 
         for (const relocInfo of hunk.reloc32) {
           const targetAddress = hunkAddresses.get(relocInfo.target);
           if (targetAddress === undefined) {
-            throw new Error(`Program loading error: Relocation target hunk ${relocInfo.target} not found`);
+            throw new Error(
+              `Program loading error: Relocation target hunk ${relocInfo.target} not found`,
+            );
           }
 
           await this.applyRelocationGroup(alloc, relocInfo, targetAddress);
@@ -111,7 +121,7 @@ export class AmigaHunkLoader {
   private async applyRelocationGroup(
     alloc: AllocatedHunk,
     relocInfo: RelocInfo32,
-    targetAddress: number
+    targetAddress: number,
   ): Promise<void> {
     for (const offset of relocInfo.offsets) {
       const relocAddress = alloc.address + offset;
@@ -127,8 +137,8 @@ export class AmigaHunkLoader {
 
       console.log(
         `Relocation at $${relocAddress.toString(16)}: ` +
-        `$${currentValue.toString(16)} + $${targetAddress.toString(16)} = ` +
-        `$${relocatedValue.toString(16)}`
+          `$${currentValue.toString(16)} + $${targetAddress.toString(16)} = ` +
+          `$${relocatedValue.toString(16)}`,
       );
     }
   }
@@ -142,13 +152,15 @@ export class AmigaHunkLoader {
 
       if (hunk.hunkType === HunkType.BSS) {
         // BSS hunks need to be zeroed
-        console.log(`Zeroing BSS hunk ${hunk.index} at $${alloc.address.toString(16)}`);
+        console.log(
+          `Zeroing BSS hunk ${hunk.index} at $${alloc.address.toString(16)}`,
+        );
         await this.zeroMemory(alloc.address, alloc.size);
       } else if (hunk.data) {
         // CODE and DATA hunks have binary content
         console.log(
           `Writing ${hunk.data.length} bytes for ${hunk.hunkType} hunk ${hunk.index} ` +
-          `at $${alloc.address.toString(16)}`
+            `at $${alloc.address.toString(16)}`,
         );
 
         await this.vAmiga.writeMemory(alloc.address, hunk.data);
@@ -172,7 +184,9 @@ export class AmigaHunkLoader {
     console.log(`Unloading program with ${program.allocations.length} hunks`);
 
     for (const alloc of program.allocations) {
-      console.log(`Freeing hunk ${alloc.hunk.index} at $${alloc.address.toString(16)}`);
+      console.log(
+        `Freeing hunk ${alloc.hunk.index} at $${alloc.address.toString(16)}`,
+      );
       await this.memoryMapper.freeMemory(alloc.address, alloc.size);
     }
   }
@@ -189,7 +203,7 @@ export class AmigaHunkLoader {
    */
   static async loadFromHunks(
     vAmiga: VAmiga,
-    hunks: Hunk[]
+    hunks: Hunk[],
   ): Promise<LoadedProgram> {
     const loader = new AmigaHunkLoader(vAmiga);
     return await loader.loadProgram(hunks);
@@ -203,7 +217,9 @@ export class AmigaHunkLoader {
     // Jump pc to entrypoint
     await this.vAmiga.jump(program.entryPoint);
     // TODO: set initial register state, stack etc?
-    console.log(`Program entry point set to $${program.entryPoint.toString(16)}`);
+    console.log(
+      `Program entry point set to $${program.entryPoint.toString(16)}`,
+    );
   }
 }
 
@@ -212,7 +228,7 @@ export class AmigaHunkLoader {
  */
 export async function loadAmigaProgram(
   vAmiga: VAmiga,
-  hunks: Hunk[]
+  hunks: Hunk[],
 ): Promise<LoadedProgram> {
   console.log(`Loading Amiga program with ${hunks.length} hunks`);
 

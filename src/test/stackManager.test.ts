@@ -1,21 +1,40 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import * as assert from 'assert';
-import * as sinon from 'sinon';
-import { StackManager } from '../stackManager';
-import { VAmiga, CpuInfo } from '../vAmiga';
+import * as assert from "assert";
+import * as sinon from "sinon";
+import { StackManager } from "../stackManager";
+import { VAmiga, CpuInfo } from "../vAmiga";
 
 // Helper function to create mock CPU info with required properties
 function createMockCpuInfo(overrides: Partial<CpuInfo> = {}): CpuInfo {
   return {
-    pc: '0x00001000',
-    d0: '0x00000000', d1: '0x00000000', d2: '0x00000000', d3: '0x00000000',
-    d4: '0x00000000', d5: '0x00000000', d6: '0x00000000', d7: '0x00000000',
-    a0: '0x00000000', a1: '0x00000000', a2: '0x00000000', a3: '0x00000000',
-    a4: '0x00000000', a5: '0x00000000', a6: '0x00000000', a7: '0x00008000',
-    sr: '0x00000000', usp: '0x00000000', isp: '0x00000000', msp: '0x00000000',
-    vbr: '0x00000000', irc: '0x00000000', sfc: '0x00000000', dfc: '0x00000000',
-    cacr: '0x00000000', caar: '0x00000000',
-    ...overrides
+    pc: "0x00001000",
+    d0: "0x00000000",
+    d1: "0x00000000",
+    d2: "0x00000000",
+    d3: "0x00000000",
+    d4: "0x00000000",
+    d5: "0x00000000",
+    d6: "0x00000000",
+    d7: "0x00000000",
+    a0: "0x00000000",
+    a1: "0x00000000",
+    a2: "0x00000000",
+    a3: "0x00000000",
+    a4: "0x00000000",
+    a5: "0x00000000",
+    a6: "0x00000000",
+    a7: "0x00008000",
+    sr: "0x00000000",
+    usp: "0x00000000",
+    isp: "0x00000000",
+    msp: "0x00000000",
+    vbr: "0x00000000",
+    irc: "0x00000000",
+    sfc: "0x00000000",
+    dfc: "0x00000000",
+    cacr: "0x00000000",
+    caar: "0x00000000",
+    ...overrides,
   };
 }
 
@@ -23,7 +42,7 @@ function createMockCpuInfo(overrides: Partial<CpuInfo> = {}): CpuInfo {
  * Comprehensive tests for StackManager
  * Tests the stack frame analysis and DAP integration
  */
-describe('StackManager - Comprehensive Tests', () => {
+describe("StackManager - Comprehensive Tests", () => {
   let stackManager: StackManager;
   let mockVAmiga: sinon.SinonStubbedInstance<VAmiga>;
   let mockSourceMap: any;
@@ -36,7 +55,7 @@ describe('StackManager - Comprehensive Tests', () => {
       getSegmentsInfo: () => [],
       getSymbolLengths: () => ({}),
       lookupSourceLine: sinon.stub(),
-      findSymbolOffset: sinon.stub()
+      findSymbolOffset: sinon.stub(),
     };
 
     stackManager = new StackManager(mockVAmiga, mockSourceMap);
@@ -46,10 +65,10 @@ describe('StackManager - Comprehensive Tests', () => {
     sinon.restore();
   });
 
-  describe('Stack Frame Generation', () => {
-    it('should return current PC as first stack frame', async () => {
+  describe("Stack Frame Generation", () => {
+    it("should return current PC as first stack frame", async () => {
       // Setup: Mock CPU state and empty stack
-      const mockCpuInfo = createMockCpuInfo({ pc: '0x1000', a7: '0x8000' });
+      const mockCpuInfo = createMockCpuInfo({ pc: "0x1000", a7: "0x8000" });
       mockVAmiga.getCpuInfo.resolves(mockCpuInfo);
       mockVAmiga.readMemory.resolves(Buffer.alloc(128));
       mockVAmiga.isValidAddress.returns(false); // No valid return addresses in stack
@@ -59,25 +78,25 @@ describe('StackManager - Comprehensive Tests', () => {
 
       // Verify: Current PC is included as first frame
       assert.strictEqual(frames.length, 1);
-      assert.strictEqual(frames[0].instructionPointerReference, '0x00001000');
+      assert.strictEqual(frames[0].instructionPointerReference, "0x00001000");
     });
 
-    it('should create source-based frames when debug info available', async () => {
+    it("should create source-based frames when debug info available", async () => {
       // Setup: Mock CPU state, stack, and source map
-      const mockCpuInfo = createMockCpuInfo({ pc: '0x1000', a7: '0x8000' });
+      const mockCpuInfo = createMockCpuInfo({ pc: "0x1000", a7: "0x8000" });
       mockVAmiga.getCpuInfo.resolves(mockCpuInfo);
       mockVAmiga.readMemory.resolves(Buffer.alloc(128));
 
       // Mock source location lookup
       mockSourceMap.lookupAddress.withArgs(0x1000).returns({
-        path: '/src/main.asm',
-        line: 42
+        path: "/src/main.asm",
+        line: 42,
       });
 
       // Mock symbol offset lookup for formatAddress
       mockSourceMap.findSymbolOffset.withArgs(0x1000).returns({
-        symbol: 'main',
-        offset: 0
+        symbol: "main",
+        offset: 0,
       });
 
       // Test: Get stack frames
@@ -85,15 +104,15 @@ describe('StackManager - Comprehensive Tests', () => {
 
       // Verify: Frame has source information
       assert.strictEqual(frames.length, 1);
-      assert.strictEqual(frames[0].name, '0x00001000 = main');
-      assert.strictEqual(frames[0].source?.path, '/src/main.asm');
+      assert.strictEqual(frames[0].name, "0x00001000 = main");
+      assert.strictEqual(frames[0].source?.path, "/src/main.asm");
       assert.strictEqual(frames[0].line, 42);
-      assert.strictEqual(frames[0].instructionPointerReference, '0x00001000');
+      assert.strictEqual(frames[0].instructionPointerReference, "0x00001000");
     });
 
-    it('should create disassembly frames when no debug info available', async () => {
+    it("should create disassembly frames when no debug info available", async () => {
       // Setup: Mock CPU state with no source mapping
-      const mockCpuInfo = createMockCpuInfo({ pc: '0x1000', a7: '0x8000' });
+      const mockCpuInfo = createMockCpuInfo({ pc: "0x1000", a7: "0x8000" });
       mockVAmiga.getCpuInfo.resolves(mockCpuInfo);
       mockVAmiga.readMemory.resolves(Buffer.alloc(128));
 
@@ -105,27 +124,31 @@ describe('StackManager - Comprehensive Tests', () => {
 
       // Verify: Frame is disassembly-only
       assert.strictEqual(frames.length, 1);
-      assert.strictEqual(frames[0].name, '0x00001000');
+      assert.strictEqual(frames[0].name, "0x00001000");
       assert.strictEqual(frames[0].source, undefined);
       assert.strictEqual(frames[0].line, 0); // StackFrame constructor defaults to 0
-      assert.strictEqual(frames[0].instructionPointerReference, '0x00001000');
+      assert.strictEqual(frames[0].instructionPointerReference, "0x00001000");
     });
 
-    it('should stop at ROM calls after finding user code', async () => {
+    it("should stop at ROM calls after finding user code", async () => {
       // Setup: Mock stack analysis that finds ROM address after user code
-      const mockCpuInfo = createMockCpuInfo({ pc: '0x1000', a7: '0x8000' });
+      const mockCpuInfo = createMockCpuInfo({ pc: "0x1000", a7: "0x8000" });
       mockVAmiga.getCpuInfo.resolves(mockCpuInfo);
 
       // Mock guessStack to return user code then ROM
-      sinon.stub(stackManager, 'guessStack').resolves([
+      sinon.stub(stackManager, "guessStack").resolves([
         [0x1000, 0x1000], // User code PC
         [0x2000, 0x2000], // User code
-        [0xe80000, 0xe80000] // ROM code - should stop here
+        [0xe80000, 0xe80000], // ROM code - should stop here
       ]);
 
       // Mock source lookup - first two have source, third is ROM
-      mockSourceMap.lookupAddress.withArgs(0x1000).returns({ path: '/src/main.asm', line: 10 });
-      mockSourceMap.lookupAddress.withArgs(0x2000).returns({ path: '/src/sub.c', line: 20 });
+      mockSourceMap.lookupAddress
+        .withArgs(0x1000)
+        .returns({ path: "/src/main.asm", line: 10 });
+      mockSourceMap.lookupAddress
+        .withArgs(0x2000)
+        .returns({ path: "/src/sub.c", line: 20 });
       mockSourceMap.lookupAddress.withArgs(0xe80000).returns(null);
 
       // Test: Get all stack frames
@@ -133,17 +156,17 @@ describe('StackManager - Comprehensive Tests', () => {
 
       // Verify: Stops after user code, doesn't include ROM frame
       assert.strictEqual(frames.length, 2);
-      assert.strictEqual(frames[1].instructionPointerReference, '0x00002000');
+      assert.strictEqual(frames[1].instructionPointerReference, "0x00002000");
     });
 
-    it('should handle pagination with startFrame and maxLevels', async () => {
+    it("should handle pagination with startFrame and maxLevels", async () => {
       // Setup: Mock multiple stack frames
-      sinon.stub(stackManager, 'guessStack').resolves([
+      sinon.stub(stackManager, "guessStack").resolves([
         [0x1000, 0x1000], // Frame 0
         [0x2000, 0x2000], // Frame 1
         [0x3000, 0x3000], // Frame 2
         [0x4000, 0x4000], // Frame 3
-        [0x5000, 0x5000]  // Frame 4
+        [0x5000, 0x5000], // Frame 4
       ]);
 
       mockSourceMap.lookupAddress.returns(null); // All disassembly frames
@@ -153,15 +176,15 @@ describe('StackManager - Comprehensive Tests', () => {
 
       // Verify: Returns correct slice of frames
       assert.strictEqual(frames.length, 2);
-      assert.strictEqual(frames[0].instructionPointerReference, '0x00002000');
-      assert.strictEqual(frames[1].instructionPointerReference, '0x00003000');
+      assert.strictEqual(frames[0].instructionPointerReference, "0x00002000");
+      assert.strictEqual(frames[1].instructionPointerReference, "0x00003000");
     });
   });
 
-  describe('Stack Analysis Algorithm', () => {
-    it('should include current PC as first frame', async () => {
+  describe("Stack Analysis Algorithm", () => {
+    it("should include current PC as first frame", async () => {
       // Setup: Mock CPU state
-      const mockCpuInfo = createMockCpuInfo({ pc: '0x1000', a7: '0x8000' });
+      const mockCpuInfo = createMockCpuInfo({ pc: "0x1000", a7: "0x8000" });
       mockVAmiga.getCpuInfo.resolves(mockCpuInfo);
       mockVAmiga.readMemory.resolves(Buffer.alloc(128));
       mockVAmiga.isValidAddress.returns(false);
@@ -174,9 +197,9 @@ describe('StackManager - Comprehensive Tests', () => {
       assert.deepStrictEqual(addresses[0], [0x1000, 0x1000]);
     });
 
-    it('should detect JSR return addresses in stack memory', async () => {
+    it("should detect JSR return addresses in stack memory", async () => {
       // Setup: Mock CPU and stack containing return address
-      const mockCpuInfo = createMockCpuInfo({ pc: '0x1000', a7: '0x8000' });
+      const mockCpuInfo = createMockCpuInfo({ pc: "0x1000", a7: "0x8000" });
       mockVAmiga.getCpuInfo.resolves(mockCpuInfo);
 
       // Create stack buffer with return address at offset 0
@@ -201,9 +224,9 @@ describe('StackManager - Comprehensive Tests', () => {
       assert.deepStrictEqual(addresses[1], [0x2000 - 2, 0x2000]); // JSR call site -> return
     });
 
-    it('should detect BSR return addresses in stack memory', async () => {
+    it("should detect BSR return addresses in stack memory", async () => {
       // Setup: Mock CPU and stack containing BSR return
-      const mockCpuInfo = createMockCpuInfo({ pc: '0x1000', a7: '0x8000' });
+      const mockCpuInfo = createMockCpuInfo({ pc: "0x1000", a7: "0x8000" });
       mockVAmiga.getCpuInfo.resolves(mockCpuInfo);
 
       const stackBuffer = Buffer.alloc(128);
@@ -225,21 +248,21 @@ describe('StackManager - Comprehensive Tests', () => {
       assert.deepStrictEqual(addresses[1], [0x2004 - 4, 0x2004]); // BSR call site
     });
 
-    it('should skip invalid addresses and odd addresses', async () => {
+    it("should skip invalid addresses and odd addresses", async () => {
       // Setup: Mock CPU and stack with invalid data
-      const mockCpuInfo = createMockCpuInfo({ pc: '0x1000', a7: '0x8000' });
+      const mockCpuInfo = createMockCpuInfo({ pc: "0x1000", a7: "0x8000" });
       mockVAmiga.getCpuInfo.resolves(mockCpuInfo);
 
       const stackBuffer = Buffer.alloc(128);
-      stackBuffer.writeInt32BE(0x1001, 0);    // Odd address - should skip
-      stackBuffer.writeInt32BE(0x2000, 4);    // Valid even address
-      stackBuffer.writeUInt32BE(0xFFFFFFFF, 8); // Invalid address (use unsigned)
+      stackBuffer.writeInt32BE(0x1001, 0); // Odd address - should skip
+      stackBuffer.writeInt32BE(0x2000, 4); // Valid even address
+      stackBuffer.writeUInt32BE(0xffffffff, 8); // Invalid address (use unsigned)
       mockVAmiga.readMemory.withArgs(0x8000, 128).resolves(stackBuffer);
 
       // Mock address validation
       mockVAmiga.isValidAddress.withArgs(0x1001).returns(false); // Odd
-      mockVAmiga.isValidAddress.withArgs(0x2000).returns(true);   // Valid
-      mockVAmiga.isValidAddress.withArgs(0xFFFFFFFF).returns(false); // Invalid
+      mockVAmiga.isValidAddress.withArgs(0x2000).returns(true); // Valid
+      mockVAmiga.isValidAddress.withArgs(0xffffffff).returns(false); // Invalid
 
       // Mock JSR for valid address
       const instrBuffer = Buffer.alloc(6);
@@ -254,9 +277,9 @@ describe('StackManager - Comprehensive Tests', () => {
       assert.deepStrictEqual(addresses[1], [0x2000 - 2, 0x2000]);
     });
 
-    it('should handle memory read errors gracefully', async () => {
+    it("should handle memory read errors gracefully", async () => {
       // Setup: Mock CPU state
-      const mockCpuInfo = createMockCpuInfo({ pc: '0x1000', a7: '0x8000' });
+      const mockCpuInfo = createMockCpuInfo({ pc: "0x1000", a7: "0x8000" });
       mockVAmiga.getCpuInfo.resolves(mockCpuInfo);
 
       const stackBuffer = Buffer.alloc(128);
@@ -266,7 +289,9 @@ describe('StackManager - Comprehensive Tests', () => {
       mockVAmiga.isValidAddress.withArgs(0x2000).returns(true);
 
       // Mock memory read failure when checking for JSR/BSR
-      mockVAmiga.readMemory.withArgs(0x2000 - 6, 6).rejects(new Error('Invalid memory'));
+      mockVAmiga.readMemory
+        .withArgs(0x2000 - 6, 6)
+        .rejects(new Error("Invalid memory"));
 
       // Test: Analyze stack (should not throw)
       const addresses = await stackManager.guessStack(5);
@@ -276,9 +301,9 @@ describe('StackManager - Comprehensive Tests', () => {
       assert.deepStrictEqual(addresses[0], [0x1000, 0x1000]);
     });
 
-    it('should respect maxLength parameter', async () => {
+    it("should respect maxLength parameter", async () => {
       // Setup: Mock stack with many potential return addresses
-      const mockCpuInfo = createMockCpuInfo({ pc: '0x1000', a7: '0x8000' });
+      const mockCpuInfo = createMockCpuInfo({ pc: "0x1000", a7: "0x8000" });
       mockVAmiga.getCpuInfo.resolves(mockCpuInfo);
 
       const stackBuffer = Buffer.alloc(128);
@@ -307,20 +332,20 @@ describe('StackManager - Comprehensive Tests', () => {
     });
   });
 
-  describe('Integration with Source Maps', () => {
-    it('should use source map for frame naming when available', async () => {
+  describe("Integration with Source Maps", () => {
+    it("should use source map for frame naming when available", async () => {
       // Setup: Mock with source mapping
-      sinon.stub(stackManager, 'guessStack').resolves([[0x1000, 0x1000]]);
+      sinon.stub(stackManager, "guessStack").resolves([[0x1000, 0x1000]]);
 
       mockSourceMap.lookupAddress.withArgs(0x1000).returns({
-        path: '/project/src/main.asm',
-        line: 25
+        path: "/project/src/main.asm",
+        line: 25,
       });
 
       // Mock symbol offset lookup for formatAddress
       mockSourceMap.findSymbolOffset.withArgs(0x1000).returns({
-        symbol: 'main',
-        offset: 0
+        symbol: "main",
+        offset: 0,
       });
 
       // Test: Get frames
@@ -328,15 +353,15 @@ describe('StackManager - Comprehensive Tests', () => {
 
       // Verify: Uses source map for naming and location
       assert.strictEqual(frames.length, 1);
-      assert.strictEqual(frames[0].name, '0x00001000 = main');
-      assert.strictEqual(frames[0].source?.name, 'main.asm');
-      assert.strictEqual(frames[0].source?.path, '/project/src/main.asm');
+      assert.strictEqual(frames[0].name, "0x00001000 = main");
+      assert.strictEqual(frames[0].source?.name, "main.asm");
+      assert.strictEqual(frames[0].source?.path, "/project/src/main.asm");
       assert.strictEqual(frames[0].line, 25);
     });
 
-    it('should fall back to disassembly frames when source map has no info', async () => {
+    it("should fall back to disassembly frames when source map has no info", async () => {
       // Setup: SourceMap exists but returns no location for address
-      sinon.stub(stackManager, 'guessStack').resolves([[0x1000, 0x1000]]);
+      sinon.stub(stackManager, "guessStack").resolves([[0x1000, 0x1000]]);
 
       // Mock source map returns null (no debug info for this address)
       mockSourceMap.lookupAddress.withArgs(0x1000).returns(null);
@@ -346,10 +371,10 @@ describe('StackManager - Comprehensive Tests', () => {
 
       // Verify: Falls back to disassembly frame
       assert.strictEqual(frames.length, 1);
-      assert.strictEqual(frames[0].name, '0x00001000');
+      assert.strictEqual(frames[0].name, "0x00001000");
       assert.strictEqual(frames[0].source, undefined);
       assert.strictEqual(frames[0].line, 0); // StackFrame constructor defaults to 0
-      assert.strictEqual(frames[0].instructionPointerReference, '0x00001000');
+      assert.strictEqual(frames[0].instructionPointerReference, "0x00001000");
     });
   });
 });

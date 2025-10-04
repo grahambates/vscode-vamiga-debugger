@@ -251,7 +251,7 @@ export class BreakpointManager {
       return {
         dataId,
         description: `Break on access to ${name}`,
-        accessTypes: [ "readWrite" ],
+        accessTypes: ["readWrite"],
         canPersist: false,
       };
     }

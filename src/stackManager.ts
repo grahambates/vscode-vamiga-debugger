@@ -36,7 +36,10 @@ export class StackManager {
    * @param maxLevels Maximum number of frames to return
    * @returns Array of stack frames with source or disassembly information
    */
-  public async getStackFrames(startFrame: number, maxLevels: number): Promise<StackFrame[]> {
+  public async getStackFrames(
+    startFrame: number,
+    maxLevels: number,
+  ): Promise<StackFrame[]> {
     const endFrame = startFrame + maxLevels;
     const addresses = await this.guessStack(endFrame);
 
@@ -96,10 +99,7 @@ export class StackManager {
     // vAmiga doesn't currently track stack frames, so we'll need to look at the stack data and guess...
     // Fetch data from sp, up to a reasonable length
     const maxSize = 128;
-    const stackData = await this.vAmiga.readMemory(
-      Number(cpuInfo.a7),
-      128,
-    );
+    const stackData = await this.vAmiga.readMemory(Number(cpuInfo.a7), 128);
 
     const pc = Number(cpuInfo.pc);
     const addresses: [number, number][] = [[pc, pc]]; // Start with at least the current frame

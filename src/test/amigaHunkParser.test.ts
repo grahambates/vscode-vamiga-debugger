@@ -20,7 +20,7 @@ describe("AmigaHunkFile", function () {
     const sourceFile = hunk.lineDebugInfo?.[0];
     expect(sourceFile?.lines).toHaveLength(106);
     expect(sourceFile?.sourceFilename).toBe(
-      "c:\\Users\\paulr\\workspace\\amiga\\projects\\vscode-amiga-wks-example\\gencop.s"
+      "c:\\Users\\paulr\\workspace\\amiga\\projects\\vscode-amiga-wks-example\\gencop.s",
     );
   });
 
@@ -28,7 +28,7 @@ describe("AmigaHunkFile", function () {
     const programFilename = Path.join(
       FIXTURES_PATH,
       "amigaPrograms",
-      "tutorial"
+      "tutorial",
     );
     const hunks = await parseHunksFromFile(programFilename);
     expect(hunks).toHaveLength(3);
@@ -65,7 +65,7 @@ describe("AmigaHunkFile", function () {
     const programFilename = Path.join(
       FIXTURES_PATH,
       "amigaPrograms",
-      "hello-vbcc"
+      "hello-vbcc",
     );
     const hunks = await parseHunksFromFile(programFilename);
     expect(hunks).toHaveLength(7);

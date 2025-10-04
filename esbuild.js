@@ -63,7 +63,7 @@ async function main() {
   // Build webview
   const webviewCtx = await esbuild.context({
     entryPoints: [
-      'src/webview/memoryViewer/main.ts'
+      'src/webview/memoryViewer/main.tsx'
     ],
     bundle: true,
     format: 'iife',
@@ -73,6 +73,8 @@ async function main() {
     platform: 'browser',
     outdir: 'out/webview',
     logLevel: 'silent',
+    jsx: 'automatic',
+    jsxDev: !production,
     plugins: [
       esbuildProblemMatcherPlugin,
     ],

@@ -212,7 +212,9 @@ function createHunk(
 
       // Skip all other block types
       default:
-        logger.error('Skipping unsupported hunk type: ' + blockType.toString(16))
+        logger.error(
+          "Skipping unsupported hunk type: " + blockType.toString(16),
+        );
         reader.skip(reader.readLong() * 4);
         break;
     }
@@ -319,7 +321,9 @@ class BufferReader {
 
   public readLong() {
     if (this.pos + 4 > this.buffer.length) {
-      throw new Error(`Buffer overrun: trying to read 4 bytes at position ${this.pos}, buffer length is ${this.buffer.length}`);
+      throw new Error(
+        `Buffer overrun: trying to read 4 bytes at position ${this.pos}, buffer length is ${this.buffer.length}`,
+      );
     }
     const value = this.buffer.readUInt32BE(this.pos);
     this.pos += 4;
@@ -328,14 +332,18 @@ class BufferReader {
 
   public readByte() {
     if (this.pos >= this.buffer.length) {
-      throw new Error(`Buffer overrun: trying to read 1 byte at position ${this.pos}, buffer length is ${this.buffer.length}`);
+      throw new Error(
+        `Buffer overrun: trying to read 1 byte at position ${this.pos}, buffer length is ${this.buffer.length}`,
+      );
     }
     return this.buffer.readUInt8(this.pos++);
   }
 
   public readBytes(length: number): Buffer {
     if (this.pos + length > this.buffer.length) {
-      throw new Error(`Buffer overrun: trying to read ${length} bytes at position ${this.pos}, buffer length is ${this.buffer.length}`);
+      throw new Error(
+        `Buffer overrun: trying to read ${length} bytes at position ${this.pos}, buffer length is ${this.buffer.length}`,
+      );
     }
     const slice = this.buffer.slice(this.pos, this.pos + length);
     this.pos += length;

@@ -1,7 +1,7 @@
-import * as vscode from 'vscode';
-import { VamigaDebugAdapter } from './vAmigaDebugAdapter';
-import { VAmiga } from './vAmiga';
-import { MemoryViewerProvider } from './memoryViewerProvider';
+import * as vscode from "vscode";
+import { VamigaDebugAdapter } from "./vAmigaDebugAdapter";
+import { VAmiga } from "./vAmiga";
+import { MemoryViewerProvider } from "./memoryViewerProvider";
 
 /**
  * Activates the VAmiga debugger VS Code extension.
@@ -13,12 +13,17 @@ import { MemoryViewerProvider } from './memoryViewerProvider';
  * @param context VS Code extension context for managing resources
  */
 export function activate(context: vscode.ExtensionContext) {
-  const vAmiga = new VAmiga(context.extensionUri);
-  const memoryViewer = new MemoryViewerProvider(context.extensionUri, vAmiga);
+  console.log("VAmiga extension activating...");
+  try {
+    console.log("Creating VAmiga instance...");
+    const vAmiga = new VAmiga(context.extensionUri);
+    console.log("Creating MemoryViewerProvider...");
+    const memoryViewer = new MemoryViewerProvider(context.extensionUri, vAmiga);
+    console.log("Registering commands...");
 
   // Register the debug adapter
   context.subscriptions.push(
-    vscode.debug.registerDebugAdapterDescriptorFactory('vamiga', {
+    vscode.debug.registerDebugAdapterDescriptorFactory("vamiga", {
       createDebugAdapterDescriptor(
         _session: vscode.DebugSession,
       ): vscode.ProviderResult<vscode.DebugAdapterDescriptor> {
@@ -31,58 +36,67 @@ export function activate(context: vscode.ExtensionContext) {
 
   // Register EOF command
   context.subscriptions.push(
-    vscode.commands.registerCommand('vamiga-debugger.eof', () => {
+    vscode.commands.registerCommand("vamiga-debugger.eof", () => {
       vAmiga.eof();
-    })
+    }),
   );
 
   // Register EOL command
   context.subscriptions.push(
-    vscode.commands.registerCommand('vamiga-debugger.eol', () => {
+    vscode.commands.registerCommand("vamiga-debugger.eol", () => {
       vAmiga.eol();
-    })
+    }),
   );
 
   // Register memory viewer command
   context.subscriptions.push(
-    vscode.commands.registerCommand('vamiga-debugger.openMemoryViewer', async (address?: string) => {
-      let memoryAddress = 0;
+    vscode.commands.registerCommand(
+      "vamiga-debugger.openMemoryViewer",
+      async (address?: string) => {
+        let memoryAddress = 0;
 
-      if (address) {
-        // Parse address from parameter
-        memoryAddress = parseInt(address, 16);
-      } else {
-        // Prompt user for address
-        const input = await vscode.window.showInputBox({
-          prompt: 'Enter memory address (hexadecimal)',
-          placeHolder: '000000',
-          validateInput: (value) => {
-            const parsed = parseInt(value, 16);
-            if (isNaN(parsed)) {
-              return 'Please enter a valid hexadecimal address';
-            }
-            if (parsed < 0 || parsed > 0xFFFFFF) {
-              return 'Address must be between 000000 and FFFFFF';
-            }
-            return null;
+        if (address) {
+          // Parse address from parameter
+          memoryAddress = parseInt(address, 16);
+        } else {
+          // Prompt user for address
+          const input = await vscode.window.showInputBox({
+            prompt: "Enter memory address (hexadecimal)",
+            placeHolder: "000000",
+            validateInput: (value) => {
+              const parsed = parseInt(value, 16);
+              if (isNaN(parsed)) {
+                return "Please enter a valid hexadecimal address";
+              }
+              if (parsed < 0 || parsed > 0xffffff) {
+                return "Address must be between 000000 and FFFFFF";
+              }
+              return null;
+            },
+          });
+
+          if (!input) {
+            return; // User cancelled
           }
-        });
 
-        if (!input) {
-          return; // User cancelled
+          memoryAddress = parseInt(input, 16);
         }
 
-        memoryAddress = parseInt(input, 16);
-      }
-
-      await memoryViewer.show(memoryAddress);
-    })
+        await memoryViewer.show(memoryAddress);
+      },
+    ),
   );
 
-  // Clean up memory viewer on deactivation
-  context.subscriptions.push({
-    dispose: () => memoryViewer.dispose()
-  });
+    // Clean up memory viewer on deactivation
+    context.subscriptions.push({
+      dispose: () => memoryViewer.dispose(),
+    });
+  } catch (error) {
+    vscode.window.showErrorMessage(
+      `Failed to activate VAmiga debugger: ${error instanceof Error ? error.message : String(error)}`,
+    );
+    throw error;
+  }
 }
 
 /**

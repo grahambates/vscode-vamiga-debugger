@@ -301,7 +301,10 @@ export const parserBuiltInFunctions: UsageDocs = {
 };
 
 export const consoleCommands: UsageDocs = {
-  help: [`${ansi.func("help")} [syntax|functions]`, "Show REPL usage guide, or further documentation for category"],
+  help: [
+    `${ansi.func("help")} [syntax|functions]`,
+    "Show REPL usage guide, or further documentation for category",
+  ],
 };
 
 export const allFunctions: UsageDocs = {
@@ -355,7 +358,7 @@ ${funcDocs(memoryAccessFunctions)}
   ${ansi.subsection("Type Conversion:")}
 ${funcDocs(typeFunctions)}
   ${ansi.subsection("Misc:")}
-${funcDocs(parserBuiltInFunctions)}`
+${funcDocs(parserBuiltInFunctions)}`;
 
 const col1W = 28;
 const col2W = 16;
@@ -378,4 +381,4 @@ ${padEnd(`${ansi.operator("or")}`, col1W)} ${padEnd("Left", col2W)} Logical OR
 ${padEnd(`${ansi.operator("x ? y : z")}`, col1W)} ${padEnd("Right", col2W)} Ternary conditional (if x then y else z)
 ${padEnd(`${ansi.operator("=")}`, col1W)} ${padEnd("Right", col2W)} Variable assignment
 ${padEnd(`${ansi.operator(";")}`, col1W)} ${padEnd("Left", col2W)} Expression separator
-`
+`;

@@ -6,7 +6,9 @@
             "type": "extensionHost",
             "request": "launch",
             "args": [
-                "--extensionDevelopmentPath=${workspaceFolder}"
+                "--extensionDevelopmentPath=${workspaceFolder}",
+                "--verbose",
+                "--log=trace"
             ],
             "outFiles": [
                 "${workspaceFolder}/out/**/*.js"

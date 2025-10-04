@@ -10,11 +10,11 @@ import { MemoryType } from "./amigaHunkParser";
 
 /**
  * Creates a source map from DWARF debug information.
- * 
+ *
  * Processes DWARF debug data to create a mapping between memory addresses
  * and source file locations. Handles line number tables, compilation units,
  * and symbol information from DWARF debugging format.
- * 
+ *
  * @param dwarfData Parsed DWARF debug information
  * @param offsets Memory offset addresses for loaded sections
  * @param baseDir Base directory for resolving relative source paths
@@ -23,7 +23,7 @@ import { MemoryType } from "./amigaHunkParser";
 export function sourceMapFromDwarf(
   dwarfData: DWARFData,
   offsets: number[],
-  baseDir: string
+  baseDir: string,
 ): SourceMap {
   const sources = new Set<string>();
   const symbols: Record<string, number> = {};
@@ -170,7 +170,7 @@ export function sourceMapFromDwarf(
 function executeLineNumberInstruction(
   instruction: LineNumberInstruction,
   state: LineNumberState,
-  program: LineNumberProgram
+  program: LineNumberProgram,
 ): void {
   switch (instruction.type) {
     case "extended":

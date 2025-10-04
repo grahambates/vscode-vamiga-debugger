@@ -377,7 +377,7 @@ export class VAmiga {
       try {
         listener(message);
       } catch (error) {
-        console.error('Error in message listener:', error);
+        console.error("Error in message listener:", error);
       }
     }
   }
@@ -652,10 +652,7 @@ export class VAmiga {
    * @param count Number of bytes to read
    * @returns Promise resolving to memory data (Buffer)
    */
-  public async readMemory(
-    address: number,
-    count: number,
-  ): Promise<Buffer> {
+  public async readMemory(address: number, count: number): Promise<Buffer> {
     const res = await this.sendRpcCommand("readMemory", { address, count });
     return Buffer.from(res.data);
   }
@@ -665,11 +662,11 @@ export class VAmiga {
    * @param address Starting memory address
    * @param data Data buffer to write
    */
-  public async writeMemory(
-    address: number,
-    data: Buffer,
-  ): Promise<void> {
-    return this.sendRpcCommand("writeMemory", { address, data: new Uint8Array(data) });
+  public async writeMemory(address: number, data: Buffer): Promise<void> {
+    return this.sendRpcCommand("writeMemory", {
+      address,
+      data: new Uint8Array(data),
+    });
   }
 
   /**
@@ -902,8 +899,12 @@ export class VAmiga {
       gpu: options.useGpu,
       agnus_revision: options.agnusRevision,
       denise_revision: options.deniseRevision,
-      cpu_revision: options.cpuRevision ? cpuRevision[options.cpuRevision] : undefined,
-      cpu_overclocking: options.cpuSpeed ? cpuSpeed[options.cpuSpeed] : undefined,
+      cpu_revision: options.cpuRevision
+        ? cpuRevision[options.cpuRevision]
+        : undefined,
+      cpu_overclocking: options.cpuSpeed
+        ? cpuSpeed[options.cpuSpeed]
+        : undefined,
       chip_ram: options.chipRam ? chipRam[options.chipRam] : undefined,
       slow_ram: options.slowRam ? slowRam[options.slowRam] : undefined,
       fast_ram: options.fastRam ? fastRam[options.fastRam] : undefined,

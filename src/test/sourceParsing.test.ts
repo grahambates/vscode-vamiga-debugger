@@ -1,11 +1,9 @@
-import {
-  parseLine,
-} from "../sourceParsing";
+import { parseLine } from "../sourceParsing";
 describe("parse", () => {
   describe("#parseLine()", () => {
     it("parses a complete instruction line", () => {
       const line = parseLine(
-        "label:    move.w     #1,10(a0,d1,w)    ; comment here"
+        "label:    move.w     #1,10(a0,d1,w)    ; comment here",
       );
       expect(line).toEqual({
         label: { start: 0, end: 5, value: "label" },
@@ -135,7 +133,7 @@ describe("parse", () => {
 
     it("parses operands with space after comma", () => {
       const line = parseLine(
-        "label:    move.w     #1, 10(a0,d1,w)    ; comment here"
+        "label:    move.w     #1, 10(a0,d1,w)    ; comment here",
       );
       expect(line).toEqual({
         label: { start: 0, end: 5, value: "label" },
@@ -305,7 +303,7 @@ describe("parse", () => {
 
     it("parses a complex statement with parens", () => {
       const line = parseLine(
-        " dc.w	ddfstop,(DIW_XSTRT-17+(DIW_W>>4-1)<<4)>>1&$fc-SCROLL*8"
+        " dc.w	ddfstop,(DIW_XSTRT-17+(DIW_W>>4-1)<<4)>>1&$fc-SCROLL*8",
       );
       expect(line).toEqual({
         mnemonic: {

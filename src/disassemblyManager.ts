@@ -74,7 +74,9 @@ export class DisassemblyManager {
     const result = await this.vAmiga.disassemble(startAddress, requestCount);
 
     if (!result.instructions) {
-      throw new Error("Disassembly failed: No instructions returned from disassembler");
+      throw new Error(
+        "Disassembly failed: No instructions returned from disassembler",
+      );
     }
 
     // find the instruction containing the base address. We'll slice relative to this to get the requested range
@@ -134,7 +136,10 @@ export class DisassemblyManager {
   }
 
   public async disassembleCopper(address: number, instructionCount: number) {
-    const result = await this.vAmiga.disassembleCopper(address, instructionCount);
+    const result = await this.vAmiga.disassembleCopper(
+      address,
+      instructionCount,
+    );
     return result.instructions.map((instr: any) => {
       const disasm: DebugProtocol.DisassembledInstruction = {
         address: "0x" + instr.addr,

@@ -304,25 +304,30 @@
     "compile": "npm run check-types && node esbuild.js",
     "watch": "npm run check-types && node esbuild.js --watch",
     "package": "npm run check-types && node esbuild.js --production",
-    "check-types": "tsc --noEmit",
+    "check-types": "tsc --noEmit && tsc --noEmit -p src/webview/tsconfig.json",
     "pretest": "npm run compile && npm run lint",
-    "lint": "eslint src --ext ts",
+    "lint": "eslint src --ext ts,tsx",
     "test": "npm run test:unit",
     "test:unit": "jest",
     "test:coverage": "jest --coverage",
-    "format": "prettier --write src/**/*.ts",
-    "format:check": "prettier --check src/**/*.ts"
+    "format": "prettier --write \"src/**/*.{ts,tsx}\"",
+    "format:check": "prettier --check \"src/**/*.{ts,tsx}\""
   },
   "dependencies": {
     "@vscode/debugadapter": "^1.68.0",
-    "expr-eval": "^2.0.2"
+    "expr-eval": "^2.0.2",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.36.0",
     "@types/jest": "^30.0.0",
     "@types/node": "^24.5.2",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
     "@types/sinon": "^17.0.4",
     "@types/vscode": "^1.104.0",
+    "@types/vscode-webview": "^1.57.5",
     "@typescript-eslint/eslint-plugin": "^8.43.0",
     "@typescript-eslint/parser": "^8.43.0",
     "@vscode-elements/elements": "^2.3.1",

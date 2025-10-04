@@ -71,7 +71,7 @@ export interface CustomAddress {
 /**
  * Address and length for custom register writes
  */
-export const customAddresses: Record<string,CustomAddress> = {
+export const customAddresses: Record<string, CustomAddress> = {
   BLTDDAT: { address: 0xdff000, long: false }, // Blitter dest. early read (dummy address)
   // DMACONR: { address: 0xdff002, long: false }, // Dma control (and blitter status) read
   JOY0DAT: { address: 0xdff00a, long: false }, // Joystick-mouse 0 data (vert, horiz)

@@ -180,11 +180,11 @@ export const DW_FORM = {
 
 /**
  * Parses DWARF debug information from an ELF file buffer.
- * 
+ *
  * Extracts debugging information including source file mappings, line number
  * data, and compilation unit information from DWARF-formatted debug sections
  * within an ELF binary.
- * 
+ *
  * @param elfBuffer Buffer containing ELF file data with DWARF debug info
  * @returns Parsed DWARF data structure containing debug information
  * @throws Error if the buffer is not a valid ELF file or lacks DWARF data
@@ -330,7 +330,7 @@ export function parseDwarf(elfBuffer: Buffer): DWARFData {
   const stringTable = new Uint8Array(
     elfBuffer.buffer,
     strTabHeader.offset,
-    strTabHeader.size
+    strTabHeader.size,
   );
 
   for (let i = 0; i < shnum; i++) {
@@ -421,7 +421,7 @@ export function parseDwarf(elfBuffer: Buffer): DWARFData {
   function parseAttributeValue(
     offset: number,
     form: number,
-    addressSize: number
+    addressSize: number,
   ): { value: any; size: number } {
     switch (form) {
       case DW_FORM.addr:
@@ -472,7 +472,7 @@ export function parseDwarf(elfBuffer: Buffer): DWARFData {
           value: new Uint8Array(
             elfBuffer.buffer,
             offset + length.size,
-            length.value
+            length.value,
           ),
           size: length.size + length.value,
         };
@@ -486,7 +486,7 @@ export function parseDwarf(elfBuffer: Buffer): DWARFData {
   function parseDIE(
     offset: number,
     abbrevTable: AbbreviationEntry[],
-    addressSize: number
+    addressSize: number,
   ): DebugInfoEntry | null {
     const abbrevCode = readULEB128(offset);
     if (abbrevCode.value === 0) return null;
@@ -495,7 +495,7 @@ export function parseDwarf(elfBuffer: Buffer): DWARFData {
 
     // Find the abbreviation entry for this code
     const abbrevEntry = abbrevTable.find(
-      (entry) => entry.code === abbrevCode.value
+      (entry) => entry.code === abbrevCode.value,
     );
     if (!abbrevEntry) {
       // Unknown abbreviation code, create minimal DIE
@@ -515,7 +515,7 @@ export function parseDwarf(elfBuffer: Buffer): DWARFData {
       const attrValue = parseAttributeValue(
         currentOffset,
         attrSpec.form,
-        addressSize
+        addressSize,
       );
 
       attributes.push({
@@ -551,7 +551,9 @@ export function parseDwarf(elfBuffer: Buffer): DWARFData {
 
     const addressSize = elfBuffer[offset];
     if (addressSize === undefined) {
-      throw new Error("DWARF parsing error: Invalid address size in compilation unit");
+      throw new Error(
+        "DWARF parsing error: Invalid address size in compilation unit",
+      );
     }
     offset += 1;
 
@@ -571,7 +573,7 @@ export function parseDwarf(elfBuffer: Buffer): DWARFData {
       const abbrevSection = sections.get(".debug_abbrev");
       if (abbrevSection) {
         abbrevTable = parseAbbreviationTable(
-          abbrevSection.offset + abbrevOffset
+          abbrevSection.offset + abbrevOffset,
         );
         abbreviationTables.set(abbrevOffset, abbrevTable);
       } else {
@@ -592,11 +594,13 @@ export function parseDwarf(elfBuffer: Buffer): DWARFData {
 
   function parseLineNumberInstruction(
     offset: number,
-    program: LineNumberProgram
+    program: LineNumberProgram,
   ): LineNumberInstruction {
     const opcode = elfBuffer[offset];
     if (opcode === undefined) {
-      throw new Error("DWARF parsing error: Invalid opcode in line number instruction");
+      throw new Error(
+        "DWARF parsing error: Invalid opcode in line number instruction",
+      );
     }
 
     let size = 1;
@@ -806,7 +810,7 @@ export function parseDwarf(elfBuffer: Buffer): DWARFData {
     const strtabData = new Uint8Array(
       elfBuffer.buffer,
       strtabSection.offset,
-      strtabSection.size
+      strtabSection.size,
     );
 
     // Symbol table entry size (16 bytes for 32-bit, 24 bytes for 64-bit)
@@ -909,7 +913,7 @@ export function parseDwarf(elfBuffer: Buffer): DWARFData {
       debugStrings = new Uint8Array(
         elfBuffer.buffer,
         section.offset,
-        section.size
+        section.size,
       );
     }
   }

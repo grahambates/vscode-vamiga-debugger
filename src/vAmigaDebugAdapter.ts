@@ -569,7 +569,9 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
     }
   }
 
-  protected async reverseContinueRequest(response: DebugProtocol.ReverseContinueResponse): Promise<void> {
+  protected async reverseContinueRequest(
+    response: DebugProtocol.ReverseContinueResponse,
+  ): Promise<void> {
     try {
       await this.vAmiga.continueReverse();
       this.sendEvent(new StoppedEvent("step", VamigaDebugAdapter.THREAD_ID));
@@ -768,7 +770,7 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
         const result = await this.vAmiga.readMemory(address, count);
         response.body = {
           address: formatHex(address),
-          data: result.toString('base64'),
+          data: result.toString("base64"),
           unreadableBytes: 0,
         };
       }

@@ -13,5 +13,8 @@
     "isolatedModules": true
   },
   "include": ["src/**/*"],
-  "exclude": ["node_modules", "out", "src/webview"]
+  "exclude": ["node_modules", "out", "src/webview"],
+  "references": [
+    { "path": "./src/webview" }
+  ]
 }
