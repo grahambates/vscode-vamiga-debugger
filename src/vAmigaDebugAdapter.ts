@@ -154,6 +154,7 @@ export enum ErrorCode {
  */
 export class VamigaDebugAdapter extends LoggingDebugSession {
   private static THREAD_ID = 1;
+  private static activeAdapter?: VamigaDebugAdapter;
 
   private trace = false;
   private fastLoad = false;
@@ -176,6 +177,14 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
   private sourceMap?: SourceMap;
 
   private disposables: (vscode.Disposable | undefined)[] = [];
+
+  /**
+   * Gets the currently active debug adapter instance.
+   * Returns undefined if no debug session is active.
+   */
+  public static getActiveAdapter(): VamigaDebugAdapter | undefined {
+    return VamigaDebugAdapter.activeAdapter;
+  }
 
   /**
    * Creates a new VamigaDebugAdapter instance.
@@ -204,6 +213,10 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
    * Disposes of all resources used by the debug adapter.
    */
   public dispose(): void {
+    // Clear active adapter if this was the active one
+    if (VamigaDebugAdapter.activeAdapter === this) {
+      VamigaDebugAdapter.activeAdapter = undefined;
+    }
     this.vAmiga.run(); // unpause emulator if we're leaving it open
     this.breakpointManager?.clearAll();
     this.disposables.forEach((d) => d?.dispose());
@@ -239,6 +252,9 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
     response: DebugProtocol.LaunchResponse,
     args: LaunchRequestArguments,
   ) {
+    // Register this as the active adapter
+    VamigaDebugAdapter.activeAdapter = this;
+
     // Validate the program path
     this.programPath = args.program;
     if (!this.programPath) {
@@ -1191,38 +1207,45 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
     });
   }
 
-  private getStackManager(): StackManager {
+  public getStackManager(): StackManager {
     if (!this.stackManager) {
       throw new Error("Not initialized");
     }
     return this.stackManager;
   }
 
-  private getBreakpointManager(): BreakpointManager {
+  public getBreakpointManager(): BreakpointManager {
     if (!this.breakpointManager) {
       throw new Error("Not initialized");
     }
     return this.breakpointManager;
   }
 
-  private getVariablesManager(): VariablesManager {
+  public getVariablesManager(): VariablesManager {
     if (!this.variablesManager) {
       throw new Error("Not initialized");
     }
     return this.variablesManager;
   }
 
-  private getDisassemblyManager(): DisassemblyManager {
+  public getDisassemblyManager(): DisassemblyManager {
     if (!this.disassemblyManager) {
       throw new Error("Not initialized");
     }
     return this.disassemblyManager;
   }
 
-  private getEvaluateManager(): EvaluateManager {
+  public getEvaluateManager(): EvaluateManager {
     if (!this.evaluateManager) {
       throw new Error("Not initialized");
     }
     return this.evaluateManager;
+  }
+
+  public getSourceMap(): SourceMap {
+    if (!this.sourceMap) {
+      throw new Error("Not initialized");
+    }
+    return this.sourceMap;
   }
 }

@@ -9,7 +9,8 @@ const vscode = acquireVsCodeApi();
 // Message types
 interface UpdateContentMessage {
   command: "updateContent";
-  address: number;
+  addressInput: string;
+  currentAddress: number;
   memoryData?: Uint8Array;
   liveUpdate: boolean;
 }
@@ -77,7 +78,8 @@ export function App() {
 
       if (message.command === "updateContent") {
         const updateMsg = message as UpdateContentMessage;
-        setCurrentAddress(updateMsg.address);
+        setAddressInput(updateMsg.addressInput);
+        setCurrentAddress(updateMsg.currentAddress);
         setMemoryData(updateMsg.memoryData);
         setLiveUpdate(updateMsg.liveUpdate);
       }
@@ -86,11 +88,6 @@ export function App() {
     window.addEventListener("message", handleMessage);
     return () => window.removeEventListener("message", handleMessage);
   }, []);
-
-  // Update address input when currentAddress changes
-  useEffect(() => {
-    setAddressInput(currentAddress.toString(16).toUpperCase().padStart(6, "0"));
-  }, [currentAddress]);
 
   const handleAddressChange: React.InputEventHandler<VscodeTextfield> = (e) => {
     setAddressInput((e.target as HTMLInputElement).value || "");
