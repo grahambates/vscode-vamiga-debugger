@@ -9,7 +9,6 @@ export class MemoryViewerProvider {
 
   private panel?: vscode.WebviewPanel;
   private currentAddress: number = 0;
-  private viewMode: "hex" | "visual" | "disassembly" | "copper" = "hex";
   private liveUpdate: boolean = false;
   private liveUpdateInterval?: NodeJS.Timeout;
   private emulatorMessageListener?: vscode.Disposable;
@@ -65,7 +64,7 @@ export class MemoryViewerProvider {
         command: "updateAddress",
         address: this.currentAddress,
       });
-      await this.updateContent(false);
+      await this.updateContent();
     } else {
       await this.createPanel();
     }
@@ -91,6 +90,7 @@ export class MemoryViewerProvider {
         retainContextWhenHidden: true,
       },
     );
+    this.panel.webview.html = this.getHtmlContent();
 
     this.panel.onDidDispose(() => {
       this.panel = undefined;
@@ -103,18 +103,13 @@ export class MemoryViewerProvider {
           this.panel?.webview.postMessage({
             command: "init",
             address: this.currentAddress,
-            viewMode: this.viewMode,
             liveUpdate: this.liveUpdate,
           });
-          await this.updateContent(false);
+          await this.updateContent();
           break;
         case "changeAddress":
           this.currentAddress = message.address;
-          await this.updateContent(false);
-          break;
-        case "changeViewMode":
-          this.viewMode = message.mode;
-          await this.updateContent(false);
+          await this.updateContent();
           break;
         case "toggleLiveUpdate":
           this.liveUpdate = message.enabled;
@@ -126,98 +121,27 @@ export class MemoryViewerProvider {
           break;
       }
     });
-
-    await this.updateContent(true); // Initial load needs full HTML
   }
 
-  private async updateContent(fullRefresh: boolean = false): Promise<void> {
-    if (!this.panel) {
-      return;
-    }
-
-    let content = "";
-    let error: string | undefined;
-
+  private async updateContent(): Promise<void> {
     try {
-      switch (this.viewMode) {
-        case "hex":
-          content = await this.generateHexDump();
-          break;
-        case "visual":
-        case "disassembly":
-        case "copper":
-          content = `View mode '${this.viewMode}' not yet implemented.`;
-          break;
-      }
-    } catch (e) {
-      error = e instanceof Error ? e.message : String(e);
-    }
+      const bytesPerLine = 16;
+      const numLines = 32;
+      const totalBytes = bytesPerLine * numLines;
 
-    if (fullRefresh) {
-      // Full HTML refresh (for initial load or view mode changes)
-      this.panel.webview.html = this.getHtmlContent();
-    } else {
-      // Just update the content area via message
-      this.panel.webview.postMessage({
+      const buffer = await this.vAmiga.readMemory(
+        this.currentAddress,
+        totalBytes,
+      );
+      const memoryData = Array.from(buffer);
+
+      this.panel?.webview.postMessage({
         command: "updateContent",
-        content: content,
-        error: error,
+        memoryData,
       });
+    } catch (e) {
+      console.error(e);
     }
-  }
-
-  /**
-   * Generates a hex dump of memory at the current address
-   * @returns Formatted hex dump string
-   */
-  private async generateHexDump(): Promise<string> {
-    const bytesPerLine = 16;
-    const numLines = 32;
-    const totalBytes = bytesPerLine * numLines;
-
-    const buffer = await this.vAmiga.readMemory(
-      this.currentAddress,
-      totalBytes,
-    );
-
-    const lines: string[] = [];
-
-    for (let i = 0; i < numLines; i++) {
-      const lineAddress = this.currentAddress + i * bytesPerLine;
-      const offset = i * bytesPerLine;
-
-      const addrStr = lineAddress.toString(16).toUpperCase().padStart(6, "0");
-
-      const hexBytes: string[] = [];
-      const asciiChars: string[] = [];
-
-      for (let j = 0; j < bytesPerLine; j++) {
-        const byteIndex = offset + j;
-        if (byteIndex < buffer.length) {
-          const byte = buffer[byteIndex];
-          hexBytes.push(byte.toString(16).toUpperCase().padStart(2, "0"));
-
-          if (byte >= 32 && byte <= 126) {
-            asciiChars.push(String.fromCharCode(byte));
-          } else {
-            asciiChars.push(".");
-          }
-        } else {
-          hexBytes.push("  ");
-          asciiChars.push(" ");
-        }
-      }
-
-      const hex1 = hexBytes.slice(0, 4).join(" ");
-      const hex2 = hexBytes.slice(4, 8).join(" ");
-      const hex3 = hexBytes.slice(8, 12).join(" ");
-      const hex4 = hexBytes.slice(12, 16).join(" ");
-      const ascii = asciiChars.join("");
-
-      lines.push(`${addrStr}  ${hex1}  ${hex2}  ${hex3}  ${hex4}  |${ascii}|`);
-    }
-
-    return lines.join("\n");
   }
 
   /**

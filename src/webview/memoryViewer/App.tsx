@@ -7,14 +7,12 @@ const vscode = acquireVsCodeApi();
 // Message types
 interface UpdateContentMessage {
   command: "updateContent";
-  content: string;
-  error?: string;
+  memoryData?: number[];
 }
 
 interface InitMessage {
   command: "init";
   address: number;
-  viewMode: ViewMode;
   liveUpdate: boolean;
 }
 
@@ -25,12 +23,52 @@ interface UpdateAddressMessage {
 
 type ViewMode = "hex" | "visual" | "disassembly" | "copper";
 
+// Formatting functions
+function formatHexDump(memoryData: number[], startAddress: number): string {
+  const bytesPerLine = 16;
+  const lines: string[] = [];
+
+  for (let i = 0; i < memoryData.length; i += bytesPerLine) {
+    const lineAddress = startAddress + i;
+    const addrStr = lineAddress.toString(16).toUpperCase().padStart(6, "0");
+
+    const hexBytes: string[] = [];
+    const asciiChars: string[] = [];
+
+    for (let j = 0; j < bytesPerLine; j++) {
+      const byteIndex = i + j;
+      if (byteIndex < memoryData.length) {
+        const byte = memoryData[byteIndex];
+        hexBytes.push(byte.toString(16).toUpperCase().padStart(2, "0"));
+
+        if (byte >= 32 && byte <= 126) {
+          asciiChars.push(String.fromCharCode(byte));
+        } else {
+          asciiChars.push(".");
+        }
+      } else {
+        hexBytes.push("  ");
+        asciiChars.push(" ");
+      }
+    }
+
+    const hex1 = hexBytes.slice(0, 4).join(" ");
+    const hex2 = hexBytes.slice(4, 8).join(" ");
+    const hex3 = hexBytes.slice(8, 12).join(" ");
+    const hex4 = hexBytes.slice(12, 16).join(" ");
+    const ascii = asciiChars.join("");
+
+    lines.push(`${addrStr}  ${hex1}  ${hex2}  ${hex3}  ${hex4}  |${ascii}|`);
+  }
+
+  return lines.join("\n");
+}
+
 export function App() {
   const [currentAddress, setCurrentAddress] = useState<number>(0);
   const [viewMode, setViewMode] = useState<ViewMode>("hex");
   const [liveUpdate, setLiveUpdate] = useState<boolean>(false);
-  const [content, setContent] = useState<string>("");
-  const [error, setError] = useState<string | undefined>(undefined);
+  const [memoryData, setMemoryData] = useState<number[] | undefined>(undefined);
   const [addressInput, setAddressInput] = useState<string>("000000");
 
   // Send ready message on mount
@@ -42,24 +80,18 @@ export function App() {
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
       const message = event.data;
+      console.log('Memory view recieved message', message);
 
       if (message.command === "init") {
         const initMsg = message as InitMessage;
         setCurrentAddress(initMsg.address);
-        setViewMode(initMsg.viewMode);
         setLiveUpdate(initMsg.liveUpdate);
       } else if (message.command === "updateAddress") {
         const addressMsg = message as UpdateAddressMessage;
         setCurrentAddress(addressMsg.address);
       } else if (message.command === "updateContent") {
         const updateMsg = message as UpdateContentMessage;
-        if (updateMsg.error) {
-          setError(updateMsg.error);
-          setContent("");
-        } else {
-          setError(undefined);
-          setContent(updateMsg.content || "");
-        }
+        setMemoryData(updateMsg.memoryData);
       }
     };
 
@@ -93,20 +125,12 @@ export function App() {
     }
   };
 
-  const changeViewMode = (mode: ViewMode) => {
-    setViewMode(mode);
-    vscode.postMessage({
-      command: "changeViewMode",
-      mode: mode,
-    });
-  };
-
   const toggleLiveUpdate: React.FormEventHandler<VscodeCheckbox> = (e) => {
-    const checked = (e.target as HTMLInputElement).checked || false;
-    setLiveUpdate(checked);
+    const enabled = (e.target as HTMLInputElement).checked || false;
+    setLiveUpdate(enabled);
     vscode.postMessage({
       command: "toggleLiveUpdate",
-      enabled: checked,
+      enabled,
     });
   };
 
@@ -119,7 +143,7 @@ export function App() {
             id="address"
             value={addressInput}
             placeholder="000000"
-            onChange={handleAddressChange}
+            onInput={handleAddressChange}
             onKeyPress={handleKeyPress}
           />
           <vscode-button onClick={goToAddress}>Go</vscode-button>
@@ -128,25 +152,25 @@ export function App() {
         <div className="view-mode-selector">
           <vscode-button
             className={viewMode === "hex" ? "active" : ""}
-            onClick={() => changeViewMode("hex")}
+            onClick={() => setViewMode("hex")}
           >
             Hex Dump
           </vscode-button>
           <vscode-button
             className={viewMode === "visual" ? "active" : ""}
-            onClick={() => changeViewMode("visual")}
+            onClick={() => setViewMode("visual")}
           >
             Visual
           </vscode-button>
           <vscode-button
             className={viewMode === "disassembly" ? "active" : ""}
-            onClick={() => changeViewMode("disassembly")}
+            onClick={() => setViewMode("disassembly")}
           >
             Disassembly
           </vscode-button>
           <vscode-button
             className={viewMode === "copper" ? "active" : ""}
-            onClick={() => changeViewMode("copper")}
+            onClick={() => setViewMode("copper")}
           >
             Copper
           </vscode-button>
@@ -160,10 +184,12 @@ export function App() {
       </div>
 
       <div className="content">
-        {error ? (
-          <div className="error">Error: {error}</div>
-        ) : content ? (
-          content
+        {memoryData ? (
+          viewMode === "hex" ? (
+            formatHexDump(memoryData, currentAddress)
+          ) : (
+            `View mode '${viewMode}' not yet implemented.`
+          )
         ) : (
           <div className="placeholder">Loading...</div>
         )}
