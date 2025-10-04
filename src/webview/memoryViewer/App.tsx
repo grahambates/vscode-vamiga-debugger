@@ -4,27 +4,20 @@ import { VscodeCheckbox, VscodeTextfield } from "@vscode-elements/elements";
 
 const vscode = acquireVsCodeApi();
 
+// TODO: just need one update message?
+
 // Message types
 interface UpdateContentMessage {
   command: "updateContent";
-  memoryData?: number[];
-}
-
-interface InitMessage {
-  command: "init";
   address: number;
+  memoryData?: Uint8Array;
   liveUpdate: boolean;
-}
-
-interface UpdateAddressMessage {
-  command: "updateAddress";
-  address: number;
 }
 
 type ViewMode = "hex" | "visual" | "disassembly" | "copper";
 
 // Formatting functions
-function formatHexDump(memoryData: number[], startAddress: number): string {
+function formatHexDump(memoryData: Uint8Array, startAddress: number): string {
   const bytesPerLine = 16;
   const lines: string[] = [];
 
@@ -68,7 +61,7 @@ export function App() {
   const [currentAddress, setCurrentAddress] = useState<number>(0);
   const [viewMode, setViewMode] = useState<ViewMode>("hex");
   const [liveUpdate, setLiveUpdate] = useState<boolean>(false);
-  const [memoryData, setMemoryData] = useState<number[] | undefined>(undefined);
+  const [memoryData, setMemoryData] = useState<Uint8Array | undefined>(undefined);
   const [addressInput, setAddressInput] = useState<string>("000000");
 
   // Send ready message on mount
@@ -82,16 +75,11 @@ export function App() {
       const message = event.data;
       console.log('Memory view recieved message', message);
 
-      if (message.command === "init") {
-        const initMsg = message as InitMessage;
-        setCurrentAddress(initMsg.address);
-        setLiveUpdate(initMsg.liveUpdate);
-      } else if (message.command === "updateAddress") {
-        const addressMsg = message as UpdateAddressMessage;
-        setCurrentAddress(addressMsg.address);
-      } else if (message.command === "updateContent") {
+      if (message.command === "updateContent") {
         const updateMsg = message as UpdateContentMessage;
+        setCurrentAddress(updateMsg.address);
         setMemoryData(updateMsg.memoryData);
+        setLiveUpdate(updateMsg.liveUpdate);
       }
     };
 
@@ -109,17 +97,13 @@ export function App() {
   };
 
   const goToAddress = () => {
-    const address = parseInt(addressInput, 16);
-    if (!isNaN(address)) {
-      setCurrentAddress(address);
-      vscode.postMessage({
-        command: "changeAddress",
-        address: address,
-      });
-    }
+    vscode.postMessage({
+      command: "changeAddress",
+      addressInput,
+    });
   };
 
-  const handleKeyPress: React.KeyboardEventHandler<HTMLElement> = (e) => {
+  const handleKeyPress: React.KeyboardEventHandler<VscodeTextfield> = (e) => {
     if (e.key === "Enter") {
       goToAddress();
     }

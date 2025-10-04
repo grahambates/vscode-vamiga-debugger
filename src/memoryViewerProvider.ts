@@ -59,11 +59,6 @@ export class MemoryViewerProvider {
 
     if (this.panel) {
       this.panel.reveal(vscode.ViewColumn.Two);
-      // Send address update to React
-      this.panel.webview.postMessage({
-        command: "updateAddress",
-        address: this.currentAddress,
-      });
       await this.updateContent();
     } else {
       await this.createPanel();
@@ -100,16 +95,17 @@ export class MemoryViewerProvider {
       switch (message.command) {
         case "ready":
           // Send initial state when webview is ready
-          this.panel?.webview.postMessage({
-            command: "init",
-            address: this.currentAddress,
-            liveUpdate: this.liveUpdate,
-          });
           await this.updateContent();
           break;
         case "changeAddress":
-          this.currentAddress = message.address;
-          await this.updateContent();
+          {
+            // TODO: parsing, error handling
+            const address = parseInt(message.addressInput, 16);
+            if (!isNaN(address)) {
+              this.currentAddress = address;
+              await this.updateContent();
+            }
+          }
           break;
         case "toggleLiveUpdate":
           this.liveUpdate = message.enabled;
@@ -129,15 +125,17 @@ export class MemoryViewerProvider {
       const numLines = 32;
       const totalBytes = bytesPerLine * numLines;
 
-      const buffer = await this.vAmiga.readMemory(
+      const result = await this.vAmiga.readMemory(
         this.currentAddress,
         totalBytes,
       );
-      const memoryData = Array.from(buffer);
+      const memoryData = new Uint8Array(result);
 
       this.panel?.webview.postMessage({
         command: "updateContent",
         memoryData,
+        address: this.currentAddress,
+        liveUpdate: this.liveUpdate
       });
     } catch (e) {
       console.error(e);
