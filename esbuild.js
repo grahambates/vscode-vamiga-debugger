@@ -1,3 +1,6 @@
+// NOTE: If you modify this build script, you need to restart the watch task
+// (stop it in the Terminal panel and restart debugging)
+
 const esbuild = require('esbuild');
 
 const production = process.argv.includes('--production');

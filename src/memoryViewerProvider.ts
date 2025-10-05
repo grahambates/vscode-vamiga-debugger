@@ -211,13 +211,7 @@ export class MemoryViewerProvider {
       vscode.Uri.joinPath(this.extensionUri, "out", "webview", "main.js"),
     );
     const styleUri = webview.asWebviewUri(
-      vscode.Uri.joinPath(
-        this.extensionUri,
-        "src",
-        "webview",
-        "memoryViewer",
-        "styles.css",
-      ),
+      vscode.Uri.joinPath(this.extensionUri, "out", "webview", "main.css"),
     );
     const cspSource = webview.cspSource;
 

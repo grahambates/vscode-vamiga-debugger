@@ -3,7 +3,7 @@
 **/*.json
 **/*.ts
 **/*.tsx
-src/test
+src
 coverage
 node_modules
 esbuild.js
