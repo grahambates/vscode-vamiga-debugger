@@ -298,7 +298,7 @@ export class VariablesManager {
   public async symbolVariables(): Promise<DebugProtocol.Variable[]> {
     const symbolLengths = this.sourceMap.getSymbolLengths();
     const symbols = this.sourceMap.getSymbols();
-    return await Promise.all(
+    const variables = await Promise.all(
       Object.keys(symbols).map(async (name) => {
         let value = formatHex(symbols[name]);
         const length = symbolLengths?.[name] ?? 0;
@@ -340,6 +340,10 @@ export class VariablesManager {
         return variable;
       }),
     );
+  // Sort by name
+  // TODO: could make this a setting
+    variables.sort((a, b) => (a.name < b.name ? -1 : 1));
+    return variables;
   }
 
   public symbolPointerVariables(id: string): DebugProtocol.Variable[] {
