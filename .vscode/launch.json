@@ -13,7 +13,7 @@
             "outFiles": [
                 "${workspaceFolder}/out/**/*.js"
             ],
-            "preLaunchTask": "compile"
+            "preLaunchTask": "watch"
         },
         // Example configuration for debugging Amiga programs
         // Copy this to your workspace launch.json to use the vAmiga debugger

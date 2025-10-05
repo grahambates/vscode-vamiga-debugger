@@ -24,8 +24,15 @@
                 "panel": "dedicated",
                 "reveal": "never"
             },
-            "problemMatcher": ["$tsc", "$esbuild"],
-            "isBackground": true
+            "isBackground": true,
+            "problemMatcher": {
+                "base": "$tsc-watch",
+                "background": {
+                    "activeOnStart": true,
+                    "beginsPattern": "^\\[watch\\] build started",
+                    "endsPattern": "^\\[watch\\] build finished"
+                }
+            }
         }
     ]
 }

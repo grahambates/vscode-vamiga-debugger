@@ -68,8 +68,8 @@ async function main() {
     bundle: true,
     format: 'iife',
     minify: production,
-    sourcemap: !production,
-    sourcesContent: false,
+    sourcemap: production ? false : 'inline', // Inline sourcemap for webview debugging
+    sourcesContent: !production, // Embed sources in sourcemap for webview debugging
     platform: 'browser',
     outdir: 'out/webview',
     logLevel: 'silent',
