@@ -59,6 +59,13 @@
           "command": "vamiga-debugger.viewVariableInMemory",
           "when": "debugType == 'vamiga'"
         }
+      ],
+      "editor/context": [
+        {
+          "command": "vamiga-debugger.openMemoryViewer",
+          "when": "debugType == 'vamiga' && editorLangId == m68k",
+          "group": "debug@1"
+        }
       ]
     },
     "configuration": {

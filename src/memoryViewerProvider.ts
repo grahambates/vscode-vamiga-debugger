@@ -10,7 +10,7 @@ export class MemoryViewerProvider {
   public static readonly viewType = "vamiga-debugger.memoryViewer";
 
   private panel?: vscode.WebviewPanel;
-  private addressInput: string = '';
+  private addressInput: string = "";
   private currentAddress: number = 0;
   private liveUpdate: boolean = false;
   private liveUpdateInterval?: NodeJS.Timeout;
@@ -55,18 +55,12 @@ export class MemoryViewerProvider {
    * @param addressInput Memory address input
    */
   public async show(addressInput: string): Promise<void> {
-    try {
-      await this.changeAddress(addressInput);
-      if (this.panel) {
-        this.panel.reveal(vscode.ViewColumn.Two);
-        await this.updateContent();
-      } else {
-        await this.createPanel();
-      }
-    } catch (error) {
-      vscode.window.showErrorMessage(
-        `Failed to open at address: ${error instanceof Error ? error.message : String(error)}`,
-      );
+    await this.changeAddress(addressInput);
+    if (this.panel) {
+      this.panel.reveal(vscode.ViewColumn.Two);
+      await this.updateContent();
+    } else {
+      await this.createPanel();
     }
   }
 
@@ -131,7 +125,8 @@ export class MemoryViewerProvider {
       throw new Error("Debugger is not running");
     }
     const evaluateManager = adapter.getEvaluateManager();
-    const { value, memoryReference } = await evaluateManager.evaluate(addressInput);
+    const { value, memoryReference } =
+      await evaluateManager.evaluate(addressInput);
     const address = memoryReference ? Number(memoryReference) : value;
     if (typeof address !== "number") {
       throw new Error("Does not evaluate to a numeric value");

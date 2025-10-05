@@ -47,19 +47,55 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
     vscode.commands.registerCommand(
       "vamiga-debugger.openMemoryViewer",
-      async (address?: string) => {
-        if (!address) {
-          // Prompt user for address
-          address = await vscode.window.showInputBox({
-            prompt: "Enter memory address or expression",
-            placeHolder: "0x00000000",
-          });
-
-          if (!address) {
-            return; // User cancelled
+      async (uri?: vscode.Uri, address?: string) => {
+        // If called from editor context menu, uri will be set
+        // Try to get the word under cursor or selection
+        if (uri && !address) {
+          const editor = vscode.window.activeTextEditor;
+          if (editor) {
+            const selection = editor.selection;
+            if (!selection.isEmpty) {
+              // Use selected text
+              address = editor.document.getText(selection);
+            } else {
+              // Get word under cursor
+              const range = editor.document.getWordRangeAtPosition(
+                selection.active,
+              );
+              if (range) {
+                address = editor.document.getText(range);
+              }
+            }
           }
         }
-        await memoryViewer.show(address);
+
+        if (address) {
+          try {
+            await memoryViewer.show(address);
+            return;
+          } catch (_) {
+            // ignore and prompt for user input
+          }
+        }
+
+        // Prompt user for address
+        address = await vscode.window.showInputBox({
+          prompt: "Enter memory address or expression",
+          placeHolder: "0x00000000",
+        });
+
+        if (!address) {
+          return; // User cancelled
+        }
+
+        try {
+          await memoryViewer.show(address);
+          return;
+        } catch (error) {
+          vscode.window.showErrorMessage(
+            `Failed to open at address: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
       },
     ),
   );
@@ -69,13 +105,13 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand(
       "vamiga-debugger.viewVariableInMemory",
       async (item) => {
-        if (item?.container?.name === 'Symbols') {
+        if (item?.container?.name === "Symbols") {
           await memoryViewer.show(item.variable.name);
         } else if (item?.variable?.memoryReference) {
           await memoryViewer.show(item.variable.memoryReference);
         } else {
           vscode.window.showInformationMessage(
-            "This variable does not have a memory reference"
+            "This variable does not have a memory reference",
           );
         }
       },
