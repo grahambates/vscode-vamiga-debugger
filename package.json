@@ -35,6 +35,10 @@
         "command": "vamiga-debugger.openMemoryViewer",
         "title": "VAmiga: Open Memory Viewer",
         "icon": "$(symbol-array)"
+      },
+      {
+        "command": "vamiga-debugger.viewVariableInMemory",
+        "title": "View in Memory Viewer"
       }
     ],
     "menus": {
@@ -48,6 +52,12 @@
           "command": "vamiga-debugger.eol",
           "when": "debugType == 'vamiga'",
           "group": "navigation@52"
+        }
+      ],
+      "debug/variables/context": [
+        {
+          "command": "vamiga-debugger.viewVariableInMemory",
+          "when": "debugType == 'vamiga'"
         }
       ]
     },

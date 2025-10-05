@@ -64,6 +64,24 @@ export function activate(context: vscode.ExtensionContext) {
     ),
   );
 
+  // Register view variable in memory command
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      "vamiga-debugger.viewVariableInMemory",
+      async (item) => {
+        if (item?.container?.name === 'Symbols') {
+          await memoryViewer.show(item.variable.name);
+        } else if (item?.variable?.memoryReference) {
+          await memoryViewer.show(item.variable.memoryReference);
+        } else {
+          vscode.window.showInformationMessage(
+            "This variable does not have a memory reference"
+          );
+        }
+      },
+    ),
+  );
+
   // Clean up memory viewer on deactivation
   context.subscriptions.push({
     dispose: () => memoryViewer.dispose(),

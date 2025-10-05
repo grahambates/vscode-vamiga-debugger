@@ -131,14 +131,15 @@ export class MemoryViewerProvider {
       throw new Error("Debugger is not running");
     }
     const evaluateManager = adapter.getEvaluateManager();
-    const { value } = await evaluateManager.evaluate(addressInput);
-    if (typeof value !== "number") {
+    const { value, memoryReference } = await evaluateManager.evaluate(addressInput);
+    const address = memoryReference ? Number(memoryReference) : value;
+    if (typeof address !== "number") {
       throw new Error("Does not evaluate to a numeric value");
     }
-    if (!this.vAmiga.isValidAddress(value)) {
-      throw new Error(`Not a valid address: ${formatHex(value)}`);
+    if (!this.vAmiga.isValidAddress(address)) {
+      throw new Error(`Not a valid address: ${formatHex(address)}`);
     }
-    this.currentAddress = value;
+    this.currentAddress = address;
   }
 
   private async updateContent(): Promise<void> {
