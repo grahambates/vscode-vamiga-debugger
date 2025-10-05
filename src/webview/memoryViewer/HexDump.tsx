@@ -42,6 +42,12 @@ export function HexDump({ memoryData, currentAddress }: HexDumpProps) {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
+    // Get colors from CSS variables / theme
+    const styles = getComputedStyle(document.documentElement);
+    const foregroundColor = styles.getPropertyValue('--vscode-editor-foreground').trim() || '#d4d4d4';
+    const commentColor = styles.getPropertyValue('--vscode-editorLineNumber-foreground').trim() || '#858585';
+    const backgroundColor = styles.getPropertyValue('--vscode-editor-background').trim() || '#1e1e1e';
+
     const dpr = window.devicePixelRatio || 1;
     const rect = canvas.getBoundingClientRect();
 
@@ -69,6 +75,10 @@ export function HexDump({ memoryData, currentAddress }: HexDumpProps) {
     ctx.font = '14px monospace';
     ctx.textBaseline = 'top';
 
+    // Clear background
+    ctx.fillStyle = backgroundColor;
+    ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+
     const byteInfos: ByteInfo[] = [];
 
     for (let i = visibleRange.start; i < visibleRange.end; i++) {
@@ -79,7 +89,7 @@ export function HexDump({ memoryData, currentAddress }: HexDumpProps) {
       const lineAddress = currentAddress + lineOffset;
 
       // Draw address
-      ctx.fillStyle = '#858585';
+      ctx.fillStyle = commentColor;
       const addrStr = lineAddress.toString(16).toUpperCase().padStart(6, "0");
       ctx.fillText(addrStr, ADDRESS_OFFSET, y + 2);
 
@@ -125,12 +135,12 @@ export function HexDump({ memoryData, currentAddress }: HexDumpProps) {
           if (isChanged) {
             // Fade opacity based on time since change
             const elapsed = Date.now() - changeTime!;
-            const opacity = 0.4 * (1 - elapsed / 1000);
+            const opacity = 0.5 * (1 - elapsed / 1000);
             ctx.fillStyle = `rgba(255, 200, 0, ${opacity})`;
             ctx.fillRect(hexX, y, hex.length * CHAR_WIDTH, LINE_HEIGHT);
           }
 
-          ctx.fillStyle = '#d4d4d4';
+          ctx.fillStyle = foregroundColor;
           ctx.fillText(hex, hexX, y + 2);
 
           byteInfos.push({
@@ -154,7 +164,7 @@ export function HexDump({ memoryData, currentAddress }: HexDumpProps) {
 
       // Draw ASCII - calculate offset based on actual hex width
       const asciiOffset = hexX + CHAR_WIDTH * 2;
-      ctx.fillStyle = '#858585';
+      ctx.fillStyle = commentColor;
       ctx.fillText('|', asciiOffset, y + 2);
 
       let asciiX = asciiOffset + CHAR_WIDTH * 1.5;
@@ -162,7 +172,7 @@ export function HexDump({ memoryData, currentAddress }: HexDumpProps) {
         const byte = memoryData[lineOffset + j];
         const char = byte >= 32 && byte <= 126 ? String.fromCharCode(byte) : ".";
 
-        ctx.fillStyle = '#d4d4d4';
+        ctx.fillStyle = commentColor;
         ctx.fillText(char, asciiX, y + 2);
 
         byteInfos.push({
@@ -178,7 +188,7 @@ export function HexDump({ memoryData, currentAddress }: HexDumpProps) {
         asciiX += CHAR_WIDTH;
       }
 
-      ctx.fillStyle = '#858585';
+      ctx.fillStyle = commentColor;
       ctx.fillText('|', asciiX, y + 2);
     }
 
