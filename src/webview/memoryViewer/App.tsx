@@ -32,21 +32,41 @@ export function App() {
 
   // Listen for messages from extension
   useEffect(() => {
+    let pendingUpdate: UpdateContentMessage | null = null;
+    let rafScheduled = false;
+
+    const applyPendingUpdate = () => {
+      if (pendingUpdate) {
+        setAddressInput(pendingUpdate.addressInput);
+        setCurrentAddress(pendingUpdate.currentAddress);
+        setMemoryData(pendingUpdate.memoryData);
+        setLiveUpdate(pendingUpdate.liveUpdate);
+        pendingUpdate = null;
+      }
+      rafScheduled = false;
+    };
+
+    const scheduleUpdate = () => {
+      if (!rafScheduled) {
+        rafScheduled = true;
+        requestAnimationFrame(applyPendingUpdate);
+      }
+    };
+
     const handleMessage = (event: MessageEvent) => {
       const message = event.data;
-      console.log('Memory view recieved message', message);
 
       if (message.command === "updateContent") {
-        const updateMsg = message as UpdateContentMessage;
-        setAddressInput(updateMsg.addressInput);
-        setCurrentAddress(updateMsg.currentAddress);
-        setMemoryData(updateMsg.memoryData);
-        setLiveUpdate(updateMsg.liveUpdate);
+        // Store latest update and schedule render on next frame
+        pendingUpdate = message as UpdateContentMessage;
+        scheduleUpdate();
       }
     };
 
     window.addEventListener("message", handleMessage);
-    return () => window.removeEventListener("message", handleMessage);
+    return () => {
+      window.removeEventListener("message", handleMessage);
+    };
   }, []);
 
   const handleAddressChange: React.InputEventHandler<VscodeTextfield> = (e) => {

@@ -38,8 +38,8 @@ export class MemoryViewerProvider {
 
           // Update all panels
           for (const state of this.panels.values()) {
-            // Refresh on pause
-            if (message.state === "paused") {
+            // Refresh on pause or stopped (e.g., stepping, breakpoint)
+            if (message.state === "paused" || message.state === "stopped") {
               this.updateContent(state);
             }
             // Handle live update mode
@@ -180,12 +180,16 @@ export class MemoryViewerProvider {
 
   private async updateContent(state: MemoryViewerState): Promise<void> {
     try {
+      const startTime = Date.now();
       const result = await this.vAmiga.readMemory(
         state.currentAddress,
         state.byteLength,
       );
+      const readTime = Date.now() - startTime;
+
       const memoryData = new Uint8Array(result);
 
+      const postStart = Date.now();
       state.panel.webview.postMessage({
         command: "updateContent",
         memoryData,
@@ -193,6 +197,11 @@ export class MemoryViewerProvider {
         currentAddress: state.currentAddress,
         liveUpdate: state.liveUpdate,
       });
+      const postTime = Date.now() - postStart;
+
+      if (state.liveUpdate) {
+        console.log(`Memory update: read=${readTime}ms, post=${postTime}ms, total=${Date.now() - startTime}ms`);
+      }
     } catch (error) {
       vscode.window.showErrorMessage(
         `Error reading memory at ${state.currentAddress}: ${error instanceof Error ? error.message : String(error)}`,
@@ -201,19 +210,19 @@ export class MemoryViewerProvider {
   }
 
   /**
-   * Starts live updates at ~60fps when emulator is running
+   * Starts live updates at ~4fps when emulator is running
    */
   private startLiveUpdate(state: MemoryViewerState): void {
     if (state.liveUpdateInterval) {
       return; // Already running
     }
 
-    // Update at ~60fps (every ~16ms)
+    // Update at ~4fps (every 250ms) to work around browser postMessage batching
     state.liveUpdateInterval = setInterval(() => {
       if (state.liveUpdate && this.isEmulatorRunning) {
         this.updateContent(state);
       }
-    }, 16);
+    }, 1000/60);
   }
 
   /**

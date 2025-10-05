@@ -79,3 +79,84 @@ body {
   color: var(--vscode-descriptionForeground);
   font-style: italic;
 }
+
+/* HexDump styles */
+.hexDump {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.hex-controls {
+  margin-bottom: 10px;
+  padding: 8px;
+  border-bottom: 1px solid var(--vscode-panel-border);
+}
+
+.hex-controls label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--vscode-font-size);
+}
+
+.hex-controls select {
+  background-color: var(--vscode-dropdown-background);
+  color: var(--vscode-dropdown-foreground);
+  border: 1px solid var(--vscode-dropdown-border);
+  padding: 4px 8px;
+  font-family: var(--vscode-font-family);
+  font-size: var(--vscode-font-size);
+  cursor: pointer;
+}
+
+.hex-scroll-container {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: auto;
+  background-color: var(--vscode-editor-background);
+}
+
+.hex-content-wrapper {
+  position: relative;
+}
+
+.hex-line {
+  font-family: var(--vscode-editor-font-family);
+  font-size: var(--vscode-editor-font-size);
+  line-height: 20px;
+  height: 20px;
+  white-space: nowrap;
+  padding: 0 10px;
+  user-select: text;
+}
+
+.hex-address {
+  color: var(--vscode-descriptionForeground);
+}
+
+.hex-value {
+  cursor: default;
+}
+
+.hex-value.empty,
+.ascii-char.empty {
+  opacity: 0.3;
+}
+
+.ascii-delimiter {
+  color: var(--vscode-descriptionForeground);
+}
+
+.hex-tooltip {
+  background-color: var(--vscode-editorHoverWidget-background);
+  color: var(--vscode-editorHoverWidget-foreground);
+  border: 1px solid var(--vscode-editorHoverWidget-border);
+  padding: 4px 8px;
+  border-radius: 3px;
+  font-family: var(--vscode-editor-font-family);
+  font-size: var(--vscode-editor-font-size);
+  white-space: nowrap;
+  z-index: 1000;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
