@@ -338,7 +338,6 @@ export class VAmiga {
     if (!this.panel) {
       return this.initPanel(optionsWithDefaults);
     } else {
-      this.reveal();
       const callParams = this.optionsToCallParams(optionsWithDefaults);
       this.sendCommand("load", callParams);
     }
@@ -781,7 +780,10 @@ export class VAmiga {
     this.panel = vscode.window.createWebviewPanel(
       VAmiga.viewType,
       "VAmiga",
-      column,
+      {
+        viewColumn: column,
+        preserveFocus: true,
+      },
       {
         enableScripts: true,
         retainContextWhenHidden: true, // Keep webview alive when hidden

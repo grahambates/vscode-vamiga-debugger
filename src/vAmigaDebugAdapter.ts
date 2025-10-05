@@ -379,7 +379,6 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
 
   protected continueRequest(response: DebugProtocol.ContinueResponse): void {
     this.vAmiga.run();
-    this.vAmiga.reveal();
     response.body = { allThreadsContinued: true };
     this.sendResponse(response);
   }
