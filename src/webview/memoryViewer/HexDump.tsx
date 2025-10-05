@@ -24,8 +24,8 @@ export function HexDump({ memoryData, currentAddress }: HexDumpProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [visibleRange, setVisibleRange] = useState({ start: 0, end: 0 });
   const byteInfoMapRef = useRef<ByteInfo[]>([]);
-  const previousDataRef = useRef<Uint8Array>(new Uint8Array());
-  const changedBytesRef = useRef<Set<number>>(new Set());
+  const previousDataRef = useRef<Uint8Array | null>(null);
+  const changedBytesRef = useRef<Map<number, number>>(new Map()); // byte index -> timestamp
 
   const bytesPerLine = 16;
   const totalLines = Math.ceil(memoryData.length / bytesPerLine);
@@ -119,10 +119,14 @@ export function HexDump({ memoryData, currentAddress }: HexDumpProps) {
             "0"
           );
 
-          // Highlight changed bytes
-          const isChanged = changedBytesRef.current.has(byteIndex);
+          // Highlight changed bytes - check if within 1 second of change
+          const changeTime = changedBytesRef.current.get(byteIndex);
+          const isChanged = changeTime && (Date.now() - changeTime) < 1000;
           if (isChanged) {
-            ctx.fillStyle = 'rgba(255, 200, 0, 0.3)';
+            // Fade opacity based on time since change
+            const elapsed = Date.now() - changeTime!;
+            const opacity = 0.4 * (1 - elapsed / 1000);
+            ctx.fillStyle = `rgba(255, 200, 0, ${opacity})`;
             ctx.fillRect(hexX, y, hex.length * CHAR_WIDTH, LINE_HEIGHT);
           }
 
@@ -181,24 +185,59 @@ export function HexDump({ memoryData, currentAddress }: HexDumpProps) {
     byteInfoMapRef.current = byteInfos;
   };
 
-  // Track changed bytes
+  // Track changed bytes with timestamps
   useEffect(() => {
-    const changed = new Set<number>();
+    // Skip change detection on first render
+    if (previousDataRef.current === null) {
+      previousDataRef.current = new Uint8Array(memoryData);
+      return;
+    }
+
+    const now = Date.now();
+    let hasChanges = false;
+    const previousData = previousDataRef.current;
+
     for (let i = 0; i < memoryData.length; i++) {
-      if (previousDataRef.current[i] !== memoryData[i]) {
-        changed.add(i);
+      if (previousData[i] !== memoryData[i]) {
+        changedBytesRef.current.set(i, now);
+        hasChanges = true;
       }
     }
-    changedBytesRef.current = changed;
     previousDataRef.current = new Uint8Array(memoryData);
 
-    // Clear changed markers after animation
-    if (changed.size > 0) {
-      const timer = setTimeout(() => {
-        changedBytesRef.current.clear();
+    // Clean up old change markers (older than 1 second)
+    const cutoff = now - 1000;
+    for (const [index, time] of changedBytesRef.current.entries()) {
+      if (time < cutoff) {
+        changedBytesRef.current.delete(index);
+      }
+    }
+
+    // Set up animation frame loop to fade out highlights
+    if (hasChanges || changedBytesRef.current.size > 0) {
+      let animationId: number;
+      const animate = () => {
+        const currentTime = Date.now();
+        const cutoffTime = currentTime - 1000;
+
+        // Remove expired highlights
+        for (const [index, time] of changedBytesRef.current.entries()) {
+          if (time < cutoffTime) {
+            changedBytesRef.current.delete(index);
+          }
+        }
+
+        // Re-render to update fade
         renderCanvas();
-      }, 1000);
-      return () => clearTimeout(timer);
+
+        // Continue animation if there are still active highlights
+        if (changedBytesRef.current.size > 0) {
+          animationId = requestAnimationFrame(animate);
+        }
+      };
+
+      animationId = requestAnimationFrame(animate);
+      return () => cancelAnimationFrame(animationId);
     }
   }, [memoryData]);
 
