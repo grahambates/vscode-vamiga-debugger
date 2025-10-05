@@ -82,7 +82,7 @@ export class MemoryViewerProvider {
     const panel = vscode.window.createWebviewPanel(
       MemoryViewerProvider.viewType,
       "Memory Viewer",
-      vscode.ViewColumn.Two,
+      vscode.ViewColumn.Active,
       {
         enableScripts: true,
         retainContextWhenHidden: true,
