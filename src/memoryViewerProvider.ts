@@ -4,47 +4,51 @@ import { VamigaDebugAdapter } from "./vAmigaDebugAdapter";
 import { formatHex } from "./numbers";
 import { EvaluateResultType } from "./evaluateManager";
 
+interface MemoryViewerState {
+  panel: vscode.WebviewPanel;
+  addressInput: string;
+  currentAddress: number;
+  byteLength: number;
+  liveUpdate: boolean;
+  liveUpdateInterval?: NodeJS.Timeout;
+}
+
 /**
- * Provides a webview for viewing emulator memory in different formats
+ * Provides a webview for viewing emulator memory in different formats.
+ * Supports multiple instances for viewing different memory regions simultaneously.
  */
 export class MemoryViewerProvider {
   public static readonly viewType = "vamiga-debugger.memoryViewer";
 
-  private panel?: vscode.WebviewPanel;
-  private addressInput = "";
-  private currentAddress = 0;
-  private byteLength = 0;
-  private liveUpdate = false;
-  private liveUpdateInterval?: NodeJS.Timeout;
+  private panels = new Map<string, MemoryViewerState>();
   private emulatorMessageListener?: vscode.Disposable;
   private isEmulatorRunning = false;
+  private panelCounter = 0;
 
   constructor(
     private readonly extensionUri: vscode.Uri,
     private readonly vAmiga: VAmiga,
   ) {
-    // Listen for emulator state changes to auto-refresh
-    // This now works even before the VAmiga panel is opened
+    // Listen for emulator state changes to auto-refresh all panels
     this.emulatorMessageListener = this.vAmiga.onDidReceiveMessage(
       (message) => {
-        if (!this.panel) {
-          return;
-        }
         if (isEmulatorStateMessage(message)) {
           const wasRunning = this.isEmulatorRunning;
           this.isEmulatorRunning = message.state === "running";
-          // Refresh on pause
-          if (message.state === "paused") {
-            this.updateContent();
-          }
-          // Handle live update mode
-          if (this.liveUpdate) {
-            if (this.isEmulatorRunning && !wasRunning) {
-              // Just started running - start live updates
-              this.startLiveUpdate();
-            } else if (!this.isEmulatorRunning && wasRunning) {
-              // Just stopped - stop live updates
-              this.stopLiveUpdate();
+
+          // Update all panels
+          for (const state of this.panels.values()) {
+            // Refresh on pause
+            if (message.state === "paused") {
+              this.updateContent(state);
+            }
+            // Handle live update mode
+            if (state.liveUpdate) {
+              if (this.isEmulatorRunning && !wasRunning) {
+                this.startLiveUpdate(state);
+              } else if (!this.isEmulatorRunning && wasRunning) {
+                this.stopLiveUpdate(state);
+              }
             }
           }
         }
@@ -53,31 +57,29 @@ export class MemoryViewerProvider {
   }
 
   /**
-   * Opens the memory viewer at a specific address
+   * Opens a new memory viewer at a specific address
    * @param addressInput Memory address input
    */
   public async show(addressInput: string): Promise<void> {
-    await this.changeAddress(addressInput);
-    if (this.panel) {
-      this.panel.reveal(vscode.ViewColumn.Two);
-      await this.updateContent();
-    } else {
-      await this.createPanel();
-    }
+    await this.createPanel(addressInput);
   }
 
   /**
-   * Disposes the memory viewer panel
+   * Disposes all memory viewer panels
    */
   public dispose(): void {
-    this.stopLiveUpdate();
+    for (const state of this.panels.values()) {
+      this.stopLiveUpdate(state);
+      state.panel.dispose();
+    }
+    this.panels.clear();
     this.emulatorMessageListener?.dispose();
-    this.panel?.dispose();
-    this.panel = undefined;
   }
 
-  private async createPanel(): Promise<void> {
-    this.panel = vscode.window.createWebviewPanel(
+  private async createPanel(addressInput: string): Promise<void> {
+    const panelId = `memory-viewer-${this.panelCounter++}`;
+
+    const panel = vscode.window.createWebviewPanel(
       MemoryViewerProvider.viewType,
       "Memory Viewer",
       vscode.ViewColumn.Two,
@@ -86,22 +88,34 @@ export class MemoryViewerProvider {
         retainContextWhenHidden: true,
       },
     );
-    this.panel.webview.html = this.getHtmlContent();
 
-    this.panel.onDidDispose(() => {
-      this.panel = undefined;
+    const state: MemoryViewerState = {
+      panel,
+      addressInput: "",
+      currentAddress: 0,
+      byteLength: 0,
+      liveUpdate: false,
+    };
+
+    this.panels.set(panelId, state);
+
+    panel.webview.html = this.getHtmlContent(panel.webview);
+
+    panel.onDidDispose(() => {
+      this.stopLiveUpdate(state);
+      this.panels.delete(panelId);
     });
 
-    this.panel.webview.onDidReceiveMessage(async (message) => {
+    panel.webview.onDidReceiveMessage(async (message) => {
       switch (message.command) {
         case "ready":
           // Send initial state when webview is ready
-          await this.updateContent();
+          await this.updateContent(state);
           break;
         case "changeAddress":
           try {
-            await this.changeAddress(message.addressInput);
-            await this.updateContent();
+            await this.changeAddress(state, message.addressInput);
+            await this.updateContent(state);
           } catch (error) {
             vscode.window.showErrorMessage(
               `Failed to update address: ${error instanceof Error ? error.message : String(error)}`,
@@ -109,19 +123,29 @@ export class MemoryViewerProvider {
           }
           break;
         case "toggleLiveUpdate":
-          this.liveUpdate = message.enabled;
-          if (this.liveUpdate && this.isEmulatorRunning) {
-            this.startLiveUpdate();
+          state.liveUpdate = message.enabled;
+          if (state.liveUpdate && this.isEmulatorRunning) {
+            this.startLiveUpdate(state);
           } else {
-            this.stopLiveUpdate();
+            this.stopLiveUpdate(state);
           }
           break;
       }
     });
+
+    // Set initial address
+    try {
+      await this.changeAddress(state, addressInput);
+      await this.updateContent(state);
+    } catch (error) {
+      vscode.window.showErrorMessage(
+        `Failed to open memory viewer: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
   }
 
-  private async changeAddress(addressInput: string) {
-    this.addressInput = addressInput;
+  private async changeAddress(state: MemoryViewerState, addressInput: string) {
+    state.addressInput = addressInput;
     const adapter = VamigaDebugAdapter.getActiveAdapter();
     if (!adapter) {
       throw new Error("Debugger is not running");
@@ -136,39 +160,42 @@ export class MemoryViewerProvider {
     if (!this.vAmiga.isValidAddress(address)) {
       throw new Error(`Not a valid address: ${formatHex(address)}`);
     }
-    this.currentAddress = address;
+    state.currentAddress = address;
+
+    // Update panel title to show the address/symbol
+    state.panel.title = `Memory: ${addressInput}`;
 
     const bytesPerLine = 16;
     const numLines = 32;
     const defaultBytes = bytesPerLine * numLines;
 
     if (type === EvaluateResultType.SYMBOL) {
-      this.byteLength =
+      state.byteLength =
         adapter.getSourceMap().getSymbolLengths()?.[addressInput] ??
         defaultBytes;
     } else {
-      this.byteLength = defaultBytes;
+      state.byteLength = defaultBytes;
     }
   }
 
-  private async updateContent(): Promise<void> {
+  private async updateContent(state: MemoryViewerState): Promise<void> {
     try {
       const result = await this.vAmiga.readMemory(
-        this.currentAddress,
-        this.byteLength,
+        state.currentAddress,
+        state.byteLength,
       );
       const memoryData = new Uint8Array(result);
 
-      this.panel?.webview.postMessage({
+      state.panel.webview.postMessage({
         command: "updateContent",
         memoryData,
-        addressInput: this.addressInput,
-        currentAddress: this.currentAddress,
-        liveUpdate: this.liveUpdate,
+        addressInput: state.addressInput,
+        currentAddress: state.currentAddress,
+        liveUpdate: state.liveUpdate,
       });
     } catch (error) {
       vscode.window.showErrorMessage(
-        `Error reading memory at ${this.currentAddress}: ${error instanceof Error ? error.message : String(error)}`,
+        `Error reading memory at ${state.currentAddress}: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
   }
@@ -176,15 +203,15 @@ export class MemoryViewerProvider {
   /**
    * Starts live updates at ~60fps when emulator is running
    */
-  private startLiveUpdate(): void {
-    if (this.liveUpdateInterval) {
+  private startLiveUpdate(state: MemoryViewerState): void {
+    if (state.liveUpdateInterval) {
       return; // Already running
     }
 
     // Update at ~60fps (every ~16ms)
-    this.liveUpdateInterval = setInterval(() => {
-      if (this.panel && this.liveUpdate && this.isEmulatorRunning) {
-        this.updateContent();
+    state.liveUpdateInterval = setInterval(() => {
+      if (state.liveUpdate && this.isEmulatorRunning) {
+        this.updateContent(state);
       }
     }, 16);
   }
@@ -192,20 +219,14 @@ export class MemoryViewerProvider {
   /**
    * Stops live updates
    */
-  private stopLiveUpdate(): void {
-    if (this.liveUpdateInterval) {
-      clearInterval(this.liveUpdateInterval);
-      this.liveUpdateInterval = undefined;
+  private stopLiveUpdate(state: MemoryViewerState): void {
+    if (state.liveUpdateInterval) {
+      clearInterval(state.liveUpdateInterval);
+      state.liveUpdateInterval = undefined;
     }
   }
 
-  private getHtmlContent(): string {
-    if (!this.panel) {
-      throw new Error("Panel not initialized");
-    }
-
-    const webview = this.panel.webview;
-
+  private getHtmlContent(webview: vscode.Webview): string {
     // Get URIs for bundled resources
     const scriptUri = webview.asWebviewUri(
       vscode.Uri.joinPath(this.extensionUri, "out", "webview", "main.js"),
