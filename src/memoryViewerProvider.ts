@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import { VAmiga, isEmulatorStateMessage } from "./vAmiga";
 import { VamigaDebugAdapter } from "./vAmigaDebugAdapter";
 import { formatHex } from "./numbers";
+import { EvaluateResultType } from "./evaluateManager";
 
 /**
  * Provides a webview for viewing emulator memory in different formats
@@ -10,12 +11,13 @@ export class MemoryViewerProvider {
   public static readonly viewType = "vamiga-debugger.memoryViewer";
 
   private panel?: vscode.WebviewPanel;
-  private addressInput: string = "";
-  private currentAddress: number = 0;
-  private liveUpdate: boolean = false;
+  private addressInput = "";
+  private currentAddress = 0;
+  private byteLength = 0;
+  private liveUpdate = false;
   private liveUpdateInterval?: NodeJS.Timeout;
   private emulatorMessageListener?: vscode.Disposable;
-  private isEmulatorRunning: boolean = false;
+  private isEmulatorRunning = false;
 
   constructor(
     private readonly extensionUri: vscode.Uri,
@@ -125,7 +127,7 @@ export class MemoryViewerProvider {
       throw new Error("Debugger is not running");
     }
     const evaluateManager = adapter.getEvaluateManager();
-    const { value, memoryReference } =
+    const { value, memoryReference, type } =
       await evaluateManager.evaluate(addressInput);
     const address = memoryReference ? Number(memoryReference) : value;
     if (typeof address !== "number") {
@@ -135,17 +137,25 @@ export class MemoryViewerProvider {
       throw new Error(`Not a valid address: ${formatHex(address)}`);
     }
     this.currentAddress = address;
+
+    const bytesPerLine = 16;
+    const numLines = 32;
+    const defaultBytes = bytesPerLine * numLines;
+
+    if (type === EvaluateResultType.SYMBOL) {
+      this.byteLength =
+        adapter.getSourceMap().getSymbolLengths()?.[addressInput] ??
+        defaultBytes;
+    } else {
+      this.byteLength = defaultBytes;
+    }
   }
 
   private async updateContent(): Promise<void> {
     try {
-      const bytesPerLine = 16;
-      const numLines = 32;
-      const totalBytes = bytesPerLine * numLines;
-
       const result = await this.vAmiga.readMemory(
         this.currentAddress,
-        totalBytes,
+        this.byteLength,
       );
       const memoryData = new Uint8Array(result);
 
