@@ -35,36 +35,29 @@ export class MemoryViewerProvider {
     // Listen for emulator state changes to auto-refresh all panels
     this.emulatorMessageListener = this.vAmiga.onDidReceiveMessage(
       (message) => {
-        if (isEmulatorStateMessage(message)) {
-          const wasRunning = this.isEmulatorRunning;
-          this.isEmulatorRunning = message.state === "running";
+        if (!isEmulatorStateMessage(message)) {
+          return;
+        }
+        const wasRunning = this.isEmulatorRunning;
+        this.isEmulatorRunning = message.state === "running";
 
-          // Update all panels
-          for (const state of this.panels.values()) {
-            // Refresh on pause or stopped (e.g., stepping, breakpoint)
-            if (message.state === "paused" || message.state === "stopped") {
-              this.updateState(state);
-            }
-            // Handle live update mode
-            if (state.liveUpdate) {
-              if (this.isEmulatorRunning && !wasRunning) {
-                this.startLiveUpdate(state);
-              } else if (!this.isEmulatorRunning && wasRunning) {
-                this.stopLiveUpdate(state);
-              }
+        // Update all panels
+        for (const state of this.panels.values()) {
+          // Refresh on pause or stopped (e.g., stepping, breakpoint)
+          if (message.state === "paused" || message.state === "stopped") {
+            this.updateState(state);
+          }
+          // Handle live update mode
+          if (state.liveUpdate) {
+            if (this.isEmulatorRunning && !wasRunning) {
+              this.startLiveUpdate(state);
+            } else if (!this.isEmulatorRunning && wasRunning) {
+              this.stopLiveUpdate(state);
             }
           }
         }
       },
     );
-  }
-
-  /**
-   * Opens a new memory viewer at a specific address
-   * @param addressInput Memory address input
-   */
-  public async show(addressInput: string): Promise<void> {
-    await this.createPanel(addressInput);
   }
 
   /**
@@ -79,7 +72,11 @@ export class MemoryViewerProvider {
     this.emulatorMessageListener?.dispose();
   }
 
-  private async createPanel(addressInput: string): Promise<void> {
+  /**
+   * Opens a new memory viewer at a specific address
+   * @param addressInput Memory address input
+   */
+  public async show(addressInput: string): Promise<void> {
     const panelId = `memory-viewer-${this.panelCounter++}`;
 
     const panel = vscode.window.createWebviewPanel(
@@ -151,9 +148,144 @@ export class MemoryViewerProvider {
     });
   }
 
-  private async updateStateWithOffset(
+  /**
+   * Sends state update to webview
+   */
+  private sendStateToWebview(
+    panel: vscode.WebviewPanel,
+    params: {
+      baseAddress: number;
+      memoryRange: { start: number; end: number };
+      currentRegion: string;
+      currentRegionStart: number | undefined;
+      availableRegions: Array<{ name: string; address: number; size: number }>;
+      liveUpdate: boolean;
+      preserveOffset?: number;
+    },
+  ): void {
+    panel.webview.postMessage({
+      command: "updateState",
+      ...params,
+      error: null,
+    });
+  }
+
+  /**
+   * Sends error message to webview
+   */
+  private sendErrorToWebview(panel: vscode.WebviewPanel, error: unknown): void {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    panel.webview.postMessage({
+      command: "updateState",
+      error: errorMessage,
+    });
+  }
+
+  /**
+   * Calculates memory range and region information for a given base address
+   * @returns Memory range, region name, and region start address
+   */
+  private calculateMemoryRange(
+    baseAddress: number,
+    adapter: VamigaDebugAdapter,
+  ): {
+    memoryRange: { start: number; end: number };
+    currentRegion: string;
+    currentRegionStart: number | undefined;
+  } {
+    // Prefer segment bounds, fall back to memory regions
+    const segment = adapter.getSourceMap().findSegmentForAddress(baseAddress);
+    if (segment) {
+      return {
+        memoryRange: {
+          start: segment.address - baseAddress,
+          end: segment.address + segment.size - 1 - baseAddress,
+        },
+        currentRegion: segment.name,
+        currentRegionStart: segment.address,
+      };
+    }
+
+    // Fall back to memory region
+    const memoryRegion = this.vAmiga.getMemoryRegion(baseAddress);
+    if (memoryRegion) {
+      const bank = baseAddress >>> 16;
+      const memInfo = this.vAmiga.getCachedMemoryInfo();
+      const type = memInfo?.cpuMemSrc?.[bank];
+      return {
+        memoryRange: {
+          start: memoryRegion.start - baseAddress,
+          end: memoryRegion.end - baseAddress,
+        },
+        currentRegion:
+          type !== undefined ? this.getMemoryTypeName(type) : "Memory",
+        currentRegionStart: memoryRegion.start,
+      };
+    }
+
+    // Unknown region
+    return {
+      memoryRange: { start: -1024 * 1024, end: 1024 * 1024 },
+      currentRegion: "Unknown",
+      currentRegionStart: undefined,
+    };
+  }
+
+  /**
+   * Evaluates the address expression and optionally dereferences it as a 32-bit pointer
+   * @returns The final base address to view
+   * @throws Error if address is invalid or dereferencing fails
+   */
+  private async evaluateAndDereferenceAddress(
     state: MemoryViewerState,
-    offsetDelta: number,
+    adapter: VamigaDebugAdapter,
+  ): Promise<number> {
+    // Evaluate input expression (can change each update, e.g., register values)
+    const evaluateManager = adapter.getEvaluateManager();
+    const { value, memoryReference } = await evaluateManager.evaluate(
+      state.addressInput,
+    );
+    let baseAddress = memoryReference ? Number(memoryReference) : value;
+
+    if (typeof baseAddress !== "number") {
+      throw new Error("Does not evaluate to a numeric value");
+    }
+    if (!this.vAmiga.isValidAddress(baseAddress)) {
+      throw new Error(`Not a valid address: ${formatHex(baseAddress)}`);
+    }
+
+    // If dereferencePointer is enabled, read 32-bit value at this address
+    if (state.dereferencePointer) {
+      const pointerBytes = await this.vAmiga.readMemory(baseAddress, 4);
+      if (pointerBytes.byteLength >= 4) {
+        // Big-endian 32-bit read
+        const view = new DataView(
+          pointerBytes.buffer,
+          pointerBytes.byteOffset,
+          pointerBytes.byteLength,
+        );
+        const targetAddress = view.getUint32(0, false);
+        if (!this.vAmiga.isValidAddress(targetAddress)) {
+          throw new Error(
+            `Pointer at ${formatHex(baseAddress)} points to invalid address: ${formatHex(targetAddress)}`,
+          );
+        }
+        baseAddress = targetAddress;
+      } else {
+        throw new Error(`Failed to read pointer at ${formatHex(baseAddress)}`);
+      }
+    }
+
+    return baseAddress;
+  }
+
+  /**
+   * Updates the memory viewer state
+   * @param preserveOffset Optional scroll offset to preserve when base address changes
+   */
+  private async updateState(
+    state: MemoryViewerState,
+    preserveOffset?: number,
   ): Promise<void> {
     try {
       const adapter = VamigaDebugAdapter.getActiveAdapter();
@@ -161,157 +293,37 @@ export class MemoryViewerProvider {
         throw new Error("Debugger is not running");
       }
 
-      const baseAddress = state.baseAddress;
+      // Evaluate and dereference address (unless preserveOffset is set, meaning address already evaluated)
+      if (preserveOffset === undefined) {
+        const baseAddress = await this.evaluateAndDereferenceAddress(
+          state,
+          adapter,
+        );
+        state.baseAddress = baseAddress;
+      }
 
       // Update panel title
       state.panel.title = `Memory: ${state.addressInput}`;
 
-      // Get memory range
-      let memoryRange: { start: number; end: number };
-      let currentRegionName: string | undefined;
-      let currentRegionStart: number | undefined;
+      // Calculate memory range and region info
+      const { memoryRange, currentRegion, currentRegionStart } =
+        this.calculateMemoryRange(state.baseAddress, adapter);
 
-      const segment = adapter.getSourceMap().findSegmentForAddress(baseAddress);
-      if (segment) {
-        memoryRange = {
-          start: segment.address - baseAddress,
-          end: segment.address + segment.size - 1 - baseAddress,
-        };
-        currentRegionName = segment.name;
-        currentRegionStart = segment.address;
-      } else {
-        const memoryRegion = this.vAmiga.getMemoryRegion(baseAddress);
-        if (memoryRegion) {
-          memoryRange = {
-            start: memoryRegion.start - baseAddress,
-            end: memoryRegion.end - baseAddress,
-          };
-          const bank = baseAddress >>> 16;
-          const memInfo = this.vAmiga.getCachedMemoryInfo();
-          const type = memInfo?.cpuMemSrc?.[bank];
-          currentRegionName = type !== undefined ? this.getMemoryTypeName(type) : "Memory";
-          currentRegionStart = memoryRegion.start;
-        } else {
-          memoryRange = { start: -1024 * 1024, end: 1024 * 1024 };
-          currentRegionName = "Unknown";
-        }
-      }
-
+      // Get all available regions
       const availableRegions = this.getAvailableRegions(adapter);
 
-      state.panel.webview.postMessage({
-        command: "updateState",
-        baseAddress,
+      // Send state to webview
+      this.sendStateToWebview(state.panel, {
+        baseAddress: state.baseAddress,
         memoryRange,
-        currentRegion: currentRegionName,
+        currentRegion,
         currentRegionStart,
         availableRegions,
         liveUpdate: state.liveUpdate,
-        preserveOffset: offsetDelta, // Tell webview to adjust scroll by this amount
-        error: null,
+        preserveOffset,
       });
     } catch (err) {
-      const error = err instanceof Error ? err.message : String(err);
-      state.panel.webview.postMessage({
-        command: "updateState",
-        error,
-      });
-    }
-  }
-
-  private async updateState(state: MemoryViewerState): Promise<void> {
-    try {
-      const adapter = VamigaDebugAdapter.getActiveAdapter();
-      if (!adapter) {
-        throw new Error("Debugger is not running");
-      }
-
-      // Evaluate input expression on each update, as result can change e.g. pointers
-      const evaluateManager = adapter.getEvaluateManager();
-      const { value, memoryReference } = await evaluateManager.evaluate(
-        state.addressInput,
-      );
-      let baseAddress = memoryReference ? Number(memoryReference) : value;
-      if (typeof baseAddress !== "number") {
-        throw new Error("Does not evaluate to a numeric value");
-      }
-      if (!this.vAmiga.isValidAddress(baseAddress)) {
-        throw new Error(`Not a valid address: ${formatHex(baseAddress)}`);
-      }
-
-      // If dereferencePointer is enabled, read 32-bit value at this address
-      if (state.dereferencePointer) {
-        const pointerBytes = await this.vAmiga.readMemory(baseAddress, 4);
-        if (pointerBytes.byteLength >= 4) {
-          // Big-endian 32-bit read
-          const view = new DataView(pointerBytes.buffer, pointerBytes.byteOffset, pointerBytes.byteLength);
-          const targetAddress = view.getUint32(0, false); // false = big-endian
-          if (!this.vAmiga.isValidAddress(targetAddress)) {
-            throw new Error(`Pointer at ${formatHex(baseAddress)} points to invalid address: ${formatHex(targetAddress)}`);
-          }
-          baseAddress = targetAddress;
-        } else {
-          throw new Error(`Failed to read pointer at ${formatHex(baseAddress)}`);
-        }
-      }
-
-      // Update panel title to show the address/symbol
-      state.panel.title = `Memory: ${state.addressInput}`;
-      state.baseAddress = baseAddress;
-
-      // Get memory range - prefer segment bounds, fall back to memory region
-      let memoryRange: { start: number; end: number };
-      let currentRegionName: string | undefined;
-      let currentRegionStart: number | undefined;
-
-      const segment = adapter.getSourceMap().findSegmentForAddress(baseAddress);
-      if (segment) {
-        // Use segment boundaries
-        memoryRange = {
-          start: segment.address - baseAddress,
-          end: segment.address + segment.size - 1 - baseAddress,
-        };
-        currentRegionName = segment.name;
-        currentRegionStart = segment.address;
-      } else {
-        // Fall back to memory region
-        const memoryRegion = this.vAmiga.getMemoryRegion(baseAddress);
-        if (memoryRegion) {
-          memoryRange = {
-            start: memoryRegion.start - baseAddress,
-            end: memoryRegion.end - baseAddress,
-          };
-          // Get memory type name from the region
-          const bank = baseAddress >>> 16;
-          const memInfo = this.vAmiga.getCachedMemoryInfo();
-          const type = memInfo?.cpuMemSrc?.[bank];
-          currentRegionName = type !== undefined ? this.getMemoryTypeName(type) : "Memory";
-          currentRegionStart = memoryRegion.start;
-        } else {
-          memoryRange = { start: -1024 * 1024, end: 1024 * 1024 };
-          currentRegionName = "Unknown";
-        }
-      }
-
-      // Get all available regions (segments + memory regions)
-      const availableRegions = this.getAvailableRegions(adapter);
-
-      state.panel.webview.postMessage({
-        command: "updateState",
-        baseAddress,
-        memoryRange,
-        currentRegion: currentRegionName,
-        currentRegionStart,
-        availableRegions,
-        liveUpdate: state.liveUpdate,
-        error: null,
-      });
-    } catch (err) {
-      const error = err instanceof Error ? err.message : String(err);
-      state.panel.webview.postMessage({
-        command: "updateState",
-        error,
-      });
+      this.sendErrorToWebview(state.panel, err);
     }
   }
 
@@ -355,62 +367,32 @@ export class MemoryViewerProvider {
 
     state.liveUpdateInterval = setInterval(async () => {
       if (state.liveUpdate && this.isEmulatorRunning) {
-        // Re-evaluate the address expression in case it changed (e.g., register value)
+        // Check if address expression result has changed (e.g., register value, pointer)
         const previousBaseAddress = state.baseAddress;
         try {
           const adapter = VamigaDebugAdapter.getActiveAdapter();
           if (adapter) {
-            const evaluateManager = adapter.getEvaluateManager();
-            const { value, memoryReference } = await evaluateManager.evaluate(
-              state.addressInput,
+            const newBaseAddress = await this.evaluateAndDereferenceAddress(
+              state,
+              adapter,
             );
-            let newBaseAddress = memoryReference ? Number(memoryReference) : value;
 
-            // If dereferencePointer is enabled, read the 32-bit value at this address
-            if (state.dereferencePointer && typeof newBaseAddress === "number" && this.vAmiga.isValidAddress(newBaseAddress)) {
-              try {
-                const pointerBytes = await this.vAmiga.readMemory(newBaseAddress, 4);
-                if (pointerBytes.byteLength >= 4) {
-                  const view = new DataView(pointerBytes.buffer, pointerBytes.byteOffset, pointerBytes.byteLength);
-                  const targetAddress = view.getUint32(0, false); // false = big-endian
-                  if (this.vAmiga.isValidAddress(targetAddress)) {
-                    newBaseAddress = targetAddress;
-                  } else {
-                    // Invalid target address - stop live updates and show error
-                    this.stopLiveUpdate(state);
-                    state.panel.webview.postMessage({
-                      command: "updateState",
-                      error: `Pointer at ${formatHex(newBaseAddress)} points to invalid address: ${formatHex(targetAddress)}`,
-                    });
-                    return;
-                  }
-                }
-              } catch (err) {
-                // Failed to dereference - stop live updates and show error
-                this.stopLiveUpdate(state);
-                state.panel.webview.postMessage({
-                  command: "updateState",
-                  error: `Failed to read pointer at ${formatHex(newBaseAddress)}: ${err instanceof Error ? err.message : String(err)}`,
-                });
-                return;
-              }
-            }
-
-            if (typeof newBaseAddress === "number" && newBaseAddress !== previousBaseAddress) {
+            if (newBaseAddress !== previousBaseAddress) {
               // Base address changed - update state and preserve scroll offset
               const offsetDelta = newBaseAddress - previousBaseAddress;
               state.baseAddress = newBaseAddress;
-
-              // Clear cache and update view
               state.memoryCache.clear();
 
               // Send update with offset preservation hint
-              await this.updateStateWithOffset(state, offsetDelta);
+              await this.updateState(state, offsetDelta);
               return; // Skip chunk refresh this cycle, chunks will be re-requested
             }
           }
-        } catch {
-          // If evaluation fails, keep using current base address
+        } catch (err) {
+          // Address evaluation failed - stop live updates and show error
+          this.stopLiveUpdate(state);
+          this.sendErrorToWebview(state.panel, err);
+          return;
         }
 
         // For live updates, re-fetch all cached chunks without clearing
@@ -450,6 +432,8 @@ export class MemoryViewerProvider {
 
   private getMemoryTypeName(type: MemSrc): string {
     switch (type) {
+      case MemSrc.NONE:
+        return "None";
       case MemSrc.CHIP:
         return "Chip RAM";
       case MemSrc.CHIP_MIRROR:
@@ -462,16 +446,26 @@ export class MemoryViewerProvider {
         return "Fast RAM";
       case MemSrc.CIA:
         return "CIA Registers";
+      case MemSrc.CIA_MIRROR:
+        return "CIA Registers (mirror)";
       case MemSrc.RTC:
         return "RTC";
       case MemSrc.CUSTOM:
-        return "Custom Chips";
+        return "Custom Registers";
+      case MemSrc.CUSTOM_MIRROR:
+        return "Custom Registers (mirror)";
+      case MemSrc.AUTOCONF:
+        return "Autoconf";
+      case MemSrc.ZOR:
+        return "ZOR";
       case MemSrc.ROM:
         return "ROM";
       case MemSrc.ROM_MIRROR:
         return "ROM (mirror)";
-      default:
-        return "Memory";
+      case MemSrc.WOM:
+        return "WOM";
+      case MemSrc.EXT:
+        return "EXT";
     }
   }
 
