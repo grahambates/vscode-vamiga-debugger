@@ -6,15 +6,14 @@ import { VisualView } from "./VisualView";
 
 const vscode = acquireVsCodeApi();
 
-// TODO: just need one update message?
-
 // Message types
-interface UpdateContentMessage {
-  command: "updateContent";
-  addressInput: string;
-  currentAddress: number;
+interface UpdateStateMessage {
+  command: "updateState";
+  addressInput?: string;
+  currentAddress?: number;
   memoryData?: Uint8Array;
-  liveUpdate: boolean;
+  liveUpdate?: boolean;
+  error?: string;
 }
 
 type ViewMode = "hex" | "visual" | "disassembly" | "copper";
@@ -22,9 +21,12 @@ type ViewMode = "hex" | "visual" | "disassembly" | "copper";
 export function App() {
   const [currentAddress, setCurrentAddress] = useState<number>(0);
   const [viewMode, setViewMode] = useState<ViewMode>("hex");
-  const [liveUpdate, setLiveUpdate] = useState<boolean>(false);
-  const [memoryData, setMemoryData] = useState<Uint8Array | undefined>(undefined);
+  const [liveUpdate, setLiveUpdate] = useState<boolean>(true);
+  const [memoryData, setMemoryData] = useState<Uint8Array | undefined>(
+    undefined,
+  );
   const [addressInput, setAddressInput] = useState<string>("000000");
+  const [error, setError] = useState<string | null>(null);
 
   // Send ready message on mount
   useEffect(() => {
@@ -33,15 +35,20 @@ export function App() {
 
   // Listen for messages from extension
   useEffect(() => {
-    let pendingUpdate: UpdateContentMessage | null = null;
+    let pendingUpdate: UpdateStateMessage | null = null;
     let rafScheduled = false;
 
     const applyPendingUpdate = () => {
       if (pendingUpdate) {
-        setAddressInput(pendingUpdate.addressInput);
-        setCurrentAddress(pendingUpdate.currentAddress);
-        setMemoryData(pendingUpdate.memoryData);
-        setLiveUpdate(pendingUpdate.liveUpdate);
+        if (pendingUpdate.addressInput !== undefined)
+          setAddressInput(pendingUpdate.addressInput);
+        if (pendingUpdate.currentAddress !== undefined)
+          setCurrentAddress(pendingUpdate.currentAddress);
+        if (pendingUpdate.memoryData !== undefined)
+          setMemoryData(pendingUpdate.memoryData);
+        if (pendingUpdate.liveUpdate !== undefined)
+          setLiveUpdate(pendingUpdate.liveUpdate);
+        if (pendingUpdate.error !== undefined) setError(pendingUpdate.error);
         pendingUpdate = null;
       }
       rafScheduled = false;
@@ -57,9 +64,12 @@ export function App() {
     const handleMessage = (event: MessageEvent) => {
       const message = event.data;
 
-      if (message.command === "updateContent") {
-        // Store latest update and schedule render on next frame
-        pendingUpdate = message as UpdateContentMessage;
+      if (message.command === "updateState") {
+        // Store latest update and schedule (combining with any previous to handle optional props) to render on next frame
+        pendingUpdate = {
+          ...pendingUpdate,
+          ...(message as UpdateStateMessage),
+        };
         scheduleUpdate();
       }
     };
@@ -98,66 +108,70 @@ export function App() {
 
   return (
     <div className="memory-viewer">
-      <div className="header">
-        <div className="address-input">
-          <label htmlFor="address">Address:</label>
-          <vscode-textfield
-            id="address"
-            value={addressInput}
-            placeholder="000000"
-            onInput={handleAddressChange}
-            onKeyPress={handleKeyPress}
-          />
-          <vscode-button onClick={goToAddress}>Go</vscode-button>
-        </div>
-
-        <div className="view-mode-selector">
-          <vscode-button
-            className={viewMode === "hex" ? "active" : ""}
-            onClick={() => setViewMode("hex")}
-          >
-            Hex Dump
-          </vscode-button>
-          <vscode-button
-            className={viewMode === "visual" ? "active" : ""}
-            onClick={() => setViewMode("visual")}
-          >
-            Visual
-          </vscode-button>
-          <vscode-button
-            className={viewMode === "disassembly" ? "active" : ""}
-            onClick={() => setViewMode("disassembly")}
-          >
-            Disassembly
-          </vscode-button>
-          <vscode-button
-            className={viewMode === "copper" ? "active" : ""}
-            onClick={() => setViewMode("copper")}
-          >
-            Copper
-          </vscode-button>
-        </div>
-
-        <div className="live-update-container">
-          <vscode-checkbox checked={liveUpdate} onChange={toggleLiveUpdate}>
-            Live Update (refresh while running)
-          </vscode-checkbox>
-        </div>
+      <div className="address-input">
+        <vscode-label htmlFor="address">Address:</vscode-label>
+        <vscode-textfield
+          id="address"
+          value={addressInput}
+          placeholder="000000"
+          onInput={handleAddressChange}
+          onKeyPress={handleKeyPress}
+        />
+        <vscode-button onClick={goToAddress}>Go</vscode-button>
       </div>
 
-      <div className="content">
-        {memoryData ? (
-          viewMode === "hex" ? (
-            <HexDump memoryData={memoryData} currentAddress={currentAddress} />
-          ) : viewMode === "visual" ? (
-            <VisualView memoryData={memoryData} currentAddress={currentAddress} />
-          ) : (
-            `View mode '${viewMode}' not yet implemented.`
-          )
-        ) : (
-          <div className="placeholder">Loading...</div>
-        )}
+      {error ? <div className="error">{error}</div> : ""}
+
+      <div className="live-update-container">
+        <vscode-checkbox checked={liveUpdate} onChange={toggleLiveUpdate}>
+          Live Update (refresh while running)
+        </vscode-checkbox>
       </div>
+
+      <vscode-divider></vscode-divider>
+
+      {memoryData ? (
+        <vscode-tabs
+          onvsc-tabs-select={(e) => {
+            setViewMode(
+              ["hex", "visual", "disassembly", "copper"][
+                e.detail.selectedIndex
+              ] as ViewMode,
+            );
+          }}
+        >
+          <vscode-tab-header>Hex Dump</vscode-tab-header>
+          <vscode-tab-header>Visual</vscode-tab-header>
+          <vscode-tab-header>Disassembly</vscode-tab-header>
+          <vscode-tab-header>Copper</vscode-tab-header>
+
+          <vscode-tab-panel>
+            {viewMode === "hex" && (
+              <HexDump
+                memoryData={memoryData}
+                currentAddress={currentAddress}
+              />
+            )}
+          </vscode-tab-panel>
+          <vscode-tab-panel>
+            {viewMode === "visual" && (
+              <VisualView
+                memoryData={memoryData}
+                currentAddress={currentAddress}
+              />
+            )}
+          </vscode-tab-panel>
+          <vscode-tab-panel>
+            {viewMode === "disassembly" &&
+              "View mode 'disassembly' not yet implemented."}
+          </vscode-tab-panel>
+          <vscode-tab-panel>
+            {viewMode === "copper" && "View mode 'copper' not yet implemented."}
+          </vscode-tab-panel>
+        </vscode-tabs>
+      ) : (
+        ""
+      )}
     </div>
   );
 }

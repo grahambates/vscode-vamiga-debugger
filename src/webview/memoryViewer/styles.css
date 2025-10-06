@@ -6,17 +6,15 @@ body {
   padding: 0;
 }
 
+* {
+  box-sizing: border-box;
+}
+
 .memory-viewer {
   padding: 20px;
   height: 100vh;
   display: flex;
   flex-direction: column;
-}
-
-.header {
-  margin-bottom: 20px;
-  padding-bottom: 10px;
-  border-bottom: 1px solid var(--vscode-panel-border);
 }
 
 .address-input {
@@ -31,7 +29,7 @@ body {
 }
 
 .address-input vscode-textfield {
-  width: 120px;
+  width: 100%;
 }
 
 .view-mode-selector {
@@ -50,7 +48,7 @@ body {
 }
 
 .live-update-container {
-  margin-top: 10px;
+  margin-bottom: 10px;
 }
 
 .content {
@@ -66,11 +64,28 @@ body {
 }
 
 .error {
-  padding: 20px;
-  background-color: var(--vscode-inputValidation-errorBackground);
-  border: 1px solid var(--vscode-inputValidation-errorBorder);
   color: var(--vscode-errorForeground);
-  border-radius: 4px;
+  margin: 10px 0;
+}
+
+/* Fix height for vscode-tabs */
+vscode-tabs {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+vscode-tab-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Hidden panels should not take up space */
+vscode-tab-panel[hidden] {
+  display: none !important;
 }
 
 .placeholder {
@@ -88,9 +103,7 @@ body {
 }
 
 .hex-controls {
-  margin-bottom: 10px;
-  padding: 8px;
-  border-bottom: 1px solid var(--vscode-panel-border);
+  padding: 15px 10px;
 }
 
 .hex-controls label {

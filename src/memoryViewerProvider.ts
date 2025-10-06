@@ -7,11 +7,12 @@ import { EvaluateResultType } from "./evaluateManager";
 interface MemoryViewerState {
   panel: vscode.WebviewPanel;
   addressInput: string;
-  currentAddress: number;
   byteLength: number;
   liveUpdate: boolean;
   liveUpdateInterval?: NodeJS.Timeout;
 }
+
+const LIVE_UPDATE_RATE_MS = 1000 / 25;
 
 /**
  * Provides a webview for viewing emulator memory in different formats.
@@ -40,7 +41,7 @@ export class MemoryViewerProvider {
           for (const state of this.panels.values()) {
             // Refresh on pause or stopped (e.g., stepping, breakpoint)
             if (message.state === "paused" || message.state === "stopped") {
-              this.updateContent(state);
+              this.updateState(state);
             }
             // Handle live update mode
             if (state.liveUpdate) {
@@ -91,10 +92,9 @@ export class MemoryViewerProvider {
 
     const state: MemoryViewerState = {
       panel,
-      addressInput: "",
-      currentAddress: 0,
+      addressInput,
       byteLength: 0,
-      liveUpdate: false,
+      liveUpdate: true,
     };
 
     this.panels.set(panelId, state);
@@ -110,17 +110,19 @@ export class MemoryViewerProvider {
       switch (message.command) {
         case "ready":
           // Send initial state when webview is ready
-          await this.updateContent(state);
+          await this.updateState(state);
+          // Only send input text once, to avoid clobbering user input during live update
+          state.panel.webview.postMessage({
+            command: "updateState",
+            addressInput,
+          });
+          if (this.isEmulatorRunning) {
+            this.startLiveUpdate(state);
+          }
           break;
         case "changeAddress":
-          try {
-            await this.changeAddress(state, message.addressInput);
-            await this.updateContent(state);
-          } catch (error) {
-            vscode.window.showErrorMessage(
-              `Failed to update address: ${error instanceof Error ? error.message : String(error)}`,
-            );
-          }
+          state.addressInput = message.addressInput;
+          await this.updateState(state);
           break;
         case "toggleLiveUpdate":
           state.liveUpdate = message.enabled;
@@ -132,80 +134,62 @@ export class MemoryViewerProvider {
           break;
       }
     });
+  }
 
-    // Set initial address
+  private async updateState(state: MemoryViewerState): Promise<void> {
     try {
-      await this.changeAddress(state, addressInput);
-      await this.updateContent(state);
-    } catch (error) {
-      vscode.window.showErrorMessage(
-        `Failed to open memory viewer: ${error instanceof Error ? error.message : String(error)}`,
+      const adapter = VamigaDebugAdapter.getActiveAdapter();
+      if (!adapter) {
+        throw new Error("Debugger is not running");
+      }
+
+      // Evaluate input expression on each update, as result can change e.g. pointers
+      const evaluateManager = adapter.getEvaluateManager();
+      const { value, memoryReference, type } = await evaluateManager.evaluate(
+        state.addressInput,
       );
-    }
-  }
+      const currentAddress = memoryReference ? Number(memoryReference) : value;
+      if (typeof currentAddress !== "number") {
+        throw new Error("Does not evaluate to a numeric value");
+      }
+      if (!this.vAmiga.isValidAddress(currentAddress)) {
+        throw new Error(`Not a valid address: ${formatHex(currentAddress)}`);
+      }
 
-  private async changeAddress(state: MemoryViewerState, addressInput: string) {
-    state.addressInput = addressInput;
-    const adapter = VamigaDebugAdapter.getActiveAdapter();
-    if (!adapter) {
-      throw new Error("Debugger is not running");
-    }
-    const evaluateManager = adapter.getEvaluateManager();
-    const { value, memoryReference, type } =
-      await evaluateManager.evaluate(addressInput);
-    const address = memoryReference ? Number(memoryReference) : value;
-    if (typeof address !== "number") {
-      throw new Error("Does not evaluate to a numeric value");
-    }
-    if (!this.vAmiga.isValidAddress(address)) {
-      throw new Error(`Not a valid address: ${formatHex(address)}`);
-    }
-    state.currentAddress = address;
+      // Update panel title to show the address/symbol
+      state.panel.title = `Memory: ${state.addressInput}`;
 
-    // Update panel title to show the address/symbol
-    state.panel.title = `Memory: ${addressInput}`;
+      const bytesPerLine = 16;
+      const numLines = 32;
+      const defaultBytes = bytesPerLine * numLines;
 
-    const bytesPerLine = 16;
-    const numLines = 32;
-    const defaultBytes = bytesPerLine * numLines;
+      // Get actual size of labeled region for symbol name
+      if (type === EvaluateResultType.SYMBOL) {
+        state.byteLength =
+          adapter.getSourceMap().getSymbolLengths()?.[state.addressInput] ??
+          defaultBytes;
+      } else {
+        state.byteLength = defaultBytes;
+      }
 
-    if (type === EvaluateResultType.SYMBOL) {
-      state.byteLength =
-        adapter.getSourceMap().getSymbolLengths()?.[addressInput] ??
-        defaultBytes;
-    } else {
-      state.byteLength = defaultBytes;
-    }
-  }
-
-  private async updateContent(state: MemoryViewerState): Promise<void> {
-    try {
-      const startTime = Date.now();
       const result = await this.vAmiga.readMemory(
-        state.currentAddress,
+        currentAddress,
         state.byteLength,
       );
-      const readTime = Date.now() - startTime;
 
-      const memoryData = new Uint8Array(result);
-
-      const postStart = Date.now();
       state.panel.webview.postMessage({
-        command: "updateContent",
-        memoryData,
-        addressInput: state.addressInput,
-        currentAddress: state.currentAddress,
+        command: "updateState",
+        memoryData: new Uint8Array(result),
+        currentAddress,
         liveUpdate: state.liveUpdate,
+        error: null,
       });
-      const postTime = Date.now() - postStart;
-
-      if (state.liveUpdate) {
-        console.log(`Memory update: read=${readTime}ms, post=${postTime}ms, total=${Date.now() - startTime}ms`);
-      }
-    } catch (error) {
-      vscode.window.showErrorMessage(
-        `Error reading memory at ${state.currentAddress}: ${error instanceof Error ? error.message : String(error)}`,
-      );
+    } catch (err) {
+      const error = err instanceof Error ? err.message : String(err);
+      state.panel.webview.postMessage({
+        command: "updateState",
+        error,
+      });
     }
   }
 
@@ -219,9 +203,9 @@ export class MemoryViewerProvider {
 
     state.liveUpdateInterval = setInterval(() => {
       if (state.liveUpdate && this.isEmulatorRunning) {
-        this.updateContent(state);
+        this.updateState(state);
       }
-    }, 1000/50);
+    }, LIVE_UPDATE_RATE_MS);
   }
 
   /**

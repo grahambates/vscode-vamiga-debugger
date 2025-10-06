@@ -18,7 +18,7 @@ interface ByteInfo {
 }
 
 export function HexDump({ memoryData, currentAddress }: HexDumpProps) {
-  const [format, setFormat] = useState<DisplayFormat>("byte");
+  const [format, setFormat] = useState<DisplayFormat>("word");
   const [tooltip, setTooltip] = useState<{ x: number; y: number; text: string } | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -49,22 +49,30 @@ export function HexDump({ memoryData, currentAddress }: HexDumpProps) {
     const backgroundColor = styles.getPropertyValue('--vscode-editor-background').trim() || '#1e1e1e';
 
     const dpr = window.devicePixelRatio || 1;
-    const rect = canvas.getBoundingClientRect();
 
     // Don't render if no visible range
     if (visibleRange.start >= visibleRange.end) return;
 
     const canvasHeight = (visibleRange.end - visibleRange.start) * LINE_HEIGHT;
 
-    // Calculate minimum width needed for full display
-    // Address (6) + space (2) + hex values + space (2) + ASCII (16) + delimiters (2)
+    // Calculate minimum width based on actual rendering positions
     const valueSize = format === "byte" ? 1 : format === "word" ? 2 : 4;
     const hexCharsPerValue = format === "byte" ? 2 : format === "word" ? 4 : 8;
     const valuesPerLine = bytesPerLine / valueSize;
-    const hexWidth = valuesPerLine * (hexCharsPerValue + 1) * CHAR_WIDTH + CHAR_WIDTH * 4; // Extra spacing
-    const minCanvasWidth = ADDRESS_OFFSET + 60 + hexWidth + 20 + (16 + 3) * CHAR_WIDTH;
 
-    const canvasWidth = Math.max(rect.width, minCanvasWidth);
+    // Calculate hex section width (same logic as rendering loop)
+    let hexWidth = 0;
+    for (let j = 0; j < valuesPerLine; j++) {
+      hexWidth += hexCharsPerValue * CHAR_WIDTH + CHAR_WIDTH; // value + space
+      if (format === "byte" && (j === 3 || j === 7 || j === 11)) {
+        hexWidth += CHAR_WIDTH; // extra spacing for byte groups
+      }
+    }
+
+    // ASCII section: gap (2 chars) + | (1) + gap (1.5) + 16 ASCII chars + | (1)
+    const asciiWidth = CHAR_WIDTH * 2 + CHAR_WIDTH + CHAR_WIDTH * 1.5 + bytesPerLine * CHAR_WIDTH + CHAR_WIDTH;
+
+    const canvasWidth = HEX_OFFSET + hexWidth + asciiWidth;
 
     canvas.width = canvasWidth * dpr;
     canvas.height = canvasHeight * dpr;
