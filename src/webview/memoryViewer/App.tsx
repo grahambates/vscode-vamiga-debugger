@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import "@vscode-elements/elements";
 import { VscodeCheckbox, VscodeTextfield } from "@vscode-elements/elements";
 import { HexDump } from "./HexDump";
+import { VisualView } from "./VisualView";
 
 const vscode = acquireVsCodeApi();
 
@@ -148,6 +149,8 @@ export function App() {
         {memoryData ? (
           viewMode === "hex" ? (
             <HexDump memoryData={memoryData} currentAddress={currentAddress} />
+          ) : viewMode === "visual" ? (
+            <VisualView memoryData={memoryData} currentAddress={currentAddress} />
           ) : (
             `View mode '${viewMode}' not yet implemented.`
           )

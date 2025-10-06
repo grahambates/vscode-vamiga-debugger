@@ -217,12 +217,11 @@ export class MemoryViewerProvider {
       return; // Already running
     }
 
-    // Update at ~4fps (every 250ms) to work around browser postMessage batching
     state.liveUpdateInterval = setInterval(() => {
       if (state.liveUpdate && this.isEmulatorRunning) {
         this.updateContent(state);
       }
-    }, 1000/60);
+    }, 1000/50);
   }
 
   /**
