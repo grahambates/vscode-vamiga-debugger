@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import "@vscode-elements/elements";
-import { VscodeCheckbox, VscodeTextfield } from "@vscode-elements/elements";
+import { VscodeCheckbox } from "@vscode-elements/elements";
+import { useCombobox } from "downshift";
 import { HexDump } from "./HexDump";
 import { VisualView } from "./VisualView";
 
@@ -64,6 +65,9 @@ export function App() {
   const [scrollResetTrigger, setScrollResetTrigger] = useState<number>(0);
   const [scrollOffsetDelta, setScrollOffsetDelta] = useState<number>(0);
   const [dereferencePointer, setDereferencePointer] = useState<boolean>(false);
+  const [suggestions, setSuggestions] = useState<
+    Array<{ label: string; address: string; description?: string }>
+  >([]);
 
   // Keep ref in sync
   useEffect(() => {
@@ -141,6 +145,8 @@ export function App() {
           ...(message as UpdateStateMessage),
         };
         scheduleUpdate();
+      } else if (message.command === "symbolSuggestions") {
+        setSuggestions(message.suggestions || []);
       } else if (message.command === "memoryData") {
         const memData = message as MemoryDataMessage;
         console.log(
@@ -168,21 +174,59 @@ export function App() {
     };
   }, []);
 
-  const handleAddressChange: React.InputEventHandler<VscodeTextfield> = (e) => {
-    setAddressInput((e.target as HTMLInputElement).value || "");
-  };
+  // Downshift combobox for autocomplete
+  const {
+    isOpen,
+    getMenuProps,
+    getInputProps,
+    highlightedIndex,
+    getItemProps,
+  } = useCombobox({
+    items: suggestions,
+    itemToString: (item) => (item ? item.label : ""),
+    inputValue: addressInput,
+    onInputValueChange: ({ inputValue }) => {
+      // Update local state
+      setAddressInput(inputValue || "");
+
+      // Request suggestions as user types
+      if (inputValue && inputValue.length > 0) {
+        vscode.postMessage({
+          command: "getSymbolSuggestions",
+          query: inputValue,
+        });
+      } else {
+        setSuggestions([]);
+      }
+    },
+    onSelectedItemChange: ({ selectedItem }) => {
+      if (selectedItem) {
+        const addressToUse = selectedItem.label;
+        setAddressInput(addressToUse);
+        vscode.postMessage({
+          command: "changeAddress",
+          addressInput: addressToUse,
+          dereferencePointer,
+          resetScroll: true,
+        });
+      }
+    },
+  });
 
   const goToAddress = () => {
     vscode.postMessage({
       command: "changeAddress",
       addressInput,
       dereferencePointer,
-      resetScroll: true, // Tell HexDump to reset scroll position
+      resetScroll: true,
     });
   };
 
-  const handleKeyPress: React.KeyboardEventHandler<VscodeTextfield> = (e) => {
-    if (e.key === "Enter") {
+  // Custom key handler for "Go" button behavior
+  const handleInputKeyDown = (e: React.KeyboardEvent) => {
+    // Let Downshift handle most keys, but intercept Enter when menu is closed
+    if (e.key === "Enter" && !isOpen) {
+      e.preventDefault();
       goToAddress();
     }
   };
@@ -222,13 +266,34 @@ export function App() {
     <div className="memory-viewer">
       <div className="address-input">
         <vscode-label htmlFor="address">Address:</vscode-label>
-        <vscode-textfield
-          id="address"
-          value={addressInput}
-          placeholder="000000"
-          onInput={handleAddressChange}
-          onKeyPress={handleKeyPress}
-        />
+        <div className="autocomplete-container">
+          <input
+            {...getInputProps({
+              id: "address",
+              placeholder: "000000",
+              onKeyDown: handleInputKeyDown,
+            })}
+            className="address-textfield"
+          />
+          <ul {...getMenuProps()} className="autocomplete-dropdown">
+            {isOpen &&
+              suggestions.map((suggestion, index) => (
+                <li
+                  key={suggestion.label}
+                  {...getItemProps({ item: suggestion, index })}
+                  className={`autocomplete-item ${highlightedIndex === index ? "selected" : ""}`}
+                >
+                  <span className="suggestion-label">{suggestion.label}</span>
+                  <span className="suggestion-address">{suggestion.address}</span>
+                  {suggestion.description && (
+                    <span className="suggestion-description">
+                      {suggestion.description}
+                    </span>
+                  )}
+                </li>
+              ))}
+          </ul>
+        </div>
         <vscode-button onClick={goToAddress}>Go</vscode-button>
       </div>
 

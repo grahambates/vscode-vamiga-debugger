@@ -28,8 +28,77 @@ body {
   font-size: var(--vscode-font-size);
 }
 
-.address-input vscode-textfield {
+.autocomplete-container {
+  position: relative;
+  flex: 1;
+}
+
+.address-textfield {
   width: 100%;
+  padding: 4px 8px;
+  font-family: var(--vscode-font-family);
+  font-size: var(--vscode-font-size);
+  background: var(--vscode-input-background);
+  color: var(--vscode-input-foreground);
+  border: 1px solid var(--vscode-input-border);
+  outline: none;
+}
+
+.address-textfield:focus {
+  border-color: var(--vscode-focusBorder);
+}
+
+.autocomplete-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: var(--vscode-dropdown-background);
+  border: 1px solid var(--vscode-dropdown-border);
+  border-top: none;
+  max-height: 300px;
+  overflow-y: auto;
+  z-index: 1000;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.autocomplete-item {
+  padding: 6px 12px;
+  cursor: pointer;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  border-bottom: 1px solid var(--vscode-widget-border);
+}
+
+.autocomplete-item:last-child {
+  border-bottom: none;
+}
+
+.autocomplete-item:hover,
+.autocomplete-item.selected {
+  background: var(--vscode-list-hoverBackground);
+}
+
+.suggestion-label {
+  font-weight: 600;
+  font-family: monospace;
+  flex: 1;
+}
+
+.suggestion-address {
+  color: var(--vscode-descriptionForeground);
+  font-family: monospace;
+  font-size: 0.9em;
+}
+
+.suggestion-description {
+  color: var(--vscode-descriptionForeground);
+  font-size: 0.85em;
+  font-style: italic;
 }
 
 .view-mode-selector {

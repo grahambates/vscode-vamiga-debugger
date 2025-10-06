@@ -144,6 +144,20 @@ export class MemoryViewerProvider {
             this.stopLiveUpdate(state);
           }
           break;
+        case "getSymbolSuggestions": {
+          const adapter = VamigaDebugAdapter.getActiveAdapter();
+          if (adapter) {
+            const suggestions = this.getSymbolSuggestions(
+              adapter,
+              message.query || "",
+            );
+            state.panel.webview.postMessage({
+              command: "symbolSuggestions",
+              suggestions,
+            });
+          }
+          break;
+        }
       }
     });
   }
@@ -467,6 +481,53 @@ export class MemoryViewerProvider {
       case MemSrc.EXT:
         return "EXT";
     }
+  }
+
+  /**
+   * Gets symbol name suggestions based on query string
+   */
+  private getSymbolSuggestions(
+    adapter: VamigaDebugAdapter,
+    query: string,
+  ): Array<{ label: string; address: string; description?: string }> {
+    const suggestions: Array<{
+      label: string;
+      address: string;
+      description?: string;
+    }> = [];
+    const queryLower = query.toLowerCase();
+
+    // Get symbols from source map
+    const sourceMap = adapter.getSourceMap();
+    const symbols = sourceMap.getSymbols();
+
+    for (const symbolName in symbols) {
+      const symbolAddress = symbols[symbolName];
+
+      // Filter by query if provided
+      if (
+        !query ||
+        symbolName.toLowerCase().includes(queryLower) ||
+        symbolName.toLowerCase().startsWith(queryLower)
+      ) {
+        // Find which segment this symbol belongs to
+        const segment = sourceMap.findSegmentForAddress(symbolAddress);
+
+        suggestions.push({
+          label: symbolName,
+          address: formatHex(symbolAddress),
+          description: segment?.name,
+        });
+
+        // Limit to 50 suggestions
+        if (suggestions.length >= 50) break;
+      }
+    }
+
+    // Sort by name
+    suggestions.sort((a, b) => a.label.localeCompare(b.label));
+
+    return suggestions;
   }
 
   private getAvailableRegions(
