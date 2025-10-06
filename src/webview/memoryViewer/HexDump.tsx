@@ -177,12 +177,18 @@ export function HexDump({ baseAddress, memoryRange, memoryChunks, onRequestMemor
             "0"
           );
 
-          // Highlight changed bytes - check if within 1 second of change
-          const changeTime = changedBytesRef.current.get(byteOffset);
-          const isChanged = changeTime && (Date.now() - changeTime) < 1000;
+          // Highlight changed bytes - check if ANY byte in this value changed within 1 second
+          let mostRecentChange = 0;
+          for (let b = 0; b < valueSize; b++) {
+            const changeTime = changedBytesRef.current.get(byteOffset + b);
+            if (changeTime) {
+              mostRecentChange = Math.max(mostRecentChange, changeTime);
+            }
+          }
+          const isChanged = mostRecentChange > 0 && (Date.now() - mostRecentChange) < 1000;
           if (isChanged) {
             // Fade opacity based on time since change
-            const elapsed = Date.now() - changeTime!;
+            const elapsed = Date.now() - mostRecentChange;
             const opacity = 0.5 * (1 - elapsed / 1000);
             ctx.fillStyle = `rgba(255, 200, 0, ${opacity})`;
             ctx.fillRect(hexX, y, hex.length * CHAR_WIDTH, LINE_HEIGHT);

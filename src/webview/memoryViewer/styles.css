@@ -51,6 +51,28 @@ body {
   margin-bottom: 10px;
 }
 
+.region-selector {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.region-dropdown {
+  flex: 1;
+  background-color: var(--vscode-dropdown-background);
+  color: var(--vscode-dropdown-foreground);
+  border: 1px solid var(--vscode-dropdown-border);
+  padding: 4px 8px;
+  font-family: var(--vscode-font-family);
+  font-size: var(--vscode-font-size);
+}
+
+.current-region-label {
+  color: var(--vscode-descriptionForeground);
+  font-size: 0.9em;
+}
+
 .content {
   font-family: var(--vscode-editor-font-family);
   font-size: var(--vscode-editor-font-size);

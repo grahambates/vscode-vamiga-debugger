@@ -7,11 +7,20 @@ import { VisualView } from "./VisualView";
 const vscode = acquireVsCodeApi();
 
 // Message types
+interface MemoryRegion {
+  name: string;
+  address: number;
+  size: number;
+}
+
 interface UpdateStateMessage {
   command: "updateState";
   addressInput?: string;
   baseAddress?: number;
   memoryRange?: { start: number; end: number };
+  currentRegion?: string;
+  currentRegionStart?: number;
+  availableRegions?: MemoryRegion[];
   liveUpdate?: boolean;
   error?: string;
 }
@@ -25,6 +34,10 @@ interface MemoryDataMessage {
 
 type ViewMode = "hex" | "visual" | "disassembly" | "copper";
 
+function formatHex(value: number): string {
+  return "$" + value.toString(16).toUpperCase().padStart(6, "0");
+}
+
 export function App() {
   const [baseAddress, setBaseAddress] = useState<number | undefined>(undefined);
   const baseAddressRef = useRef<number | undefined>(undefined);
@@ -32,6 +45,8 @@ export function App() {
     start: -1024 * 1024,
     end: 1024 * 1024,
   });
+  const [currentRegion, setCurrentRegion] = useState<string>("");
+  const [availableRegions, setAvailableRegions] = useState<MemoryRegion[]>([]);
   const [viewMode, setViewMode] = useState<ViewMode>("hex");
   const [liveUpdate, setLiveUpdate] = useState<boolean>(true);
   const [memoryChunks, setMemoryChunks] = useState<Map<number, Uint8Array>>(
@@ -75,6 +90,12 @@ export function App() {
         }
         if (pendingUpdate.memoryRange !== undefined) {
           setMemoryRange(pendingUpdate.memoryRange);
+        }
+        if (pendingUpdate.currentRegion !== undefined) {
+          setCurrentRegion(pendingUpdate.currentRegion);
+        }
+        if (pendingUpdate.availableRegions !== undefined) {
+          setAvailableRegions(pendingUpdate.availableRegions);
         }
         if (pendingUpdate.liveUpdate !== undefined)
           setLiveUpdate(pendingUpdate.liveUpdate);
@@ -159,6 +180,18 @@ export function App() {
     });
   };
 
+  const handleRegionChange: React.FormEventHandler<HTMLSelectElement> = (e) => {
+    const selectedAddress = parseInt((e.target as HTMLSelectElement).value);
+    if (!isNaN(selectedAddress)) {
+      const addressHex = "0x" + selectedAddress.toString(16).toUpperCase().padStart(6, "0");
+      setAddressInput(addressHex);
+      vscode.postMessage({
+        command: "changeAddress",
+        addressInput: addressHex,
+      });
+    }
+  };
+
   return (
     <div className="memory-viewer">
       <div className="address-input">
@@ -180,6 +213,24 @@ export function App() {
           Live Update (refresh while running)
         </vscode-checkbox>
       </div>
+
+      {currentRegion && availableRegions.length > 0 && (
+        <div className="region-selector">
+          <vscode-label htmlFor="region">Region:</vscode-label>
+          <select
+            id="region"
+            value={baseAddress}
+            onChange={handleRegionChange}
+            className="region-dropdown"
+          >
+            {availableRegions.map((region) => (
+              <option key={region.address} value={region.address}>
+                {region.name} ({formatHex(region.address)} - {formatHex(region.address + region.size - 1)})
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
 
       <vscode-divider></vscode-divider>
 

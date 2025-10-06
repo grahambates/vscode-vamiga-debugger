@@ -759,6 +759,10 @@ export class VAmiga {
     return this.sendRpcCommand("disassembleCopper", { address, count });
   }
 
+  public getCachedMemoryInfo(): MemoryInfo | undefined {
+    return this.memoryInfo;
+  }
+
   public isValidAddress(address: number): boolean {
     if (this.memoryInfo) {
       // Check mem type of bank

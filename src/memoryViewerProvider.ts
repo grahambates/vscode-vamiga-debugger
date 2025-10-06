@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { VAmiga, isEmulatorStateMessage } from "./vAmiga";
+import { VAmiga, isEmulatorStateMessage, MemSrc } from "./vAmiga";
 import { VamigaDebugAdapter } from "./vAmigaDebugAdapter";
 import { formatHex } from "./numbers";
 
@@ -173,6 +173,8 @@ export class MemoryViewerProvider {
 
       // Get memory range - prefer segment bounds, fall back to memory region
       let memoryRange: { start: number; end: number };
+      let currentRegionName: string | undefined;
+      let currentRegionStart: number | undefined;
 
       const segment = adapter.getSourceMap().findSegmentForAddress(baseAddress);
       if (segment) {
@@ -181,21 +183,38 @@ export class MemoryViewerProvider {
           start: segment.address - baseAddress,
           end: segment.address + segment.size - 1 - baseAddress,
         };
+        currentRegionName = segment.name;
+        currentRegionStart = segment.address;
       } else {
         // Fall back to memory region
         const memoryRegion = this.vAmiga.getMemoryRegion(baseAddress);
-        memoryRange = memoryRegion
-          ? {
-              start: memoryRegion.start - baseAddress,
-              end: memoryRegion.end - baseAddress,
-            }
-          : { start: -1024 * 1024, end: 1024 * 1024 }; // Default to 1MB each way
+        if (memoryRegion) {
+          memoryRange = {
+            start: memoryRegion.start - baseAddress,
+            end: memoryRegion.end - baseAddress,
+          };
+          // Get memory type name from the region
+          const bank = baseAddress >>> 16;
+          const memInfo = this.vAmiga.getCachedMemoryInfo();
+          const type = memInfo?.cpuMemSrc?.[bank];
+          currentRegionName = type !== undefined ? this.getMemoryTypeName(type) : "Memory";
+          currentRegionStart = memoryRegion.start;
+        } else {
+          memoryRange = { start: -1024 * 1024, end: 1024 * 1024 };
+          currentRegionName = "Unknown";
+        }
       }
+
+      // Get all available regions (segments + memory regions)
+      const availableRegions = this.getAvailableRegions(adapter);
 
       state.panel.webview.postMessage({
         command: "updateState",
         baseAddress,
         memoryRange,
+        currentRegion: currentRegionName,
+        currentRegionStart,
+        availableRegions,
         liveUpdate: state.liveUpdate,
         error: null,
       });
@@ -281,6 +300,92 @@ export class MemoryViewerProvider {
       clearInterval(state.liveUpdateInterval);
       state.liveUpdateInterval = undefined;
     }
+  }
+
+  private getMemoryTypeName(type: MemSrc): string {
+    switch (type) {
+      case MemSrc.CHIP:
+        return "Chip RAM";
+      case MemSrc.CHIP_MIRROR:
+        return "Chip RAM (mirror)";
+      case MemSrc.SLOW:
+        return "Slow RAM";
+      case MemSrc.SLOW_MIRROR:
+        return "Slow RAM (mirror)";
+      case MemSrc.FAST:
+        return "Fast RAM";
+      case MemSrc.CIA:
+        return "CIA Registers";
+      case MemSrc.RTC:
+        return "RTC";
+      case MemSrc.CUSTOM:
+        return "Custom Chips";
+      case MemSrc.ROM:
+        return "ROM";
+      case MemSrc.ROM_MIRROR:
+        return "ROM (mirror)";
+      default:
+        return "Memory";
+    }
+  }
+
+  private getAvailableRegions(
+    adapter: VamigaDebugAdapter,
+  ): Array<{ name: string; address: number; size: number }> {
+    const regions: Array<{ name: string; address: number; size: number }> = [];
+
+    // Add segments from source map
+    const segments = adapter.getSourceMap().getSegmentsInfo();
+    for (const seg of segments) {
+      regions.push({
+        name: seg.name,
+        address: seg.address,
+        size: seg.size,
+      });
+    }
+
+    // Add memory regions
+    const memInfo = this.vAmiga.getCachedMemoryInfo();
+    if (memInfo) {
+      let currentType: MemSrc | null = null;
+      let currentStart = 0;
+
+      for (let bank = 0; bank <= 255; bank++) {
+        const type: MemSrc = memInfo.cpuMemSrc[bank];
+
+        if (type !== MemSrc.NONE && type !== currentType) {
+          // Save previous region
+          if (currentType !== null) {
+            regions.push({
+              name: this.getMemoryTypeName(currentType),
+              address: currentStart,
+              size: (bank << 16) - currentStart,
+            });
+          }
+          currentType = type;
+          currentStart = bank << 16;
+        } else if (type === MemSrc.NONE && currentType !== null) {
+          // End of region
+          regions.push({
+            name: this.getMemoryTypeName(currentType),
+            address: currentStart,
+            size: (bank << 16) - currentStart,
+          });
+          currentType = null;
+        }
+      }
+
+      // Handle last region
+      if (currentType !== null) {
+        regions.push({
+          name: this.getMemoryTypeName(currentType),
+          address: currentStart,
+          size: (256 << 16) - currentStart,
+        });
+      }
+    }
+
+    return regions;
   }
 
   private getHtmlContent(webview: vscode.Webview): string {
