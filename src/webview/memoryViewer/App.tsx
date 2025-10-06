@@ -22,6 +22,7 @@ interface UpdateStateMessage {
   currentRegionStart?: number;
   availableRegions?: MemoryRegion[];
   liveUpdate?: boolean;
+  preserveOffset?: number; // Offset delta to adjust scroll by when base address changes
   error?: string;
 }
 
@@ -55,6 +56,7 @@ export function App() {
   const [addressInput, setAddressInput] = useState<string>("000000");
   const [error, setError] = useState<string | null>(null);
   const [scrollResetTrigger, setScrollResetTrigger] = useState<number>(0);
+  const [scrollOffsetDelta, setScrollOffsetDelta] = useState<number>(0);
 
   // Keep ref in sync
   useEffect(() => {
@@ -82,6 +84,10 @@ export function App() {
             console.log(`Address changed from ${baseAddressRef.current} to ${pendingUpdate.baseAddress} - clearing chunks`);
             setBaseAddress(pendingUpdate.baseAddress);
             setMemoryChunks(new Map());
+            // If preserveOffset is set, pass it to HexDump to adjust scroll
+            if (pendingUpdate.preserveOffset !== undefined) {
+              setScrollOffsetDelta(pendingUpdate.preserveOffset);
+            }
           } else {
             // Same address re-submitted - just trigger scroll reset
             console.log(`Same address re-submitted - triggering scroll reset`);
@@ -257,6 +263,7 @@ export function App() {
                 memoryChunks={memoryChunks}
                 onRequestMemory={requestMemory}
                 scrollResetTrigger={scrollResetTrigger}
+                scrollOffsetDelta={scrollOffsetDelta}
               />
             )}
           </vscode-tab-panel>

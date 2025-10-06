@@ -6,6 +6,7 @@ export interface HexDumpProps {
   memoryChunks: Map<number, Uint8Array>;
   onRequestMemory: (offset: number, count: number) => void;
   scrollResetTrigger?: number;
+  scrollOffsetDelta?: number; // Offset delta to adjust scroll by when base address changes
 }
 
 type DisplayFormat = "byte" | "word" | "longword";
@@ -20,7 +21,7 @@ interface ByteInfo {
   isAscii: boolean;
 }
 
-export function HexDump({ baseAddress, memoryRange, memoryChunks, onRequestMemory, scrollResetTrigger }: HexDumpProps) {
+export function HexDump({ baseAddress, memoryRange, memoryChunks, onRequestMemory, scrollResetTrigger, scrollOffsetDelta }: HexDumpProps) {
   const [format, setFormat] = useState<DisplayFormat>("word");
   const [tooltip, setTooltip] = useState<{ x: number; y: number; text: string } | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -271,6 +272,21 @@ export function HexDump({ baseAddress, memoryRange, memoryChunks, onRequestMemor
       containerRef.current.scrollTop = BACKWARD_OFFSET_LINES * LINE_HEIGHT;
     }
   }, [scrollResetTrigger, BACKWARD_OFFSET_LINES]);
+
+  // Adjust scroll position when base address changes but we want to preserve offset
+  useEffect(() => {
+    if (scrollOffsetDelta !== undefined && scrollOffsetDelta !== 0 && containerRef.current) {
+      // Convert byte offset delta to line offset
+      const lineOffsetDelta = scrollOffsetDelta / bytesPerLine;
+      const scrollDelta = lineOffsetDelta * LINE_HEIGHT;
+
+      // Adjust scroll position by the delta
+      const currentScrollTop = containerRef.current.scrollTop;
+      containerRef.current.scrollTop = currentScrollTop - scrollDelta;
+
+      console.log(`Adjusted scroll by ${scrollOffsetDelta} bytes (${lineOffsetDelta} lines, ${scrollDelta}px)`);
+    }
+  }, [scrollOffsetDelta, bytesPerLine]);
 
   // Track changed bytes with timestamps
   useEffect(() => {

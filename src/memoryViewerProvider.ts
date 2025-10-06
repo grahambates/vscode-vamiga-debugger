@@ -147,6 +147,74 @@ export class MemoryViewerProvider {
     });
   }
 
+  private async updateStateWithOffset(
+    state: MemoryViewerState,
+    offsetDelta: number,
+  ): Promise<void> {
+    try {
+      const adapter = VamigaDebugAdapter.getActiveAdapter();
+      if (!adapter) {
+        throw new Error("Debugger is not running");
+      }
+
+      const baseAddress = state.baseAddress;
+
+      // Update panel title
+      state.panel.title = `Memory: ${state.addressInput}`;
+
+      // Get memory range
+      let memoryRange: { start: number; end: number };
+      let currentRegionName: string | undefined;
+      let currentRegionStart: number | undefined;
+
+      const segment = adapter.getSourceMap().findSegmentForAddress(baseAddress);
+      if (segment) {
+        memoryRange = {
+          start: segment.address - baseAddress,
+          end: segment.address + segment.size - 1 - baseAddress,
+        };
+        currentRegionName = segment.name;
+        currentRegionStart = segment.address;
+      } else {
+        const memoryRegion = this.vAmiga.getMemoryRegion(baseAddress);
+        if (memoryRegion) {
+          memoryRange = {
+            start: memoryRegion.start - baseAddress,
+            end: memoryRegion.end - baseAddress,
+          };
+          const bank = baseAddress >>> 16;
+          const memInfo = this.vAmiga.getCachedMemoryInfo();
+          const type = memInfo?.cpuMemSrc?.[bank];
+          currentRegionName = type !== undefined ? this.getMemoryTypeName(type) : "Memory";
+          currentRegionStart = memoryRegion.start;
+        } else {
+          memoryRange = { start: -1024 * 1024, end: 1024 * 1024 };
+          currentRegionName = "Unknown";
+        }
+      }
+
+      const availableRegions = this.getAvailableRegions(adapter);
+
+      state.panel.webview.postMessage({
+        command: "updateState",
+        baseAddress,
+        memoryRange,
+        currentRegion: currentRegionName,
+        currentRegionStart,
+        availableRegions,
+        liveUpdate: state.liveUpdate,
+        preserveOffset: offsetDelta, // Tell webview to adjust scroll by this amount
+        error: null,
+      });
+    } catch (err) {
+      const error = err instanceof Error ? err.message : String(err);
+      state.panel.webview.postMessage({
+        command: "updateState",
+        error,
+      });
+    }
+  }
+
   private async updateState(state: MemoryViewerState): Promise<void> {
     try {
       const adapter = VamigaDebugAdapter.getActiveAdapter();
@@ -267,6 +335,34 @@ export class MemoryViewerProvider {
 
     state.liveUpdateInterval = setInterval(async () => {
       if (state.liveUpdate && this.isEmulatorRunning) {
+        // Re-evaluate the address expression in case it changed (e.g., register value)
+        const previousBaseAddress = state.baseAddress;
+        try {
+          const adapter = VamigaDebugAdapter.getActiveAdapter();
+          if (adapter) {
+            const evaluateManager = adapter.getEvaluateManager();
+            const { value, memoryReference } = await evaluateManager.evaluate(
+              state.addressInput,
+            );
+            const newBaseAddress = memoryReference ? Number(memoryReference) : value;
+
+            if (typeof newBaseAddress === "number" && newBaseAddress !== previousBaseAddress) {
+              // Base address changed - update state and preserve scroll offset
+              const offsetDelta = newBaseAddress - previousBaseAddress;
+              state.baseAddress = newBaseAddress;
+
+              // Clear cache and update view
+              state.memoryCache.clear();
+
+              // Send update with offset preservation hint
+              await this.updateStateWithOffset(state, offsetDelta);
+              return; // Skip chunk refresh this cycle, chunks will be re-requested
+            }
+          }
+        } catch {
+          // If evaluation fails, keep using current base address
+        }
+
         // For live updates, re-fetch all cached chunks without clearing
         const cachedOffsets = Array.from(state.memoryCache.keys());
         for (const offset of cachedOffsets) {
