@@ -19,6 +19,7 @@ interface ByteInfo {
   y: number;
   width: number;
   isAscii: boolean;
+  valueSize: number; // 1, 2, or 4 bytes
 }
 
 export function HexDump({
@@ -232,6 +233,7 @@ export function HexDump({
             y,
             width: hex.length * CHAR_WIDTH,
             isAscii: false,
+            valueSize,
           });
 
           hexX += hex.length * CHAR_WIDTH + CHAR_WIDTH;
@@ -266,6 +268,7 @@ export function HexDump({
           y,
           width: CHAR_WIDTH,
           isAscii: true,
+          valueSize: 1,
         });
 
         asciiX += CHAR_WIDTH;
@@ -481,10 +484,27 @@ export function HexDump({
         .toString(16)
         .toUpperCase()
         .padStart(6, "0");
+
+      // Calculate signed value based on size
+      let signedValue: number;
+      if (byteInfo.valueSize === 1) {
+        // 8-bit signed
+        signedValue = byteInfo.value > 127 ? byteInfo.value - 256 : byteInfo.value;
+      } else if (byteInfo.valueSize === 2) {
+        // 16-bit signed
+        signedValue = byteInfo.value > 32767 ? byteInfo.value - 65536 : byteInfo.value;
+      } else {
+        // 32-bit signed
+        signedValue = byteInfo.value > 2147483647 ? byteInfo.value - 4294967296 : byteInfo.value;
+      }
+
+      const unsignedStr = byteInfo.value.toString();
+      const signedStr = signedValue.toString();
+
       setTooltip({
         x: e.clientX,
         y: e.clientY,
-        text: `0x${byteInfo.hex} (${byteInfo.value}) @ ${addrHex}`,
+        text: `0x${byteInfo.hex} (u:${unsignedStr} s:${signedStr}) @ ${addrHex}`,
       });
     } else {
       setTooltip(null);
@@ -493,6 +513,42 @@ export function HexDump({
 
   const handleMouseLeave = () => {
     setTooltip(null);
+  };
+
+  const handleContextMenu = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    e.preventDefault();
+
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    // Find byte under cursor
+    const byteInfo = byteInfoMapRef.current.find(
+      (info) =>
+        x >= info.x &&
+        x <= info.x + info.width &&
+        y >= info.y &&
+        y <= info.y + LINE_HEIGHT,
+    );
+
+    if (byteInfo) {
+      // Copy hex value to clipboard
+      const hexValue = "0x" + byteInfo.hex;
+      navigator.clipboard.writeText(hexValue).then(() => {
+        // Show brief feedback
+        setTooltip({
+          x: e.clientX,
+          y: e.clientY,
+          text: `Copied: ${hexValue}`,
+        });
+        setTimeout(() => setTooltip(null), 1000);
+      }).catch(err => {
+        console.error("Failed to copy to clipboard:", err);
+      });
+    }
   };
 
   const totalHeight = totalLines * LINE_HEIGHT;
@@ -527,6 +583,7 @@ export function HexDump({
             ref={canvasRef}
             onMouseMove={handleMouseMove}
             onMouseLeave={handleMouseLeave}
+            onContextMenu={handleContextMenu}
             style={{
               position: "absolute",
               top: `${visibleRange.start * LINE_HEIGHT}px`,
