@@ -21,9 +21,20 @@ interface ByteInfo {
   isAscii: boolean;
 }
 
-export function HexDump({ baseAddress, memoryRange, memoryChunks, onRequestMemory, scrollResetTrigger, scrollOffsetDelta }: HexDumpProps) {
+export function HexDump({
+  baseAddress,
+  memoryRange,
+  memoryChunks,
+  onRequestMemory,
+  scrollResetTrigger,
+  scrollOffsetDelta,
+}: HexDumpProps) {
   const [format, setFormat] = useState<DisplayFormat>("word");
-  const [tooltip, setTooltip] = useState<{ x: number; y: number; text: string } | null>(null);
+  const [tooltip, setTooltip] = useState<{
+    x: number;
+    y: number;
+    text: string;
+  } | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [visibleRange, setVisibleRange] = useState({ start: 0, end: 0 });
@@ -43,7 +54,9 @@ export function HexDump({ baseAddress, memoryRange, memoryChunks, onRequestMemor
   const ADDRESS_OFFSET = 10;
   const HEX_OFFSET = 80;
   const CHUNK_SIZE = 1024; // Request 1KB chunks
-  const BACKWARD_OFFSET_LINES = Math.ceil(VIEWABLE_RANGE_BACKWARD / bytesPerLine); // Lines before base address
+  const BACKWARD_OFFSET_LINES = Math.ceil(
+    VIEWABLE_RANGE_BACKWARD / bytesPerLine,
+  ); // Lines before base address
 
   // Helper to get byte from chunks (offset can be negative)
   const getByte = (offset: number): number | undefined => {
@@ -56,7 +69,9 @@ export function HexDump({ baseAddress, memoryRange, memoryChunks, onRequestMemor
     }
     // Calculate byte index within chunk (handle negative offsets)
     const byteIndex = offset - chunkOffset;
-    return byteIndex >= 0 && byteIndex < chunk.length ? chunk[byteIndex] : undefined;
+    return byteIndex >= 0 && byteIndex < chunk.length
+      ? chunk[byteIndex]
+      : undefined;
   };
 
   // Render canvas
@@ -64,14 +79,18 @@ export function HexDump({ baseAddress, memoryRange, memoryChunks, onRequestMemor
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
     // Get colors from CSS variables / theme
     const styles = getComputedStyle(document.documentElement);
-    const foregroundColor = styles.getPropertyValue('--vscode-editor-foreground').trim() || '#d4d4d4';
-    const commentColor = styles.getPropertyValue('--vscode-editorLineNumber-foreground').trim() || '#858585';
-    const backgroundColor = styles.getPropertyValue('--vscode-editor-background').trim() || '#1e1e1e';
+    const foregroundColor =
+      styles.getPropertyValue("--vscode-editor-foreground").trim() || "#d4d4d4";
+    const commentColor =
+      styles.getPropertyValue("--vscode-editorLineNumber-foreground").trim() ||
+      "#858585";
+    const backgroundColor =
+      styles.getPropertyValue("--vscode-editor-background").trim() || "#1e1e1e";
 
     const dpr = window.devicePixelRatio || 1;
 
@@ -95,7 +114,12 @@ export function HexDump({ baseAddress, memoryRange, memoryChunks, onRequestMemor
     }
 
     // ASCII section: gap (2 chars) + | (1) + gap (1.5) + 16 ASCII chars + | (1)
-    const asciiWidth = CHAR_WIDTH * 2 + CHAR_WIDTH + CHAR_WIDTH * 1.5 + bytesPerLine * CHAR_WIDTH + CHAR_WIDTH;
+    const asciiWidth =
+      CHAR_WIDTH * 2 +
+      CHAR_WIDTH +
+      CHAR_WIDTH * 1.5 +
+      bytesPerLine * CHAR_WIDTH +
+      CHAR_WIDTH;
 
     const canvasWidth = HEX_OFFSET + hexWidth + asciiWidth;
 
@@ -105,8 +129,8 @@ export function HexDump({ baseAddress, memoryRange, memoryChunks, onRequestMemor
     canvas.style.height = `${canvasHeight}px`;
 
     ctx.scale(dpr, dpr);
-    ctx.font = '14px monospace';
-    ctx.textBaseline = 'top';
+    ctx.font = "14px monospace";
+    ctx.textBaseline = "top";
 
     // Clear background
     ctx.fillStyle = backgroundColor;
@@ -136,7 +160,7 @@ export function HexDump({ baseAddress, memoryRange, memoryChunks, onRequestMemor
         if (byte0 === undefined) {
           // Show placeholder for missing data
           ctx.fillStyle = commentColor;
-          ctx.fillText('..', hexX, y + 2);
+          ctx.fillText("..", hexX, y + 2);
           hexX += 2 * CHAR_WIDTH + CHAR_WIDTH;
           if (format === "byte" && (j === 3 || j === 7 || j === 11)) {
             hexX += CHAR_WIDTH;
@@ -151,32 +175,33 @@ export function HexDump({ baseAddress, memoryRange, memoryChunks, onRequestMemor
             case "byte":
               value = byte0;
               break;
-            case "word":
+            case "word": {
               const byte1 = getByte(byteOffset + 1);
-              value = byte1 !== undefined
-                ? (byte0 << 8) | byte1
-                : byte0;
+              value = byte1 !== undefined ? (byte0 << 8) | byte1 : byte0;
               break;
-            case "longword":
+            }
+            case "longword": {
               const byte1l = getByte(byteOffset + 1);
               const byte2 = getByte(byteOffset + 2);
               const byte3 = getByte(byteOffset + 3);
-              if (byte1l !== undefined && byte2 !== undefined && byte3 !== undefined) {
-                value = (byte0 << 24) |
-                        (byte1l << 16) |
-                        (byte2 << 8) |
-                        byte3;
+              if (
+                byte1l !== undefined &&
+                byte2 !== undefined &&
+                byte3 !== undefined
+              ) {
+                value = (byte0 << 24) | (byte1l << 16) | (byte2 << 8) | byte3;
                 value = value >>> 0;
               } else {
                 value = byte0;
               }
               break;
+            }
           }
 
-          const hex = value.toString(16).toUpperCase().padStart(
-            format === "byte" ? 2 : format === "word" ? 4 : 8,
-            "0"
-          );
+          const hex = value
+            .toString(16)
+            .toUpperCase()
+            .padStart(format === "byte" ? 2 : format === "word" ? 4 : 8, "0");
 
           // Highlight changed bytes - check if ANY byte in this value changed within 1 second
           let mostRecentChange = 0;
@@ -186,7 +211,8 @@ export function HexDump({ baseAddress, memoryRange, memoryChunks, onRequestMemor
               mostRecentChange = Math.max(mostRecentChange, changeTime);
             }
           }
-          const isChanged = mostRecentChange > 0 && (Date.now() - mostRecentChange) < 1000;
+          const isChanged =
+            mostRecentChange > 0 && Date.now() - mostRecentChange < 1000;
           if (isChanged) {
             // Fade opacity based on time since change
             const elapsed = Date.now() - mostRecentChange;
@@ -205,7 +231,7 @@ export function HexDump({ baseAddress, memoryRange, memoryChunks, onRequestMemor
             x: hexX,
             y,
             width: hex.length * CHAR_WIDTH,
-            isAscii: false
+            isAscii: false,
           });
 
           hexX += hex.length * CHAR_WIDTH + CHAR_WIDTH;
@@ -220,13 +246,14 @@ export function HexDump({ baseAddress, memoryRange, memoryChunks, onRequestMemor
       // Draw ASCII - calculate offset based on actual hex width
       const asciiOffset = hexX + CHAR_WIDTH * 2;
       ctx.fillStyle = commentColor;
-      ctx.fillText('|', asciiOffset, y + 2);
+      ctx.fillText("|", asciiOffset, y + 2);
 
       let asciiX = asciiOffset + CHAR_WIDTH * 1.5;
       for (let j = 0; j < bytesPerLine; j++) {
         const byte = getByte(lineOffset + j);
         if (byte === undefined) break;
-        const char = byte >= 32 && byte <= 126 ? String.fromCharCode(byte) : ".";
+        const char =
+          byte >= 32 && byte <= 126 ? String.fromCharCode(byte) : ".";
 
         ctx.fillStyle = commentColor;
         ctx.fillText(char, asciiX, y + 2);
@@ -238,14 +265,14 @@ export function HexDump({ baseAddress, memoryRange, memoryChunks, onRequestMemor
           x: asciiX,
           y,
           width: CHAR_WIDTH,
-          isAscii: true
+          isAscii: true,
         });
 
         asciiX += CHAR_WIDTH;
       }
 
       ctx.fillStyle = commentColor;
-      ctx.fillText('|', asciiX, y + 2);
+      ctx.fillText("|", asciiX, y + 2);
     }
 
     byteInfoMapRef.current = byteInfos;
@@ -268,14 +295,22 @@ export function HexDump({ baseAddress, memoryRange, memoryChunks, onRequestMemor
 
   // Reset scroll when scrollResetTrigger changes (same address re-submitted)
   useEffect(() => {
-    if (scrollResetTrigger && containerRef.current && baseAddress !== undefined) {
+    if (
+      scrollResetTrigger &&
+      containerRef.current &&
+      baseAddress !== undefined
+    ) {
       containerRef.current.scrollTop = BACKWARD_OFFSET_LINES * LINE_HEIGHT;
     }
   }, [scrollResetTrigger, BACKWARD_OFFSET_LINES]);
 
   // Adjust scroll position when base address changes but we want to preserve offset
   useEffect(() => {
-    if (scrollOffsetDelta !== undefined && scrollOffsetDelta !== 0 && containerRef.current) {
+    if (
+      scrollOffsetDelta !== undefined &&
+      scrollOffsetDelta !== 0 &&
+      containerRef.current
+    ) {
       // Convert byte offset delta to line offset
       const lineOffsetDelta = scrollOffsetDelta / bytesPerLine;
       const scrollDelta = lineOffsetDelta * LINE_HEIGHT;
@@ -284,7 +319,9 @@ export function HexDump({ baseAddress, memoryRange, memoryChunks, onRequestMemor
       const currentScrollTop = containerRef.current.scrollTop;
       containerRef.current.scrollTop = currentScrollTop - scrollDelta;
 
-      console.log(`Adjusted scroll by ${scrollOffsetDelta} bytes (${lineOffsetDelta} lines, ${scrollDelta}px)`);
+      console.log(
+        `Adjusted scroll by ${scrollOffsetDelta} bytes (${lineOffsetDelta} lines, ${scrollDelta}px)`,
+      );
     }
   }, [scrollOffsetDelta, bytesPerLine]);
 
@@ -352,7 +389,7 @@ export function HexDump({ baseAddress, memoryRange, memoryChunks, onRequestMemor
 
       // Don't request chunks if we don't have a valid base address yet
       if (baseAddress === undefined) {
-        console.log('Skipping chunk request - baseAddress not set yet');
+        console.log("Skipping chunk request - baseAddress not set yet");
         return;
       }
 
@@ -363,25 +400,38 @@ export function HexDump({ baseAddress, memoryRange, memoryChunks, onRequestMemor
       const effectiveHeight = containerHeight || 600;
 
       const buffer = 20; // Larger buffer to prefetch more aggressively
-      const firstVisibleLine = Math.max(0, Math.floor(scrollTop / LINE_HEIGHT) - buffer);
+      const firstVisibleLine = Math.max(
+        0,
+        Math.floor(scrollTop / LINE_HEIGHT) - buffer,
+      );
       const lastVisibleLine = Math.min(
         totalLines,
-        Math.ceil((scrollTop + effectiveHeight) / LINE_HEIGHT) + buffer
+        Math.ceil((scrollTop + effectiveHeight) / LINE_HEIGHT) + buffer,
       );
 
       setVisibleRange({ start: firstVisibleLine, end: lastVisibleLine });
 
       // Request missing chunks for visible range (convert to actual byte offsets, can be negative)
-      const firstByte = (firstVisibleLine - BACKWARD_OFFSET_LINES) * bytesPerLine;
+      const firstByte =
+        (firstVisibleLine - BACKWARD_OFFSET_LINES) * bytesPerLine;
       const lastByte = (lastVisibleLine - BACKWARD_OFFSET_LINES) * bytesPerLine;
 
       // Request chunks in the range (handle negative offsets)
       const firstChunk = Math.floor(firstByte / CHUNK_SIZE) * CHUNK_SIZE;
       const lastChunk = Math.floor(lastByte / CHUNK_SIZE) * CHUNK_SIZE;
 
-      for (let chunkOffset = firstChunk; chunkOffset <= lastChunk; chunkOffset += CHUNK_SIZE) {
-        if (!memoryChunksRef.current.has(chunkOffset) && !requestedChunksRef.current.has(chunkOffset)) {
-          console.log(`Requesting chunk at offset ${chunkOffset} (baseAddr=${baseAddress})`);
+      for (
+        let chunkOffset = firstChunk;
+        chunkOffset <= lastChunk;
+        chunkOffset += CHUNK_SIZE
+      ) {
+        if (
+          !memoryChunksRef.current.has(chunkOffset) &&
+          !requestedChunksRef.current.has(chunkOffset)
+        ) {
+          console.log(
+            `Requesting chunk at offset ${chunkOffset} (baseAddr=${baseAddress})`,
+          );
           requestedChunksRef.current.add(chunkOffset);
           onRequestMemory(chunkOffset, CHUNK_SIZE);
         }
@@ -393,16 +443,18 @@ export function HexDump({ baseAddress, memoryRange, memoryChunks, onRequestMemor
 
     const container = containerRef.current;
     if (container) {
-      container.addEventListener('scroll', handleScroll);
+      container.addEventListener("scroll", handleScroll);
       return () => {
-        container.removeEventListener('scroll', handleScroll);
+        container.removeEventListener("scroll", handleScroll);
       };
     }
   }, [totalLines, onRequestMemory, baseAddress]);
 
   useEffect(() => {
-    console.log(`Rendering: chunks=${memoryChunks.size}, range=${visibleRange.start}-${visibleRange.end}, baseAddr=${baseAddress}`);
-    console.log('Available chunks:', Array.from(memoryChunks.keys()));
+    console.log(
+      `Rendering: chunks=${memoryChunks.size}, range=${visibleRange.start}-${visibleRange.end}, baseAddr=${baseAddress}`,
+    );
+    console.log("Available chunks:", Array.from(memoryChunks.keys()));
     renderCanvas();
   }, [memoryChunks, visibleRange, format, baseAddress]);
 
@@ -417,16 +469,22 @@ export function HexDump({ baseAddress, memoryRange, memoryChunks, onRequestMemor
 
     // Find byte under cursor
     const byteInfo = byteInfoMapRef.current.find(
-      info => x >= info.x && x <= info.x + info.width &&
-              y >= info.y && y <= info.y + LINE_HEIGHT
+      (info) =>
+        x >= info.x &&
+        x <= info.x + info.width &&
+        y >= info.y &&
+        y <= info.y + LINE_HEIGHT,
     );
 
     if (byteInfo) {
-      const addrHex = byteInfo.address.toString(16).toUpperCase().padStart(6, "0");
+      const addrHex = byteInfo.address
+        .toString(16)
+        .toUpperCase()
+        .padStart(6, "0");
       setTooltip({
         x: e.clientX,
         y: e.clientY,
-        text: `0x${byteInfo.hex} (${byteInfo.value}) @ ${addrHex}`
+        text: `0x${byteInfo.hex} (${byteInfo.value}) @ ${addrHex}`,
       });
     } else {
       setTooltip(null);
@@ -444,7 +502,10 @@ export function HexDump({ baseAddress, memoryRange, memoryChunks, onRequestMemor
       <div className="hex-controls">
         <label>
           Format:
-          <select value={format} onChange={(e) => setFormat(e.target.value as DisplayFormat)}>
+          <select
+            value={format}
+            onChange={(e) => setFormat(e.target.value as DisplayFormat)}
+          >
             <option value="byte">Byte (8-bit)</option>
             <option value="word">Word (16-bit)</option>
             <option value="longword">Longword (32-bit)</option>
@@ -455,23 +516,23 @@ export function HexDump({ baseAddress, memoryRange, memoryChunks, onRequestMemor
         className="hex-scroll-container"
         ref={containerRef}
         style={{
-          height: '100%',
-          overflowX: 'auto',
-          overflowY: 'auto',
-          position: 'relative'
+          height: "100%",
+          overflowX: "auto",
+          overflowY: "auto",
+          position: "relative",
         }}
       >
-        <div style={{ height: `${totalHeight}px`, position: 'relative' }}>
+        <div style={{ height: `${totalHeight}px`, position: "relative" }}>
           <canvas
             ref={canvasRef}
             onMouseMove={handleMouseMove}
             onMouseLeave={handleMouseLeave}
             style={{
-              position: 'absolute',
+              position: "absolute",
               top: `${visibleRange.start * LINE_HEIGHT}px`,
               left: 0,
-              cursor: 'crosshair',
-              imageRendering: 'crisp-edges'
+              cursor: "crosshair",
+              imageRendering: "crisp-edges",
             }}
           />
         </div>
@@ -479,19 +540,19 @@ export function HexDump({ baseAddress, memoryRange, memoryChunks, onRequestMemor
       {tooltip && (
         <div
           style={{
-            position: 'fixed',
+            position: "fixed",
             left: tooltip.x + 10,
             top: tooltip.y + 10,
-            backgroundColor: '#1e1e1e',
-            color: '#d4d4d4',
-            border: '1px solid #454545',
-            padding: '4px 8px',
-            borderRadius: '3px',
-            fontSize: '12px',
-            fontFamily: 'monospace',
-            pointerEvents: 'none',
+            backgroundColor: "#1e1e1e",
+            color: "#d4d4d4",
+            border: "1px solid #454545",
+            padding: "4px 8px",
+            borderRadius: "3px",
+            fontSize: "12px",
+            fontFamily: "monospace",
+            pointerEvents: "none",
             zIndex: 1000,
-            whiteSpace: 'nowrap'
+            whiteSpace: "nowrap",
           }}
         >
           {tooltip.text}

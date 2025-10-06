@@ -8,6 +8,7 @@ interface MemoryViewerState {
   addressInput: string;
   baseAddress: number;
   liveUpdate: boolean;
+  dereferencePointer: boolean;
   liveUpdateInterval?: NodeJS.Timeout;
   memoryCache: Map<number, Uint8Array>; // offset -> chunk
 }
@@ -96,6 +97,7 @@ export class MemoryViewerProvider {
       addressInput,
       baseAddress: 0,
       liveUpdate: true,
+      dereferencePointer: false,
       memoryCache: new Map(),
     };
 
@@ -125,6 +127,7 @@ export class MemoryViewerProvider {
         case "changeAddress": {
           const previousAddress = state.baseAddress;
           state.addressInput = message.addressInput;
+          state.dereferencePointer = message.dereferencePointer ?? false;
           await this.updateState(state);
           // Only clear cache if address actually changed
           if (state.baseAddress !== previousAddress) {
@@ -137,6 +140,7 @@ export class MemoryViewerProvider {
           break;
         case "toggleLiveUpdate":
           state.liveUpdate = message.enabled;
+          state.dereferencePointer = message.dereferencePointer ?? false;
           if (state.liveUpdate && this.isEmulatorRunning) {
             this.startLiveUpdate(state);
           } else {
@@ -227,12 +231,28 @@ export class MemoryViewerProvider {
       const { value, memoryReference } = await evaluateManager.evaluate(
         state.addressInput,
       );
-      const baseAddress = memoryReference ? Number(memoryReference) : value;
+      let baseAddress = memoryReference ? Number(memoryReference) : value;
       if (typeof baseAddress !== "number") {
         throw new Error("Does not evaluate to a numeric value");
       }
       if (!this.vAmiga.isValidAddress(baseAddress)) {
         throw new Error(`Not a valid address: ${formatHex(baseAddress)}`);
+      }
+
+      // If dereferencePointer is enabled, read 32-bit value at this address
+      if (state.dereferencePointer) {
+        const pointerBytes = await this.vAmiga.readMemory(baseAddress, 4);
+        if (pointerBytes.byteLength >= 4) {
+          // Big-endian 32-bit read
+          const view = new DataView(pointerBytes.buffer, pointerBytes.byteOffset, pointerBytes.byteLength);
+          const targetAddress = view.getUint32(0, false); // false = big-endian
+          if (!this.vAmiga.isValidAddress(targetAddress)) {
+            throw new Error(`Pointer at ${formatHex(baseAddress)} points to invalid address: ${formatHex(targetAddress)}`);
+          }
+          baseAddress = targetAddress;
+        } else {
+          throw new Error(`Failed to read pointer at ${formatHex(baseAddress)}`);
+        }
       }
 
       // Update panel title to show the address/symbol
@@ -344,7 +364,37 @@ export class MemoryViewerProvider {
             const { value, memoryReference } = await evaluateManager.evaluate(
               state.addressInput,
             );
-            const newBaseAddress = memoryReference ? Number(memoryReference) : value;
+            let newBaseAddress = memoryReference ? Number(memoryReference) : value;
+
+            // If dereferencePointer is enabled, read the 32-bit value at this address
+            if (state.dereferencePointer && typeof newBaseAddress === "number" && this.vAmiga.isValidAddress(newBaseAddress)) {
+              try {
+                const pointerBytes = await this.vAmiga.readMemory(newBaseAddress, 4);
+                if (pointerBytes.byteLength >= 4) {
+                  const view = new DataView(pointerBytes.buffer, pointerBytes.byteOffset, pointerBytes.byteLength);
+                  const targetAddress = view.getUint32(0, false); // false = big-endian
+                  if (this.vAmiga.isValidAddress(targetAddress)) {
+                    newBaseAddress = targetAddress;
+                  } else {
+                    // Invalid target address - stop live updates and show error
+                    this.stopLiveUpdate(state);
+                    state.panel.webview.postMessage({
+                      command: "updateState",
+                      error: `Pointer at ${formatHex(newBaseAddress)} points to invalid address: ${formatHex(targetAddress)}`,
+                    });
+                    return;
+                  }
+                }
+              } catch (err) {
+                // Failed to dereference - stop live updates and show error
+                this.stopLiveUpdate(state);
+                state.panel.webview.postMessage({
+                  command: "updateState",
+                  error: `Failed to read pointer at ${formatHex(newBaseAddress)}: ${err instanceof Error ? err.message : String(err)}`,
+                });
+                return;
+              }
+            }
 
             if (typeof newBaseAddress === "number" && newBaseAddress !== previousBaseAddress) {
               // Base address changed - update state and preserve scroll offset

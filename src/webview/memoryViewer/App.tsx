@@ -42,11 +42,17 @@ function formatHex(value: number): string {
 export function App() {
   const [baseAddress, setBaseAddress] = useState<number | undefined>(undefined);
   const baseAddressRef = useRef<number | undefined>(undefined);
-  const [memoryRange, setMemoryRange] = useState<{ start: number; end: number }>({
+  const [memoryRange, setMemoryRange] = useState<{
+    start: number;
+    end: number;
+  }>({
     start: -1024 * 1024,
     end: 1024 * 1024,
   });
   const [currentRegion, setCurrentRegion] = useState<string>("");
+  const [currentRegionStart, setCurrentRegionStart] = useState<
+    number | undefined
+  >(undefined);
   const [availableRegions, setAvailableRegions] = useState<MemoryRegion[]>([]);
   const [viewMode, setViewMode] = useState<ViewMode>("hex");
   const [liveUpdate, setLiveUpdate] = useState<boolean>(true);
@@ -57,6 +63,7 @@ export function App() {
   const [error, setError] = useState<string | null>(null);
   const [scrollResetTrigger, setScrollResetTrigger] = useState<number>(0);
   const [scrollOffsetDelta, setScrollOffsetDelta] = useState<number>(0);
+  const [dereferencePointer, setDereferencePointer] = useState<boolean>(false);
 
   // Keep ref in sync
   useEffect(() => {
@@ -78,10 +85,13 @@ export function App() {
         if (pendingUpdate.addressInput !== undefined)
           setAddressInput(pendingUpdate.addressInput);
         if (pendingUpdate.baseAddress !== undefined) {
-          const addressChanged = pendingUpdate.baseAddress !== baseAddressRef.current;
+          const addressChanged =
+            pendingUpdate.baseAddress !== baseAddressRef.current;
 
           if (addressChanged) {
-            console.log(`Address changed from ${baseAddressRef.current} to ${pendingUpdate.baseAddress} - clearing chunks`);
+            console.log(
+              `Address changed from ${baseAddressRef.current} to ${pendingUpdate.baseAddress} - clearing chunks`,
+            );
             setBaseAddress(pendingUpdate.baseAddress);
             setMemoryChunks(new Map());
             // If preserveOffset is set, pass it to HexDump to adjust scroll
@@ -91,7 +101,7 @@ export function App() {
           } else {
             // Same address re-submitted - just trigger scroll reset
             console.log(`Same address re-submitted - triggering scroll reset`);
-            setScrollResetTrigger(prev => prev + 1);
+            setScrollResetTrigger((prev) => prev + 1);
           }
         }
         if (pendingUpdate.memoryRange !== undefined) {
@@ -99,6 +109,9 @@ export function App() {
         }
         if (pendingUpdate.currentRegion !== undefined) {
           setCurrentRegion(pendingUpdate.currentRegion);
+        }
+        if (pendingUpdate.currentRegionStart !== undefined) {
+          setCurrentRegionStart(pendingUpdate.currentRegionStart);
         }
         if (pendingUpdate.availableRegions !== undefined) {
           setAvailableRegions(pendingUpdate.availableRegions);
@@ -130,13 +143,17 @@ export function App() {
         scheduleUpdate();
       } else if (message.command === "memoryData") {
         const memData = message as MemoryDataMessage;
-        console.log(`Received chunk: offset=${memData.offset}, baseAddress=${memData.baseAddress}, current=${baseAddressRef.current}`);
+        console.log(
+          `Received chunk: offset=${memData.offset}, baseAddress=${memData.baseAddress}, current=${baseAddressRef.current}`,
+        );
         // Only update if data is for current base address
         if (memData.baseAddress === baseAddressRef.current) {
           setMemoryChunks((prev) => {
             const next = new Map(prev);
             next.set(memData.offset, new Uint8Array(memData.data));
-            console.log(`Added chunk at offset ${memData.offset}, total chunks: ${next.size}`);
+            console.log(
+              `Added chunk at offset ${memData.offset}, total chunks: ${next.size}`,
+            );
             return next;
           });
         } else {
@@ -159,6 +176,7 @@ export function App() {
     vscode.postMessage({
       command: "changeAddress",
       addressInput,
+      dereferencePointer,
       resetScroll: true, // Tell HexDump to reset scroll position
     });
   };
@@ -175,6 +193,7 @@ export function App() {
     vscode.postMessage({
       command: "toggleLiveUpdate",
       enabled,
+      dereferencePointer,
     });
   };
 
@@ -189,7 +208,8 @@ export function App() {
   const handleRegionChange: React.FormEventHandler<HTMLSelectElement> = (e) => {
     const selectedAddress = parseInt((e.target as HTMLSelectElement).value);
     if (!isNaN(selectedAddress)) {
-      const addressHex = "0x" + selectedAddress.toString(16).toUpperCase().padStart(6, "0");
+      const addressHex =
+        "0x" + selectedAddress.toString(16).toUpperCase().padStart(6, "0");
       setAddressInput(addressHex);
       vscode.postMessage({
         command: "changeAddress",
@@ -216,7 +236,23 @@ export function App() {
 
       <div className="live-update-container">
         <vscode-checkbox checked={liveUpdate} onChange={toggleLiveUpdate}>
-          Live Update (refresh while running)
+          Live Update
+        </vscode-checkbox>{" "}
+        <vscode-checkbox
+          checked={dereferencePointer}
+          onChange={(e: React.FormEvent) => {
+            const checked = (e.target as HTMLInputElement).checked;
+            setDereferencePointer(checked);
+            // Trigger update when checkbox changes
+            vscode.postMessage({
+              command: "changeAddress",
+              addressInput,
+              dereferencePointer: checked,
+              resetScroll: true,
+            });
+          }}
+        >
+          Dereference pointer
         </vscode-checkbox>
       </div>
 
@@ -225,13 +261,14 @@ export function App() {
           <vscode-label htmlFor="region">Region:</vscode-label>
           <select
             id="region"
-            value={baseAddress}
+            value={currentRegionStart}
             onChange={handleRegionChange}
             className="region-dropdown"
           >
             {availableRegions.map((region) => (
               <option key={region.address} value={region.address}>
-                {region.name} ({formatHex(region.address)} - {formatHex(region.address + region.size - 1)})
+                {region.name} ({formatHex(region.address)} -{" "}
+                {formatHex(region.address + region.size - 1)})
               </option>
             ))}
           </select>
