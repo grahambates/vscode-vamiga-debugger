@@ -1,19 +1,32 @@
 import React, { useState, useRef, useEffect } from "react";
 
 export interface VisualViewProps {
-  memoryData: Uint8Array;
-  currentAddress: number;
+  baseAddress: number;
+  memoryRange: { start: number; end: number };
+  memoryChunks: Map<number, Uint8Array>;
+  onRequestMemory: (offset: number, count: number) => void;
 }
 
-export function VisualView({ memoryData, currentAddress }: VisualViewProps) {
+export function VisualView({ baseAddress, memoryRange, memoryChunks, onRequestMemory }: VisualViewProps) {
   const [bytesPerRow, setBytesPerRow] = useState<number>(40); // Default 40 bytes = 320 pixels
   const [scale, setScale] = useState<number>(1);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
+  const CHUNK_SIZE = 1024;
+  const VIEWABLE_RANGE = Math.abs(memoryRange.start) + memoryRange.end;
   const pixelsPerByte = 8;
   const pixelWidth = bytesPerRow * pixelsPerByte;
-  const totalRows = Math.ceil(memoryData.length / bytesPerRow);
+  const totalRows = Math.ceil(VIEWABLE_RANGE / bytesPerRow);
+
+  // Helper to get byte from chunks
+  const getByte = (offset: number): number | undefined => {
+    const chunkOffset = Math.floor(offset / CHUNK_SIZE) * CHUNK_SIZE;
+    const chunk = memoryChunks.get(chunkOffset);
+    if (!chunk) return undefined;
+    const byteIndex = offset - chunkOffset;
+    return byteIndex < chunk.length ? chunk[byteIndex] : undefined;
+  };
 
   // Render bitmap
   useEffect(() => {
@@ -42,8 +55,9 @@ export function VisualView({ memoryData, currentAddress }: VisualViewProps) {
     let pixelX = 0;
     let pixelY = 0;
 
-    for (let i = 0; i < memoryData.length; i++) {
-      const byte = memoryData[i];
+    for (let i = 0; i < VIEWABLE_RANGE; i++) {
+      const byte = getByte(i);
+      if (byte === undefined) continue;
 
       // Draw 8 pixels for this byte (MSB first)
       for (let bit = 7; bit >= 0; bit--) {
@@ -60,7 +74,7 @@ export function VisualView({ memoryData, currentAddress }: VisualViewProps) {
         }
       }
     }
-  }, [memoryData, bytesPerRow, scale, pixelWidth, totalRows]);
+  }, [memoryChunks, bytesPerRow, scale, pixelWidth, totalRows]);
 
   // Handle mouse move for showing pixel info
   const [tooltip, setTooltip] = useState<{ x: number; y: number; text: string } | null>(null);
@@ -77,10 +91,10 @@ export function VisualView({ memoryData, currentAddress }: VisualViewProps) {
     const byteOffset = Math.floor(y * bytesPerRow + x / 8);
     const bitPosition = 7 - (x % 8);
 
-    if (byteOffset < memoryData.length) {
-      const byte = memoryData[byteOffset];
+    const byte = getByte(byteOffset);
+    if (byte !== undefined) {
       const isOn = (byte & (1 << bitPosition)) !== 0;
-      const address = currentAddress + byteOffset;
+      const address = baseAddress + byteOffset;
       const addressHex = address.toString(16).toUpperCase().padStart(6, "0");
       const byteHex = byte.toString(16).toUpperCase().padStart(2, "0");
 
@@ -132,7 +146,7 @@ export function VisualView({ memoryData, currentAddress }: VisualViewProps) {
         </label>
 
         <div style={{ opacity: 0.7 }}>
-          {pixelWidth} × {totalRows} pixels ({memoryData.length} bytes)
+          {pixelWidth} × {totalRows} pixels
         </div>
       </div>
 

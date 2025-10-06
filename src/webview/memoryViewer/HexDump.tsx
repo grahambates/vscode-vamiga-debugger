@@ -1,8 +1,11 @@
 import React, { useState, useRef, useEffect } from "react";
 
 export interface HexDumpProps {
-  memoryData: Uint8Array;
-  currentAddress: number;
+  baseAddress: number;
+  memoryRange: { start: number; end: number };
+  memoryChunks: Map<number, Uint8Array>;
+  onRequestMemory: (offset: number, count: number) => void;
+  scrollResetTrigger?: number;
 }
 
 type DisplayFormat = "byte" | "word" | "longword";
@@ -17,22 +20,43 @@ interface ByteInfo {
   isAscii: boolean;
 }
 
-export function HexDump({ memoryData, currentAddress }: HexDumpProps) {
+export function HexDump({ baseAddress, memoryRange, memoryChunks, onRequestMemory, scrollResetTrigger }: HexDumpProps) {
   const [format, setFormat] = useState<DisplayFormat>("word");
   const [tooltip, setTooltip] = useState<{ x: number; y: number; text: string } | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [visibleRange, setVisibleRange] = useState({ start: 0, end: 0 });
   const byteInfoMapRef = useRef<ByteInfo[]>([]);
-  const previousDataRef = useRef<Uint8Array | null>(null);
-  const changedBytesRef = useRef<Map<number, number>>(new Map()); // byte index -> timestamp
+  const previousDataRef = useRef<Map<number, Uint8Array> | null>(null);
+  const changedBytesRef = useRef<Map<number, number>>(new Map()); // byte offset -> timestamp
+  const requestedChunksRef = useRef<Set<number>>(new Set()); // Track requested chunks to avoid duplicates
+  const memoryChunksRef = useRef<Map<number, Uint8Array>>(memoryChunks);
 
   const bytesPerLine = 16;
-  const totalLines = Math.ceil(memoryData.length / bytesPerLine);
+  const VIEWABLE_RANGE_BACKWARD = Math.abs(memoryRange.start); // How far back we can go
+  const VIEWABLE_RANGE_FORWARD = memoryRange.end; // How far forward we can go
+  const VIEWABLE_RANGE_TOTAL = VIEWABLE_RANGE_BACKWARD + VIEWABLE_RANGE_FORWARD;
+  const totalLines = Math.ceil(VIEWABLE_RANGE_TOTAL / bytesPerLine);
   const LINE_HEIGHT = 20;
   const CHAR_WIDTH = 8.4; // Monospace character width (adjusted for 14px font)
   const ADDRESS_OFFSET = 10;
   const HEX_OFFSET = 80;
+  const CHUNK_SIZE = 1024; // Request 1KB chunks
+  const BACKWARD_OFFSET_LINES = Math.ceil(VIEWABLE_RANGE_BACKWARD / bytesPerLine); // Lines before base address
+
+  // Helper to get byte from chunks (offset can be negative)
+  const getByte = (offset: number): number | undefined => {
+    // For negative offsets, we need to floor towards negative infinity
+    const chunkOffset = Math.floor(offset / CHUNK_SIZE) * CHUNK_SIZE;
+    const chunk = memoryChunks.get(chunkOffset);
+    if (!chunk) {
+      // console.log(`No chunk for offset ${offset} (chunk ${chunkOffset})`);
+      return undefined;
+    }
+    // Calculate byte index within chunk (handle negative offsets)
+    const byteIndex = offset - chunkOffset;
+    return byteIndex >= 0 && byteIndex < chunk.length ? chunk[byteIndex] : undefined;
+  };
 
   // Render canvas
   const renderCanvas = () => {
@@ -90,11 +114,11 @@ export function HexDump({ memoryData, currentAddress }: HexDumpProps) {
     const byteInfos: ByteInfo[] = [];
 
     for (let i = visibleRange.start; i < visibleRange.end; i++) {
-      const lineOffset = i * bytesPerLine;
-      if (lineOffset >= memoryData.length) break;
+      // Convert line number to actual byte offset (can be negative)
+      const lineOffset = (i - BACKWARD_OFFSET_LINES) * bytesPerLine;
 
       const y = (i - visibleRange.start) * LINE_HEIGHT;
-      const lineAddress = currentAddress + lineOffset;
+      const lineAddress = baseAddress + lineOffset;
 
       // Draw address
       ctx.fillStyle = commentColor;
@@ -104,30 +128,46 @@ export function HexDump({ memoryData, currentAddress }: HexDumpProps) {
       // Draw hex values
       let hexX = HEX_OFFSET;
       for (let j = 0; j < valuesPerLine; j++) {
-        const byteIndex = lineOffset + j * valueSize;
+        const byteOffset = lineOffset + j * valueSize;
         const valueAddress = lineAddress + j * valueSize;
 
-        if (byteIndex < memoryData.length) {
+        const byte0 = getByte(byteOffset);
+        if (byte0 === undefined) {
+          // Show placeholder for missing data
+          ctx.fillStyle = commentColor;
+          ctx.fillText('..', hexX, y + 2);
+          hexX += 2 * CHAR_WIDTH + CHAR_WIDTH;
+          if (format === "byte" && (j === 3 || j === 7 || j === 11)) {
+            hexX += CHAR_WIDTH;
+          }
+          continue;
+        }
+
+        if (byte0 !== undefined) {
           let value: number;
 
           switch (format) {
             case "byte":
-              value = memoryData[byteIndex];
+              value = byte0;
               break;
             case "word":
-              value = byteIndex + 1 < memoryData.length
-                ? (memoryData[byteIndex] << 8) | memoryData[byteIndex + 1]
-                : memoryData[byteIndex];
+              const byte1 = getByte(byteOffset + 1);
+              value = byte1 !== undefined
+                ? (byte0 << 8) | byte1
+                : byte0;
               break;
             case "longword":
-              if (byteIndex + 3 < memoryData.length) {
-                value = (memoryData[byteIndex] << 24) |
-                        (memoryData[byteIndex + 1] << 16) |
-                        (memoryData[byteIndex + 2] << 8) |
-                        memoryData[byteIndex + 3];
+              const byte1l = getByte(byteOffset + 1);
+              const byte2 = getByte(byteOffset + 2);
+              const byte3 = getByte(byteOffset + 3);
+              if (byte1l !== undefined && byte2 !== undefined && byte3 !== undefined) {
+                value = (byte0 << 24) |
+                        (byte1l << 16) |
+                        (byte2 << 8) |
+                        byte3;
                 value = value >>> 0;
               } else {
-                value = memoryData[byteIndex];
+                value = byte0;
               }
               break;
           }
@@ -138,7 +178,7 @@ export function HexDump({ memoryData, currentAddress }: HexDumpProps) {
           );
 
           // Highlight changed bytes - check if within 1 second of change
-          const changeTime = changedBytesRef.current.get(byteIndex);
+          const changeTime = changedBytesRef.current.get(byteOffset);
           const isChanged = changeTime && (Date.now() - changeTime) < 1000;
           if (isChanged) {
             // Fade opacity based on time since change
@@ -176,8 +216,9 @@ export function HexDump({ memoryData, currentAddress }: HexDumpProps) {
       ctx.fillText('|', asciiOffset, y + 2);
 
       let asciiX = asciiOffset + CHAR_WIDTH * 1.5;
-      for (let j = 0; j < bytesPerLine && lineOffset + j < memoryData.length; j++) {
-        const byte = memoryData[lineOffset + j];
+      for (let j = 0; j < bytesPerLine; j++) {
+        const byte = getByte(lineOffset + j);
+        if (byte === undefined) break;
         const char = byte >= 32 && byte <= 126 ? String.fromCharCode(byte) : ".";
 
         ctx.fillStyle = commentColor;
@@ -203,25 +244,48 @@ export function HexDump({ memoryData, currentAddress }: HexDumpProps) {
     byteInfoMapRef.current = byteInfos;
   };
 
+  // Keep ref in sync with state
+  useEffect(() => {
+    memoryChunksRef.current = memoryChunks;
+  }, [memoryChunks]);
+
+  // Clear requested chunks and scroll to base address when it changes
+  useEffect(() => {
+    requestedChunksRef.current.clear();
+
+    // Always scroll to show base address at the top when baseAddress changes
+    if (containerRef.current && baseAddress !== undefined) {
+      containerRef.current.scrollTop = BACKWARD_OFFSET_LINES * LINE_HEIGHT;
+    }
+  }, [baseAddress, BACKWARD_OFFSET_LINES]);
+
+  // Reset scroll when scrollResetTrigger changes (same address re-submitted)
+  useEffect(() => {
+    if (scrollResetTrigger && containerRef.current && baseAddress !== undefined) {
+      containerRef.current.scrollTop = BACKWARD_OFFSET_LINES * LINE_HEIGHT;
+    }
+  }, [scrollResetTrigger, BACKWARD_OFFSET_LINES]);
+
   // Track changed bytes with timestamps
   useEffect(() => {
-    // Skip change detection on first render
-    if (previousDataRef.current === null) {
-      previousDataRef.current = new Uint8Array(memoryData);
-      return;
-    }
-
     const now = Date.now();
     let hasChanges = false;
-    const previousData = previousDataRef.current;
 
-    for (let i = 0; i < memoryData.length; i++) {
-      if (previousData[i] !== memoryData[i]) {
-        changedBytesRef.current.set(i, now);
-        hasChanges = true;
+    // Compare each chunk with previous version
+    memoryChunks.forEach((chunk, offset) => {
+      const prevChunk = previousDataRef.current?.get(offset);
+      if (prevChunk) {
+        for (let i = 0; i < chunk.length; i++) {
+          if (prevChunk[i] !== chunk[i]) {
+            changedBytesRef.current.set(offset + i, now);
+            hasChanges = true;
+          }
+        }
       }
-    }
-    previousDataRef.current = new Uint8Array(memoryData);
+    });
+
+    // Update previous data
+    previousDataRef.current = new Map(memoryChunks);
 
     // Clean up old change markers (older than 1 second)
     const cutoff = now - 1000;
@@ -257,38 +321,68 @@ export function HexDump({ memoryData, currentAddress }: HexDumpProps) {
       animationId = requestAnimationFrame(animate);
       return () => cancelAnimationFrame(animationId);
     }
-  }, [memoryData]);
+  }, [memoryChunks]);
 
-  // Calculate visible range on scroll
+  // Calculate visible range on scroll and request missing chunks
   useEffect(() => {
     const handleScroll = () => {
       if (!containerRef.current) return;
 
+      // Don't request chunks if we don't have a valid base address yet
+      if (baseAddress === undefined) {
+        console.log('Skipping chunk request - baseAddress not set yet');
+        return;
+      }
+
       const scrollTop = containerRef.current.scrollTop;
       const containerHeight = containerRef.current.clientHeight;
 
-      const buffer = 5;
+      // If container has no height yet, default to reasonable value
+      const effectiveHeight = containerHeight || 600;
+
+      const buffer = 20; // Larger buffer to prefetch more aggressively
       const firstVisibleLine = Math.max(0, Math.floor(scrollTop / LINE_HEIGHT) - buffer);
       const lastVisibleLine = Math.min(
         totalLines,
-        Math.ceil((scrollTop + containerHeight) / LINE_HEIGHT) + buffer
+        Math.ceil((scrollTop + effectiveHeight) / LINE_HEIGHT) + buffer
       );
 
       setVisibleRange({ start: firstVisibleLine, end: lastVisibleLine });
+
+      // Request missing chunks for visible range (convert to actual byte offsets, can be negative)
+      const firstByte = (firstVisibleLine - BACKWARD_OFFSET_LINES) * bytesPerLine;
+      const lastByte = (lastVisibleLine - BACKWARD_OFFSET_LINES) * bytesPerLine;
+
+      // Request chunks in the range (handle negative offsets)
+      const firstChunk = Math.floor(firstByte / CHUNK_SIZE) * CHUNK_SIZE;
+      const lastChunk = Math.floor(lastByte / CHUNK_SIZE) * CHUNK_SIZE;
+
+      for (let chunkOffset = firstChunk; chunkOffset <= lastChunk; chunkOffset += CHUNK_SIZE) {
+        if (!memoryChunksRef.current.has(chunkOffset) && !requestedChunksRef.current.has(chunkOffset)) {
+          console.log(`Requesting chunk at offset ${chunkOffset} (baseAddr=${baseAddress})`);
+          requestedChunksRef.current.add(chunkOffset);
+          onRequestMemory(chunkOffset, CHUNK_SIZE);
+        }
+      }
     };
 
+    // Call immediately when baseAddress changes or component mounts
     handleScroll();
 
     const container = containerRef.current;
     if (container) {
       container.addEventListener('scroll', handleScroll);
-      return () => container.removeEventListener('scroll', handleScroll);
+      return () => {
+        container.removeEventListener('scroll', handleScroll);
+      };
     }
-  }, [totalLines]);
+  }, [totalLines, onRequestMemory, baseAddress]);
 
   useEffect(() => {
+    console.log(`Rendering: chunks=${memoryChunks.size}, range=${visibleRange.start}-${visibleRange.end}, baseAddr=${baseAddress}`);
+    console.log('Available chunks:', Array.from(memoryChunks.keys()));
     renderCanvas();
-  }, [memoryData, visibleRange, format, currentAddress]);
+  }, [memoryChunks, visibleRange, format, baseAddress]);
 
   // Handle mouse move for tooltips
   const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {

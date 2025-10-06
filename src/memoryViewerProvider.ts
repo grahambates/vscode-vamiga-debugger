@@ -2,17 +2,18 @@ import * as vscode from "vscode";
 import { VAmiga, isEmulatorStateMessage } from "./vAmiga";
 import { VamigaDebugAdapter } from "./vAmigaDebugAdapter";
 import { formatHex } from "./numbers";
-import { EvaluateResultType } from "./evaluateManager";
 
 interface MemoryViewerState {
   panel: vscode.WebviewPanel;
   addressInput: string;
-  byteLength: number;
+  baseAddress: number;
   liveUpdate: boolean;
   liveUpdateInterval?: NodeJS.Timeout;
+  memoryCache: Map<number, Uint8Array>; // offset -> chunk
 }
 
 const LIVE_UPDATE_RATE_MS = 1000 / 25;
+const CHUNK_SIZE = 1024;
 
 /**
  * Provides a webview for viewing emulator memory in different formats.
@@ -93,8 +94,9 @@ export class MemoryViewerProvider {
     const state: MemoryViewerState = {
       panel,
       addressInput,
-      byteLength: 0,
+      baseAddress: 0,
       liveUpdate: true,
+      memoryCache: new Map(),
     };
 
     this.panels.set(panelId, state);
@@ -120,9 +122,18 @@ export class MemoryViewerProvider {
             this.startLiveUpdate(state);
           }
           break;
-        case "changeAddress":
+        case "changeAddress": {
+          const previousAddress = state.baseAddress;
           state.addressInput = message.addressInput;
           await this.updateState(state);
+          // Only clear cache if address actually changed
+          if (state.baseAddress !== previousAddress) {
+            state.memoryCache.clear();
+          }
+          break;
+        }
+        case "requestMemory":
+          await this.fetchMemoryChunk(state, message.offset, message.count);
           break;
         case "toggleLiveUpdate":
           state.liveUpdate = message.enabled;
@@ -145,42 +156,46 @@ export class MemoryViewerProvider {
 
       // Evaluate input expression on each update, as result can change e.g. pointers
       const evaluateManager = adapter.getEvaluateManager();
-      const { value, memoryReference, type } = await evaluateManager.evaluate(
+      const { value, memoryReference } = await evaluateManager.evaluate(
         state.addressInput,
       );
-      const currentAddress = memoryReference ? Number(memoryReference) : value;
-      if (typeof currentAddress !== "number") {
+      const baseAddress = memoryReference ? Number(memoryReference) : value;
+      if (typeof baseAddress !== "number") {
         throw new Error("Does not evaluate to a numeric value");
       }
-      if (!this.vAmiga.isValidAddress(currentAddress)) {
-        throw new Error(`Not a valid address: ${formatHex(currentAddress)}`);
+      if (!this.vAmiga.isValidAddress(baseAddress)) {
+        throw new Error(`Not a valid address: ${formatHex(baseAddress)}`);
       }
 
       // Update panel title to show the address/symbol
       state.panel.title = `Memory: ${state.addressInput}`;
+      state.baseAddress = baseAddress;
 
-      const bytesPerLine = 16;
-      const numLines = 32;
-      const defaultBytes = bytesPerLine * numLines;
+      // Get memory range - prefer segment bounds, fall back to memory region
+      let memoryRange: { start: number; end: number };
 
-      // Get actual size of labeled region for symbol name
-      if (type === EvaluateResultType.SYMBOL) {
-        state.byteLength =
-          adapter.getSourceMap().getSymbolLengths()?.[state.addressInput] ??
-          defaultBytes;
+      const segment = adapter.getSourceMap().findSegmentForAddress(baseAddress);
+      if (segment) {
+        // Use segment boundaries
+        memoryRange = {
+          start: segment.address - baseAddress,
+          end: segment.address + segment.size - 1 - baseAddress,
+        };
       } else {
-        state.byteLength = defaultBytes;
+        // Fall back to memory region
+        const memoryRegion = this.vAmiga.getMemoryRegion(baseAddress);
+        memoryRange = memoryRegion
+          ? {
+              start: memoryRegion.start - baseAddress,
+              end: memoryRegion.end - baseAddress,
+            }
+          : { start: -1024 * 1024, end: 1024 * 1024 }; // Default to 1MB each way
       }
-
-      const result = await this.vAmiga.readMemory(
-        currentAddress,
-        state.byteLength,
-      );
 
       state.panel.webview.postMessage({
         command: "updateState",
-        memoryData: new Uint8Array(result),
-        currentAddress,
+        baseAddress,
+        memoryRange,
         liveUpdate: state.liveUpdate,
         error: null,
       });
@@ -193,17 +208,67 @@ export class MemoryViewerProvider {
     }
   }
 
+  private async fetchMemoryChunk(
+    state: MemoryViewerState,
+    offset: number,
+    count: number,
+  ): Promise<void> {
+    try {
+      // Check cache first
+      if (state.memoryCache.has(offset)) {
+        return; // Already have this chunk
+      }
+
+      const address = state.baseAddress + offset;
+      const result = await this.vAmiga.readMemory(address, count);
+
+      // Cache the chunk
+      state.memoryCache.set(offset, new Uint8Array(result));
+
+      // Send to webview
+      state.panel.webview.postMessage({
+        command: "memoryData",
+        offset,
+        data: Array.from(new Uint8Array(result)), // Convert to array for JSON serialization
+        baseAddress: state.baseAddress,
+      });
+    } catch (err) {
+      // Silently ignore errors for now - chunk just won't be available
+      console.error(`Failed to fetch memory chunk at offset ${offset}:`, err);
+    }
+  }
+
   /**
-   * Starts live updates at ~4fps when emulator is running
+   * Starts live updates at ~25fps when emulator is running
    */
   private startLiveUpdate(state: MemoryViewerState): void {
     if (state.liveUpdateInterval) {
       return; // Already running
     }
 
-    state.liveUpdateInterval = setInterval(() => {
+    state.liveUpdateInterval = setInterval(async () => {
       if (state.liveUpdate && this.isEmulatorRunning) {
-        this.updateState(state);
+        // For live updates, re-fetch all cached chunks without clearing
+        const cachedOffsets = Array.from(state.memoryCache.keys());
+        for (const offset of cachedOffsets) {
+          try {
+            const address = state.baseAddress + offset;
+            const result = await this.vAmiga.readMemory(address, CHUNK_SIZE);
+
+            // Update cache
+            state.memoryCache.set(offset, new Uint8Array(result));
+
+            // Send updated chunk to webview
+            state.panel.webview.postMessage({
+              command: "memoryData",
+              offset,
+              data: Array.from(new Uint8Array(result)),
+              baseAddress: state.baseAddress,
+            });
+          } catch {
+            // Ignore errors during live update
+          }
+        }
       }
     }, LIVE_UPDATE_RATE_MS);
   }

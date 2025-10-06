@@ -771,6 +771,41 @@ export class VAmiga {
     }
   }
 
+  /**
+   * Get the contiguous memory region bounds for a given address
+   * Returns the start and end addresses of the continuous block of the same memory type
+   */
+  public getMemoryRegion(address: number): { start: number; end: number } | null {
+    if (!this.memoryInfo) {
+      // Default to 16MB address space
+      return { start: 0, end: 0x1000_0000 };
+    }
+
+    const bank = address >>> 16;
+    const type = this.memoryInfo.cpuMemSrc[bank];
+
+    if (type === MemSrc.NONE) {
+      return null; // Invalid address
+    }
+
+    // Find the start of this memory region (scan backwards)
+    let startBank = bank;
+    while (startBank > 0 && this.memoryInfo.cpuMemSrc[startBank - 1] === type) {
+      startBank--;
+    }
+
+    // Find the end of this memory region (scan forwards)
+    let endBank = bank;
+    while (endBank < 255 && this.memoryInfo.cpuMemSrc[endBank + 1] === type) {
+      endBank++;
+    }
+
+    return {
+      start: startBank << 16,
+      end: ((endBank + 1) << 16) - 1,
+    };
+  }
+
   // Helper methods:
 
   private initPanel(options: OpenOptions) {
