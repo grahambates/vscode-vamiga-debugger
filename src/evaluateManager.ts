@@ -177,6 +177,9 @@ export class EvaluateManager {
     let memoryReference: string | undefined;
     let type = EvaluateResultType.UNKNOWN;
 
+    // Support asm style hex
+    expression = expression.replace(/\$([0-9a-f]+)/ig, "0x$1");
+
     if (expression.match(/^-?[0-9]+$/i)) {
       // Interpret decimal as numeric literal
       value = Number(expression);

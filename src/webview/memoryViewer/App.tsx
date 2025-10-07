@@ -37,7 +37,7 @@ interface MemoryDataMessage {
 type ViewMode = "hex" | "visual" | "disassembly" | "copper";
 
 function formatHex(value: number): string {
-  return "$" + value.toString(16).toUpperCase().padStart(6, "0");
+  return "0x" + value.toString(16).toUpperCase().padStart(8, "0");
 }
 
 export function App() {
@@ -50,7 +50,6 @@ export function App() {
     start: -1024 * 1024,
     end: 1024 * 1024,
   });
-  const [currentRegion, setCurrentRegion] = useState<string>("");
   const [currentRegionStart, setCurrentRegionStart] = useState<
     number | undefined
   >(undefined);
@@ -110,9 +109,6 @@ export function App() {
         }
         if (pendingUpdate.memoryRange !== undefined) {
           setMemoryRange(pendingUpdate.memoryRange);
-        }
-        if (pendingUpdate.currentRegion !== undefined) {
-          setCurrentRegion(pendingUpdate.currentRegion);
         }
         if (pendingUpdate.currentRegionStart !== undefined) {
           setCurrentRegionStart(pendingUpdate.currentRegionStart);
@@ -250,16 +246,13 @@ export function App() {
   };
 
   const handleRegionChange: React.FormEventHandler<HTMLSelectElement> = (e) => {
-    const selectedAddress = parseInt((e.target as HTMLSelectElement).value);
-    if (!isNaN(selectedAddress)) {
-      const addressHex =
-        "0x" + selectedAddress.toString(16).toUpperCase().padStart(6, "0");
-      setAddressInput(addressHex);
-      vscode.postMessage({
-        command: "changeAddress",
-        addressInput: addressHex,
-      });
-    }
+    const addressValue = Number((e.target as HTMLSelectElement).value);
+    const addressInput = formatHex(addressValue);
+    setAddressInput(addressInput);
+    vscode.postMessage({
+      command: "changeAddress",
+      addressInput: addressInput,
+    });
   };
 
   return (
@@ -270,7 +263,7 @@ export function App() {
           <input
             {...getInputProps({
               id: "address",
-              placeholder: "Type symbol name or address...",
+              placeholder: "Type symbol name, address or expression...",
               onKeyDown: handleInputKeyDown,
             })}
             className="address-textfield"
@@ -285,7 +278,9 @@ export function App() {
                   className={`autocomplete-item ${highlightedIndex === index ? "selected" : ""}`}
                 >
                   <span className="suggestion-label">{suggestion.label}</span>
-                  <span className="suggestion-address">{suggestion.address}</span>
+                  <span className="suggestion-address">
+                    {suggestion.address}
+                  </span>
                   {suggestion.description && (
                     <span className="suggestion-description">
                       {suggestion.description}
@@ -322,7 +317,7 @@ export function App() {
         </vscode-checkbox>
       </div>
 
-      {currentRegion && availableRegions.length > 0 && (
+      {availableRegions.length > 0 && (
         <div className="region-selector">
           <vscode-label htmlFor="region">Region:</vscode-label>
           <select
@@ -331,6 +326,7 @@ export function App() {
             onChange={handleRegionChange}
             className="region-dropdown"
           >
+            <option>Select memory region</option>
             {availableRegions.map((region) => (
               <option key={region.address} value={region.address}>
                 {region.name} ({formatHex(region.address)} -{" "}

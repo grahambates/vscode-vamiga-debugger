@@ -123,15 +123,9 @@ export class MemoryViewerProvider {
           }
           break;
         case "changeAddress": {
-          const previousAddress = state.baseAddress;
           state.addressInput = message.addressInput;
           state.dereferencePointer = message.dereferencePointer ?? false;
-
-          // Skip if address is empty
-          if (!state.addressInput || state.addressInput.trim() === "") {
-            break;
-          }
-
+          const previousAddress = state.baseAddress;
           await this.updateState(state);
           // Only clear cache if address actually changed
           if (state.baseAddress !== previousAddress) {
@@ -211,7 +205,6 @@ export class MemoryViewerProvider {
     adapter: VamigaDebugAdapter,
   ): {
     memoryRange: { start: number; end: number };
-    currentRegion: string;
     currentRegionStart: number | undefined;
   } {
     // Prefer segment bounds, fall back to memory regions
@@ -222,7 +215,6 @@ export class MemoryViewerProvider {
           start: segment.address - baseAddress,
           end: segment.address + segment.size - 1 - baseAddress,
         },
-        currentRegion: segment.name,
         currentRegionStart: segment.address,
       };
     }
@@ -230,16 +222,11 @@ export class MemoryViewerProvider {
     // Fall back to memory region
     const memoryRegion = this.vAmiga.getMemoryRegion(baseAddress);
     if (memoryRegion) {
-      const bank = baseAddress >>> 16;
-      const memInfo = this.vAmiga.getCachedMemoryInfo();
-      const type = memInfo?.cpuMemSrc?.[bank];
       return {
         memoryRange: {
           start: memoryRegion.start - baseAddress,
           end: memoryRegion.end - baseAddress,
         },
-        currentRegion:
-          type !== undefined ? this.getMemoryTypeName(type) : "Memory",
         currentRegionStart: memoryRegion.start,
       };
     }
@@ -247,7 +234,6 @@ export class MemoryViewerProvider {
     // Unknown region
     return {
       memoryRange: { start: -1024 * 1024, end: 1024 * 1024 },
-      currentRegion: "Unknown",
       currentRegionStart: undefined,
     };
   }
@@ -348,7 +334,7 @@ export class MemoryViewerProvider {
       if (state.memoryCache.has(offset)) {
         return; // Already have this chunk
       }
-      if (!state.baseAddress) {
+      if (state.baseAddress === undefined) {
         return;
       }
 
