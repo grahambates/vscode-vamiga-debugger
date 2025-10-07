@@ -60,7 +60,7 @@ export function App() {
   const [memoryChunks, setMemoryChunks] = useState<Map<number, Uint8Array>>(
     new Map(),
   );
-  const [addressInput, setAddressInput] = useState<string>("000000");
+  const [addressInput, setAddressInput] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
   const [scrollResetTrigger, setScrollResetTrigger] = useState<number>(0);
   const [scrollOffsetDelta, setScrollOffsetDelta] = useState<number>(0);
@@ -270,10 +270,11 @@ export function App() {
           <input
             {...getInputProps({
               id: "address",
-              placeholder: "000000",
+              placeholder: "Type symbol name or address...",
               onKeyDown: handleInputKeyDown,
             })}
             className="address-textfield"
+            autoFocus
           />
           <ul {...getMenuProps()} className="autocomplete-dropdown">
             {isOpen &&

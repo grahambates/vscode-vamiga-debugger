@@ -2,11 +2,12 @@ import * as vscode from "vscode";
 import { VAmiga, isEmulatorStateMessage, MemSrc } from "./vAmiga";
 import { VamigaDebugAdapter } from "./vAmigaDebugAdapter";
 import { formatHex } from "./numbers";
+import { EvaluateResultType } from "./evaluateManager";
 
 interface MemoryViewerState {
   panel: vscode.WebviewPanel;
   addressInput: string;
-  baseAddress: number;
+  baseAddress?: number;
   liveUpdate: boolean;
   dereferencePointer: boolean;
   liveUpdateInterval?: NodeJS.Timeout;
@@ -125,6 +126,12 @@ export class MemoryViewerProvider {
           const previousAddress = state.baseAddress;
           state.addressInput = message.addressInput;
           state.dereferencePointer = message.dereferencePointer ?? false;
+
+          // Skip if address is empty
+          if (!state.addressInput || state.addressInput.trim() === "") {
+            break;
+          }
+
           await this.updateState(state);
           // Only clear cache if address actually changed
           if (state.baseAddress !== previousAddress) {
@@ -168,12 +175,12 @@ export class MemoryViewerProvider {
   private sendStateToWebview(
     panel: vscode.WebviewPanel,
     params: {
-      baseAddress: number;
-      memoryRange: { start: number; end: number };
-      currentRegion: string;
-      currentRegionStart: number | undefined;
-      availableRegions: Array<{ name: string; address: number; size: number }>;
-      liveUpdate: boolean;
+      baseAddress?: number;
+      memoryRange?: { start: number; end: number };
+      currentRegion?: string;
+      currentRegionStart?: number | undefined;
+      availableRegions?: Array<{ name: string; address: number; size: number }>;
+      liveUpdate?: boolean;
       preserveOffset?: number;
     },
   ): void {
@@ -253,12 +260,15 @@ export class MemoryViewerProvider {
   private async evaluateAndDereferenceAddress(
     state: MemoryViewerState,
     adapter: VamigaDebugAdapter,
-  ): Promise<number> {
+  ): Promise<number | undefined> {
     // Evaluate input expression (can change each update, e.g., register values)
     const evaluateManager = adapter.getEvaluateManager();
-    const { value, memoryReference } = await evaluateManager.evaluate(
+    const { value, memoryReference, type } = await evaluateManager.evaluate(
       state.addressInput,
     );
+    if (type === EvaluateResultType.EMPTY) {
+      return;
+    }
     let baseAddress = memoryReference ? Number(memoryReference) : value;
 
     if (typeof baseAddress !== "number") {
@@ -307,34 +317,32 @@ export class MemoryViewerProvider {
         throw new Error("Debugger is not running");
       }
 
+      // Initial state
+      state.panel.title = "Memory Viewer";
+      const initialState = {
+        availableRegions: this.getAvailableRegions(adapter),
+        liveUpdate: state.liveUpdate,
+        preserveOffset,
+      };
+
       // Evaluate and dereference address (unless preserveOffset is set, meaning address already evaluated)
       if (preserveOffset === undefined) {
-        const baseAddress = await this.evaluateAndDereferenceAddress(
+        state.baseAddress = await this.evaluateAndDereferenceAddress(
           state,
           adapter,
         );
-        state.baseAddress = baseAddress;
+      }
+      if (state.baseAddress === undefined) {
+        // Send intial state without address
+        return this.sendStateToWebview(state.panel, initialState);
       }
 
-      // Update panel title
+      // Send state with address and range
       state.panel.title = `Memory: ${state.addressInput}`;
-
-      // Calculate memory range and region info
-      const { memoryRange, currentRegion, currentRegionStart } =
-        this.calculateMemoryRange(state.baseAddress, adapter);
-
-      // Get all available regions
-      const availableRegions = this.getAvailableRegions(adapter);
-
-      // Send state to webview
       this.sendStateToWebview(state.panel, {
         baseAddress: state.baseAddress,
-        memoryRange,
-        currentRegion,
-        currentRegionStart,
-        availableRegions,
-        liveUpdate: state.liveUpdate,
-        preserveOffset,
+        ...this.calculateMemoryRange(state.baseAddress, adapter),
+        ...initialState,
       });
     } catch (err) {
       this.sendErrorToWebview(state.panel, err);
@@ -350,6 +358,9 @@ export class MemoryViewerProvider {
       // Check cache first
       if (state.memoryCache.has(offset)) {
         return; // Already have this chunk
+      }
+      if (!state.baseAddress) {
+        return;
       }
 
       const address = state.baseAddress + offset;
@@ -381,6 +392,9 @@ export class MemoryViewerProvider {
 
     state.liveUpdateInterval = setInterval(async () => {
       if (state.liveUpdate && this.isEmulatorRunning) {
+        if (!state.baseAddress) {
+          return;
+        }
         // Check if address expression result has changed (e.g., register value, pointer)
         const previousBaseAddress = state.baseAddress;
         try {
@@ -391,7 +405,10 @@ export class MemoryViewerProvider {
               adapter,
             );
 
-            if (newBaseAddress !== previousBaseAddress) {
+            if (
+              newBaseAddress !== undefined &&
+              newBaseAddress !== previousBaseAddress
+            ) {
               // Base address changed - update state and preserve scroll offset
               const offsetDelta = newBaseAddress - previousBaseAddress;
               state.baseAddress = newBaseAddress;

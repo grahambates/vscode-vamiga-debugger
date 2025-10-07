@@ -69,27 +69,10 @@ export function activate(context: vscode.ExtensionContext) {
           }
         }
 
-        if (address) {
-          try {
-            await memoryViewer.show(address);
-            return;
-          } catch (_) {
-            // ignore and prompt for user input
-          }
-        }
-
-        // Prompt user for address
-        address = await vscode.window.showInputBox({
-          prompt: "Enter memory address or expression",
-          placeHolder: "0x00000000",
-        });
-
-        if (!address) {
-          return; // User cancelled
-        }
-
+        // Open panel directly with address (or empty if not provided)
+        // The panel will have autocomplete so user can easily search for symbols
         try {
-          await memoryViewer.show(address);
+          await memoryViewer.show(address || "");
           return;
         } catch (error) {
           vscode.window.showErrorMessage(
