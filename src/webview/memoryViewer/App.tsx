@@ -4,6 +4,7 @@ import { VscodeCheckbox } from "@vscode-elements/elements";
 import { useCombobox } from "downshift";
 import { HexDump } from "./HexDump";
 import { VisualView } from "./VisualView";
+import "./App.css";
 
 const vscode = acquireVsCodeApi();
 
@@ -20,9 +21,7 @@ interface UpdateStateMessage {
   baseAddress?: number;
   symbolLength?: number;
   symbols?: Record<string, number>;
-  symbolLengths?: Record<string, number>;
   memoryRange?: { start: number; end: number };
-  currentRegion?: string;
   currentRegionStart?: number;
   availableRegions?: MemoryRegion[];
   liveUpdate?: boolean;
@@ -39,6 +38,8 @@ interface MemoryDataMessage {
 
 type ViewMode = "hex" | "visual" | "disassembly" | "copper";
 
+const viewModes: ViewMode[] = ["hex", "visual", "disassembly", "copper"];
+
 function formatHex(value: number): string {
   return "0x" + value.toString(16).toUpperCase().padStart(8, "0");
 }
@@ -46,9 +47,10 @@ function formatHex(value: number): string {
 export function App() {
   const [baseAddress, setBaseAddress] = useState<number | undefined>(undefined);
   const baseAddressRef = useRef<number | undefined>(undefined);
-  const [symbolLength, setSymbolLength] = useState<number | undefined>(undefined);
+  const [symbolLength, setSymbolLength] = useState<number | undefined>(
+    undefined,
+  );
   const [symbols, setSymbols] = useState<Record<string, number>>({});
-  const [symbolLengths, setSymbolLengths] = useState<Record<string, number>>({});
   const [memoryRange, setMemoryRange] = useState<{
     start: number;
     end: number;
@@ -125,9 +127,6 @@ export function App() {
         }
         if (pendingUpdate.symbols !== undefined) {
           setSymbols(pendingUpdate.symbols);
-        }
-        if (pendingUpdate.symbolLengths !== undefined) {
-          setSymbolLengths(pendingUpdate.symbolLengths);
         }
         if (pendingUpdate.liveUpdate !== undefined)
           setLiveUpdate(pendingUpdate.liveUpdate);
@@ -263,7 +262,7 @@ export function App() {
     setAddressInput(addressInput);
     vscode.postMessage({
       command: "changeAddress",
-      addressInput: addressInput,
+      addressInput,
     });
   };
 
@@ -354,11 +353,7 @@ export function App() {
       {baseAddress !== undefined ? (
         <vscode-tabs
           onvsc-tabs-select={(e) => {
-            setViewMode(
-              ["hex", "visual", "disassembly", "copper"][
-                e.detail.selectedIndex
-              ] as ViewMode,
-            );
+            setViewMode(viewModes[e.detail.selectedIndex]);
           }}
         >
           <vscode-tab-header>Hex Dump</vscode-tab-header>
@@ -372,7 +367,6 @@ export function App() {
                 baseAddress={baseAddress}
                 symbolLength={symbolLength}
                 symbols={symbols}
-                symbolLengths={symbolLengths}
                 memoryRange={memoryRange}
                 memoryChunks={memoryChunks}
                 onRequestMemory={requestMemory}

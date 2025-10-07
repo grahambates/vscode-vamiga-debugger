@@ -123,7 +123,7 @@ export function VisualView({ baseAddress, memoryRange, memoryChunks }: VisualVie
             min="1"
             max="256"
             value={bytesPerRow}
-            onChange={(e) => setBytesPerRow(Math.max(1, parseInt(e.target.value) || 20))}
+            onChange={(e) => setBytesPerRow(Math.max(1, parseInt(e.target.value) || 40))}
             style={{ marginLeft: '8px', width: '60px' }}
           />
           <span style={{ marginLeft: '8px', opacity: 0.7 }}>
