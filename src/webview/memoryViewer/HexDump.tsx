@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from "react";
 
 export interface HexDumpProps {
   baseAddress: number;
+  symbolLength?: number;
   memoryRange: { start: number; end: number };
   memoryChunks: Map<number, Uint8Array>;
   onRequestMemory: (offset: number, count: number) => void;
@@ -24,6 +25,7 @@ interface ByteInfo {
 
 export function HexDump({
   baseAddress,
+  symbolLength,
   memoryRange,
   memoryChunks,
   onRequestMemory,
@@ -212,10 +214,15 @@ export function HexDump({
             .toUpperCase()
             .padStart(format === "byte" ? 2 : format === "word" ? 4 : 8, "0");
 
-          // Check if this value contains the target address (baseAddress)
+          // Check if this value overlaps with the symbol range
+          // Default to at least one value if symbolLength is 0 or undefined
+          const effectiveSymbolLength = symbolLength && symbolLength > 0 ? symbolLength : valueSize;
+          const symbolEndAddress = baseAddress + effectiveSymbolLength;
+          const valueEndAddress = valueAddress + valueSize;
+
           const isTargetAddress =
-            valueAddress <= baseAddress &&
-            baseAddress < valueAddress + valueSize;
+            valueAddress < symbolEndAddress &&
+            valueEndAddress > baseAddress;
 
           // Highlight changed bytes - check if ANY byte in this value changed within 1 second
           let mostRecentChange = 0;
@@ -276,9 +283,12 @@ export function HexDump({
         const char =
           byte >= 32 && byte <= 126 ? String.fromCharCode(byte) : ".";
 
-        // Highlight target address in ASCII section
+        // Highlight symbol range in ASCII section
         const byteAddress = lineAddress + j;
-        if (byteAddress === baseAddress) {
+        const effectiveSymbolLength = symbolLength && symbolLength > 0 ? symbolLength : 1;
+        const symbolEndAddress = baseAddress + effectiveSymbolLength;
+
+        if (byteAddress >= baseAddress && byteAddress < symbolEndAddress) {
           ctx.fillStyle = selectionBackground;
           ctx.fillRect(asciiX, y, CHAR_WIDTH, LINE_HEIGHT);
         }

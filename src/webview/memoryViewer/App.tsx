@@ -18,6 +18,7 @@ interface UpdateStateMessage {
   command: "updateState";
   addressInput?: string;
   baseAddress?: number;
+  symbolLength?: number;
   memoryRange?: { start: number; end: number };
   currentRegion?: string;
   currentRegionStart?: number;
@@ -43,6 +44,7 @@ function formatHex(value: number): string {
 export function App() {
   const [baseAddress, setBaseAddress] = useState<number | undefined>(undefined);
   const baseAddressRef = useRef<number | undefined>(undefined);
+  const [symbolLength, setSymbolLength] = useState<number | undefined>(undefined);
   const [memoryRange, setMemoryRange] = useState<{
     start: number;
     end: number;
@@ -96,6 +98,7 @@ export function App() {
               `Address changed from ${baseAddressRef.current} to ${pendingUpdate.baseAddress} - clearing chunks`,
             );
             setBaseAddress(pendingUpdate.baseAddress);
+            setSymbolLength(pendingUpdate.symbolLength);
             setMemoryChunks(new Map());
             // If preserveOffset is set, pass it to HexDump to adjust scroll
             if (pendingUpdate.preserveOffset !== undefined) {
@@ -220,10 +223,18 @@ export function App() {
 
   // Custom key handler for "Go" button behavior
   const handleInputKeyDown = (e: React.KeyboardEvent) => {
-    // Let Downshift handle most keys, but intercept Enter when menu is closed
-    if (e.key === "Enter" && !isOpen) {
-      e.preventDefault();
-      goToAddress();
+    if (e.key === "Enter") {
+      // Check if there's an exact match in suggestions
+      const exactMatch = suggestions.find(
+        (s) => s.label.toLowerCase() === addressInput.toLowerCase()
+      );
+
+      if (exactMatch || !isOpen) {
+        // If exact match or menu is closed, submit the address directly
+        e.preventDefault();
+        goToAddress();
+      }
+      // Otherwise, let Downshift handle it (select highlighted item)
     }
   };
 
@@ -358,6 +369,7 @@ export function App() {
             {viewMode === "hex" && (
               <HexDump
                 baseAddress={baseAddress}
+                symbolLength={symbolLength}
                 memoryRange={memoryRange}
                 memoryChunks={memoryChunks}
                 onRequestMemory={requestMemory}

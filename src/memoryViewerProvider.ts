@@ -8,6 +8,7 @@ interface MemoryViewerState {
   panel: vscode.WebviewPanel;
   addressInput: string;
   baseAddress?: number;
+  symbolLength?: number;
   liveUpdate: boolean;
   dereferencePointer: boolean;
   liveUpdateInterval?: NodeJS.Timeout;
@@ -170,6 +171,7 @@ export class MemoryViewerProvider {
     panel: vscode.WebviewPanel,
     params: {
       baseAddress?: number;
+      symbolLength?: number;
       memoryRange?: { start: number; end: number };
       currentRegion?: string;
       currentRegionStart?: number | undefined;
@@ -240,13 +242,13 @@ export class MemoryViewerProvider {
 
   /**
    * Evaluates the address expression and optionally dereferences it as a 32-bit pointer
-   * @returns The final base address to view
+   * @returns Object with the final base address and optional symbol length
    * @throws Error if address is invalid or dereferencing fails
    */
   private async evaluateAndDereferenceAddress(
     state: MemoryViewerState,
     adapter: VamigaDebugAdapter,
-  ): Promise<number | undefined> {
+  ): Promise<{ address: number; symbolLength?: number } | undefined> {
     // Evaluate input expression (can change each update, e.g., register values)
     const evaluateManager = adapter.getEvaluateManager();
     const { value, memoryReference, type } = await evaluateManager.evaluate(
@@ -264,6 +266,20 @@ export class MemoryViewerProvider {
       throw new Error(`Not a valid address: ${formatHex(baseAddress)}`);
     }
 
+    // Get symbol length if the input is a symbol name
+    let symbolLength: number | undefined;
+    const sourceMap = adapter.getSourceMap();
+    const symbols = sourceMap.getSymbols();
+    const symbolLengths = sourceMap.getSymbolLengths();
+
+    // Check if input matches a symbol name
+    if (symbols && symbolLengths) {
+      const symbolAddress = symbols[state.addressInput];
+      if (symbolAddress === baseAddress) {
+        symbolLength = symbolLengths[state.addressInput];
+      }
+    }
+
     // If dereferencePointer is enabled, read 32-bit value at this address
     if (state.dereferencePointer) {
       const targetAddress = await this.vAmiga.peek32(baseAddress);
@@ -273,9 +289,11 @@ export class MemoryViewerProvider {
         );
       }
       baseAddress = targetAddress;
+      // Clear symbol length when dereferencing
+      symbolLength = undefined;
     }
 
-    return baseAddress;
+    return { address: baseAddress, symbolLength };
   }
 
   /**
@@ -302,10 +320,14 @@ export class MemoryViewerProvider {
 
       // Evaluate and dereference address (unless preserveOffset is set, meaning address already evaluated)
       if (preserveOffset === undefined) {
-        state.baseAddress = await this.evaluateAndDereferenceAddress(
+        const result = await this.evaluateAndDereferenceAddress(
           state,
           adapter,
         );
+        if (result) {
+          state.baseAddress = result.address;
+          state.symbolLength = result.symbolLength;
+        }
       }
       if (state.baseAddress === undefined) {
         // Send intial state without address
@@ -316,6 +338,7 @@ export class MemoryViewerProvider {
       state.panel.title = `Memory: ${state.addressInput}`;
       this.sendStateToWebview(state.panel, {
         baseAddress: state.baseAddress,
+        symbolLength: state.symbolLength,
         ...this.calculateMemoryRange(state.baseAddress, adapter),
         ...initialState,
       });
@@ -375,18 +398,19 @@ export class MemoryViewerProvider {
         try {
           const adapter = VamigaDebugAdapter.getActiveAdapter();
           if (adapter) {
-            const newBaseAddress = await this.evaluateAndDereferenceAddress(
+            const result = await this.evaluateAndDereferenceAddress(
               state,
               adapter,
             );
 
             if (
-              newBaseAddress !== undefined &&
-              newBaseAddress !== previousBaseAddress
+              result !== undefined &&
+              result.address !== previousBaseAddress
             ) {
               // Base address changed - update state and preserve scroll offset
-              const offsetDelta = newBaseAddress - previousBaseAddress;
-              state.baseAddress = newBaseAddress;
+              const offsetDelta = result.address - previousBaseAddress;
+              state.baseAddress = result.address;
+              state.symbolLength = result.symbolLength;
               state.memoryCache.clear();
 
               // Send update with offset preservation hint
