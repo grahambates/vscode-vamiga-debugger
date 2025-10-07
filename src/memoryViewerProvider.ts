@@ -280,24 +280,13 @@ export class MemoryViewerProvider {
 
     // If dereferencePointer is enabled, read 32-bit value at this address
     if (state.dereferencePointer) {
-      const pointerBytes = await this.vAmiga.readMemory(baseAddress, 4);
-      if (pointerBytes.byteLength >= 4) {
-        // Big-endian 32-bit read
-        const view = new DataView(
-          pointerBytes.buffer,
-          pointerBytes.byteOffset,
-          pointerBytes.byteLength,
+      const targetAddress = await this.vAmiga.peek32(baseAddress);
+      if (!this.vAmiga.isValidAddress(targetAddress)) {
+        throw new Error(
+          `Pointer at ${formatHex(baseAddress)} points to invalid address: ${formatHex(targetAddress)}`,
         );
-        const targetAddress = view.getUint32(0, false);
-        if (!this.vAmiga.isValidAddress(targetAddress)) {
-          throw new Error(
-            `Pointer at ${formatHex(baseAddress)} points to invalid address: ${formatHex(targetAddress)}`,
-          );
-        }
-        baseAddress = targetAddress;
-      } else {
-        throw new Error(`Failed to read pointer at ${formatHex(baseAddress)}`);
       }
+      baseAddress = targetAddress;
     }
 
     return baseAddress;
