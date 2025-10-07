@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
+import { guessWidthsUnknownLength } from "./strideGuesser";
 
 export interface VisualViewProps {
   baseAddress: number;
@@ -7,7 +8,7 @@ export interface VisualViewProps {
   onRequestMemory: (offset: number, count: number) => void;
 }
 
-export function VisualView({ baseAddress, memoryRange, memoryChunks, onRequestMemory }: VisualViewProps) {
+export function VisualView({ baseAddress, memoryRange, memoryChunks }: VisualViewProps) {
   const [bytesPerRow, setBytesPerRow] = useState<number>(40); // Default 40 bytes = 320 pixels
   const [scale, setScale] = useState<number>(1);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -122,13 +123,22 @@ export function VisualView({ baseAddress, memoryRange, memoryChunks, onRequestMe
             min="1"
             max="256"
             value={bytesPerRow}
-            onChange={(e) => setBytesPerRow(Math.max(1, parseInt(e.target.value) || 40))}
+            onChange={(e) => setBytesPerRow(Math.max(1, parseInt(e.target.value) || 20))}
             style={{ marginLeft: '8px', width: '60px' }}
           />
           <span style={{ marginLeft: '8px', opacity: 0.7 }}>
             ({bytesPerRow * 8} pixels)
           </span>
         </label>
+
+        <vscode-button onClick={() => {
+          const chunk = memoryChunks.get(0);
+          if (chunk) {
+            const guesses = guessWidthsUnknownLength(chunk);
+            console.log(guesses);
+            setBytesPerRow(guesses[0].widthBytes);
+          }
+        }}>Guess</vscode-button>
 
         <label>
           Scale:
