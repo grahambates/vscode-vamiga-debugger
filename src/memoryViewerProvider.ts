@@ -94,7 +94,7 @@ export class MemoryViewerProvider {
     const state: MemoryViewerState = {
       panel,
       addressInput,
-      baseAddress: 0,
+      baseAddress: undefined,
       liveUpdate: true,
       dereferencePointer: false,
       memoryCache: new Map(),
@@ -172,6 +172,8 @@ export class MemoryViewerProvider {
     params: {
       baseAddress?: number;
       symbolLength?: number;
+      symbols?: Record<string, number>;
+      symbolLengths?: Record<string, number>;
       memoryRange?: { start: number; end: number };
       currentRegion?: string;
       currentRegionStart?: number | undefined;
@@ -334,11 +336,17 @@ export class MemoryViewerProvider {
         return this.sendStateToWebview(state.panel, initialState);
       }
 
-      // Send state with address and range
+      // Send state with address, range, and symbols for tooltips
       state.panel.title = `Memory: ${state.addressInput}`;
+      const sourceMap = adapter.getSourceMap();
+      const symbols = sourceMap.getSymbols();
+      const symbolLengths = sourceMap.getSymbolLengths();
+
       this.sendStateToWebview(state.panel, {
         baseAddress: state.baseAddress,
         symbolLength: state.symbolLength,
+        symbols: symbols || {},
+        symbolLengths: symbolLengths || {},
         ...this.calculateMemoryRange(state.baseAddress, adapter),
         ...initialState,
       });

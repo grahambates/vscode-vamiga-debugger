@@ -19,6 +19,8 @@ interface UpdateStateMessage {
   addressInput?: string;
   baseAddress?: number;
   symbolLength?: number;
+  symbols?: Record<string, number>;
+  symbolLengths?: Record<string, number>;
   memoryRange?: { start: number; end: number };
   currentRegion?: string;
   currentRegionStart?: number;
@@ -45,6 +47,8 @@ export function App() {
   const [baseAddress, setBaseAddress] = useState<number | undefined>(undefined);
   const baseAddressRef = useRef<number | undefined>(undefined);
   const [symbolLength, setSymbolLength] = useState<number | undefined>(undefined);
+  const [symbols, setSymbols] = useState<Record<string, number>>({});
+  const [symbolLengths, setSymbolLengths] = useState<Record<string, number>>({});
   const [memoryRange, setMemoryRange] = useState<{
     start: number;
     end: number;
@@ -118,6 +122,12 @@ export function App() {
         }
         if (pendingUpdate.availableRegions !== undefined) {
           setAvailableRegions(pendingUpdate.availableRegions);
+        }
+        if (pendingUpdate.symbols !== undefined) {
+          setSymbols(pendingUpdate.symbols);
+        }
+        if (pendingUpdate.symbolLengths !== undefined) {
+          setSymbolLengths(pendingUpdate.symbolLengths);
         }
         if (pendingUpdate.liveUpdate !== undefined)
           setLiveUpdate(pendingUpdate.liveUpdate);
@@ -224,17 +234,8 @@ export function App() {
   // Custom key handler for "Go" button behavior
   const handleInputKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter") {
-      // Check if there's an exact match in suggestions
-      const exactMatch = suggestions.find(
-        (s) => s.label.toLowerCase() === addressInput.toLowerCase()
-      );
-
-      if (exactMatch || !isOpen) {
-        // If exact match or menu is closed, submit the address directly
-        e.preventDefault();
-        goToAddress();
-      }
-      // Otherwise, let Downshift handle it (select highlighted item)
+      e.preventDefault();
+      goToAddress();
     }
   };
 
@@ -366,10 +367,12 @@ export function App() {
           <vscode-tab-header>Copper</vscode-tab-header>
 
           <vscode-tab-panel>
-            {viewMode === "hex" && (
+            {viewMode === "hex" && baseAddress !== undefined && (
               <HexDump
                 baseAddress={baseAddress}
                 symbolLength={symbolLength}
+                symbols={symbols}
+                symbolLengths={symbolLengths}
                 memoryRange={memoryRange}
                 memoryChunks={memoryChunks}
                 onRequestMemory={requestMemory}
@@ -379,7 +382,7 @@ export function App() {
             )}
           </vscode-tab-panel>
           <vscode-tab-panel>
-            {viewMode === "visual" && (
+            {viewMode === "visual" && baseAddress !== undefined && (
               <VisualView
                 baseAddress={baseAddress}
                 memoryRange={memoryRange}

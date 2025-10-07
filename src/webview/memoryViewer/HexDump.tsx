@@ -3,6 +3,8 @@ import React, { useState, useRef, useEffect } from "react";
 export interface HexDumpProps {
   baseAddress: number;
   symbolLength?: number;
+  symbols: Record<string, number>;
+  symbolLengths: Record<string, number>;
   memoryRange: { start: number; end: number };
   memoryChunks: Map<number, Uint8Array>;
   onRequestMemory: (offset: number, count: number) => void;
@@ -26,6 +28,8 @@ interface ByteInfo {
 export function HexDump({
   baseAddress,
   symbolLength,
+  symbols,
+  symbolLengths,
   memoryRange,
   memoryChunks,
   onRequestMemory,
@@ -150,11 +154,13 @@ export function HexDump({
     const byteInfos: ByteInfo[] = [];
 
     for (let i = visibleRange.start; i < visibleRange.end; i++) {
-      // Convert line number to actual byte offset (can be negative)
-      const lineOffset = (i - BACKWARD_OFFSET_LINES) * bytesPerLine;
+      // Calculate line address (aligned to 16-byte boundaries)
+      const lineAddress = alignedBaseAddress + (i - BACKWARD_OFFSET_LINES) * bytesPerLine;
+
+      // Calculate byte offset relative to baseAddress for fetching data
+      const lineOffset = lineAddress - baseAddress;
 
       const y = (i - visibleRange.start) * LINE_HEIGHT;
-      const lineAddress = alignedBaseAddress + lineOffset;
 
       // Draw address
       ctx.fillStyle = commentColor;
@@ -235,16 +241,30 @@ export function HexDump({
           const isChanged =
             mostRecentChange > 0 && Date.now() - mostRecentChange < 1000;
 
-          // Draw background highlights (target address has priority over changes)
-          if (isTargetAddress) {
+          // Draw background highlights
+          // Changes override target address highlighting (flash yellow, then fade back to selection color)
+          if (isChanged) {
+            // Fade from yellow to selection background (if target) or transparent
+            const elapsed = Date.now() - mostRecentChange;
+            const changeFactor = 1 - elapsed / 1000; // 1.0 at start, 0.0 at end
+
+            if (isTargetAddress) {
+              // First draw selection background
+              ctx.fillStyle = selectionBackground;
+              ctx.fillRect(hexX, y, hex.length * CHAR_WIDTH, LINE_HEIGHT);
+              // Then overlay fading yellow
+              const opacity = 0.5 * changeFactor;
+              ctx.fillStyle = `rgba(255, 200, 0, ${opacity})`;
+              ctx.fillRect(hexX, y, hex.length * CHAR_WIDTH, LINE_HEIGHT);
+            } else {
+              // Just yellow fade to transparent
+              const opacity = 0.5 * changeFactor;
+              ctx.fillStyle = `rgba(255, 200, 0, ${opacity})`;
+              ctx.fillRect(hexX, y, hex.length * CHAR_WIDTH, LINE_HEIGHT);
+            }
+          } else if (isTargetAddress) {
             // Highlight target address using theme selection color
             ctx.fillStyle = selectionBackground;
-            ctx.fillRect(hexX, y, hex.length * CHAR_WIDTH, LINE_HEIGHT);
-          } else if (isChanged) {
-            // Fade opacity based on time since change
-            const elapsed = Date.now() - mostRecentChange;
-            const opacity = 0.5 * (1 - elapsed / 1000);
-            ctx.fillStyle = `rgba(255, 200, 0, ${opacity})`;
             ctx.fillRect(hexX, y, hex.length * CHAR_WIDTH, LINE_HEIGHT);
           }
 
@@ -523,6 +543,29 @@ export function HexDump({
         .toUpperCase()
         .padStart(6, "0");
 
+      // Find symbol offset (similar to findSymbolOffset in sourceMap.ts)
+      // Find the closest symbol before this address
+      // When multiple symbols are at the same address, prefer the one with non-zero length
+      let symbolOffset: { symbol: string; offset: number } | undefined;
+      for (const symbol in symbols) {
+        const symAddr = symbols[symbol];
+        const offset = byteInfo.address - symAddr;
+        // Address is at or after symbol
+        if (offset >= 0) {
+          // Keep the closest symbol (smallest offset)
+          if (!symbolOffset || offset < symbolOffset.offset) {
+            symbolOffset = { symbol, offset };
+          } else if (offset === symbolOffset.offset) {
+            // Same address: prefer symbol with non-zero length (last occurring symbol)
+            const currentLength = symbolLengths[symbol] || 0;
+            const existingLength = symbolLengths[symbolOffset.symbol] || 0;
+            if (currentLength > existingLength) {
+              symbolOffset = { symbol, offset };
+            }
+          }
+        }
+      }
+
       // Calculate signed value based on size
       let signedValue: number;
       if (byteInfo.valueSize === 1) {
@@ -539,10 +582,19 @@ export function HexDump({
       const unsignedStr = byteInfo.value.toString();
       const signedStr = signedValue.toString();
 
+      // Build address string with symbol+offset if available
+      let addressStr = addrHex;
+      if (symbolOffset) {
+        addressStr += " = " + symbolOffset.symbol;
+        if (symbolOffset.offset > 0) {
+          addressStr += "+" + symbolOffset.offset;
+        }
+      }
+
       setTooltip({
         x: e.clientX,
         y: e.clientY,
-        text: `0x${byteInfo.hex} (u:${unsignedStr} s:${signedStr}) @ ${addrHex}`,
+        text: `0x${byteInfo.hex} (u:${unsignedStr} s:${signedStr}) @ ${addressStr}`,
       });
     } else {
       setTooltip(null);
