@@ -46,6 +46,11 @@ export function HexDump({
   const memoryChunksRef = useRef<Map<number, Uint8Array>>(memoryChunks);
 
   const bytesPerLine = 16;
+
+  // Align baseAddress to 16-byte boundary for clean row display
+  const alignedBaseAddress = baseAddress - (baseAddress % bytesPerLine);
+  const alignmentOffset = baseAddress - alignedBaseAddress;
+
   const VIEWABLE_RANGE_BACKWARD = Math.abs(memoryRange.start); // How far back we can go
   const VIEWABLE_RANGE_FORWARD = memoryRange.end; // How far forward we can go
   const VIEWABLE_RANGE_TOTAL = VIEWABLE_RANGE_BACKWARD + VIEWABLE_RANGE_FORWARD;
@@ -55,9 +60,10 @@ export function HexDump({
   const ADDRESS_OFFSET = 10;
   const HEX_OFFSET = 80;
   const CHUNK_SIZE = 1024; // Request 1KB chunks
+  // Lines before aligned base address (accounts for both backward range and alignment offset)
   const BACKWARD_OFFSET_LINES = Math.ceil(
-    VIEWABLE_RANGE_BACKWARD / bytesPerLine,
-  ); // Lines before base address
+    (VIEWABLE_RANGE_BACKWARD + alignmentOffset) / bytesPerLine,
+  );
 
   // Helper to get byte from chunks (offset can be negative)
   const getByte = (offset: number): number | undefined => {
@@ -92,6 +98,8 @@ export function HexDump({
       "#858585";
     const backgroundColor =
       styles.getPropertyValue("--vscode-editor-background").trim() || "#1e1e1e";
+    const selectionBackground =
+      styles.getPropertyValue("--vscode-editor-selectionBackground").trim() || "rgba(0, 120, 215, 0.3)";
 
     const dpr = window.devicePixelRatio || 1;
 
@@ -144,7 +152,7 @@ export function HexDump({
       const lineOffset = (i - BACKWARD_OFFSET_LINES) * bytesPerLine;
 
       const y = (i - visibleRange.start) * LINE_HEIGHT;
-      const lineAddress = baseAddress + lineOffset;
+      const lineAddress = alignedBaseAddress + lineOffset;
 
       // Draw address
       ctx.fillStyle = commentColor;
@@ -204,6 +212,11 @@ export function HexDump({
             .toUpperCase()
             .padStart(format === "byte" ? 2 : format === "word" ? 4 : 8, "0");
 
+          // Check if this value contains the target address (baseAddress)
+          const isTargetAddress =
+            valueAddress <= baseAddress &&
+            baseAddress < valueAddress + valueSize;
+
           // Highlight changed bytes - check if ANY byte in this value changed within 1 second
           let mostRecentChange = 0;
           for (let b = 0; b < valueSize; b++) {
@@ -214,7 +227,13 @@ export function HexDump({
           }
           const isChanged =
             mostRecentChange > 0 && Date.now() - mostRecentChange < 1000;
-          if (isChanged) {
+
+          // Draw background highlights (target address has priority over changes)
+          if (isTargetAddress) {
+            // Highlight target address using theme selection color
+            ctx.fillStyle = selectionBackground;
+            ctx.fillRect(hexX, y, hex.length * CHAR_WIDTH, LINE_HEIGHT);
+          } else if (isChanged) {
             // Fade opacity based on time since change
             const elapsed = Date.now() - mostRecentChange;
             const opacity = 0.5 * (1 - elapsed / 1000);
@@ -257,6 +276,13 @@ export function HexDump({
         const char =
           byte >= 32 && byte <= 126 ? String.fromCharCode(byte) : ".";
 
+        // Highlight target address in ASCII section
+        const byteAddress = lineAddress + j;
+        if (byteAddress === baseAddress) {
+          ctx.fillStyle = selectionBackground;
+          ctx.fillRect(asciiX, y, CHAR_WIDTH, LINE_HEIGHT);
+        }
+
         ctx.fillStyle = commentColor;
         ctx.fillText(char, asciiX, y + 2);
 
@@ -291,6 +317,7 @@ export function HexDump({
     requestedChunksRef.current.clear();
 
     // Always scroll to show base address at the top when baseAddress changes
+    // BACKWARD_OFFSET_LINES already accounts for alignment offset
     if (containerRef.current && baseAddress !== undefined) {
       containerRef.current.scrollTop = BACKWARD_OFFSET_LINES * LINE_HEIGHT;
     }
@@ -415,6 +442,7 @@ export function HexDump({
       setVisibleRange({ start: firstVisibleLine, end: lastVisibleLine });
 
       // Request missing chunks for visible range (convert to actual byte offsets, can be negative)
+      // Use aligned base address for chunk calculations
       const firstByte =
         (firstVisibleLine - BACKWARD_OFFSET_LINES) * bytesPerLine;
       const lastByte = (lastVisibleLine - BACKWARD_OFFSET_LINES) * bytesPerLine;
