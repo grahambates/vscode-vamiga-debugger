@@ -1,40 +1,21 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect } from "react";
 import "@vscode-elements/elements";
 import { VscodeCheckbox } from "@vscode-elements/elements";
 import { useCombobox } from "downshift";
 import { HexDump } from "./HexDump";
-import { VisualView } from "./VisualView";
+// import { VisualView } from "./VisualView";
 import "./App.css";
+import {
+  GetSuggestionsMessage,
+  MemoryDataMessage,
+  MemoryRange,
+  MemoryRegion,
+  Suggestion,
+  SuggestionsDataMessage,
+  UpdateStateMessage,
+} from "./types";
 
 const vscode = acquireVsCodeApi();
-
-// Message types
-interface MemoryRegion {
-  name: string;
-  address: number;
-  size: number;
-}
-
-interface UpdateStateMessage {
-  command: "updateState";
-  addressInput?: string;
-  baseAddress?: number;
-  symbolLength?: number;
-  symbols?: Record<string, number>;
-  memoryRange?: { start: number; end: number };
-  currentRegionStart?: number;
-  availableRegions?: MemoryRegion[];
-  liveUpdate?: boolean;
-  preserveOffset?: number; // Offset delta to adjust scroll by when base address changes
-  error?: string;
-}
-
-interface MemoryDataMessage {
-  command: "memoryData";
-  offset: number;
-  data: Uint8Array;
-  baseAddress: number;
-}
 
 type ViewMode = "hex" | "visual" | "disassembly" | "copper";
 
@@ -45,41 +26,23 @@ function formatHex(value: number): string {
 }
 
 export function App() {
-  const [baseAddress, setBaseAddress] = useState<number | undefined>(undefined);
-  const baseAddressRef = useRef<number | undefined>(undefined);
-  const [symbolLength, setSymbolLength] = useState<number | undefined>(
-    undefined,
-  );
+  const [target, setTarget] = useState<MemoryRange | undefined>(undefined);
   const [symbols, setSymbols] = useState<Record<string, number>>({});
-  const [memoryRange, setMemoryRange] = useState<{
-    start: number;
-    end: number;
-  }>({
-    start: -1024 * 1024,
-    end: 1024 * 1024,
-  });
-  const [currentRegionStart, setCurrentRegionStart] = useState<
-    number | undefined
-  >(undefined);
   const [availableRegions, setAvailableRegions] = useState<MemoryRegion[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
+
+  const [addressInput, setAddressInput] = useState<string>("");
+  const [dereferencePointer, setDereferencePointer] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>("hex");
   const [liveUpdate, setLiveUpdate] = useState<boolean>(true);
+  const [selectedRegion, setSelectedRegion] = useState<
+    MemoryRegion | undefined
+  >();
   const [memoryChunks, setMemoryChunks] = useState<Map<number, Uint8Array>>(
     new Map(),
   );
-  const [addressInput, setAddressInput] = useState<string>("");
-  const [error, setError] = useState<string | null>(null);
-  const [scrollResetTrigger, setScrollResetTrigger] = useState<number>(0);
-  const [scrollOffsetDelta, setScrollOffsetDelta] = useState<number>(0);
-  const [dereferencePointer, setDereferencePointer] = useState<boolean>(false);
-  const [suggestions, setSuggestions] = useState<
-    Array<{ label: string; address: string; description?: string }>
-  >([]);
-
-  // Keep ref in sync
-  useEffect(() => {
-    baseAddressRef.current = baseAddress;
-  }, [baseAddress]);
+  const [scrollResetTrigger, setScrollResetTrigger] = useState(0);
 
   // Send ready message on mount
   useEffect(() => {
@@ -92,47 +55,46 @@ export function App() {
     let rafScheduled = false;
 
     const applyPendingUpdate = () => {
-      if (pendingUpdate) {
-        if (pendingUpdate.addressInput !== undefined)
-          setAddressInput(pendingUpdate.addressInput);
-        if (pendingUpdate.baseAddress !== undefined) {
-          const addressChanged =
-            pendingUpdate.baseAddress !== baseAddressRef.current;
-
-          if (addressChanged) {
-            console.log(
-              `Address changed from ${baseAddressRef.current} to ${pendingUpdate.baseAddress} - clearing chunks`,
-            );
-            setBaseAddress(pendingUpdate.baseAddress);
-            setSymbolLength(pendingUpdate.symbolLength);
-            setMemoryChunks(new Map());
-            // If preserveOffset is set, pass it to HexDump to adjust scroll
-            if (pendingUpdate.preserveOffset !== undefined) {
-              setScrollOffsetDelta(pendingUpdate.preserveOffset);
-            }
-          } else {
-            // Same address re-submitted - just trigger scroll reset
-            console.log(`Same address re-submitted - triggering scroll reset`);
-            setScrollResetTrigger((prev) => prev + 1);
-          }
-        }
-        if (pendingUpdate.memoryRange !== undefined) {
-          setMemoryRange(pendingUpdate.memoryRange);
-        }
-        if (pendingUpdate.currentRegionStart !== undefined) {
-          setCurrentRegionStart(pendingUpdate.currentRegionStart);
-        }
-        if (pendingUpdate.availableRegions !== undefined) {
-          setAvailableRegions(pendingUpdate.availableRegions);
-        }
-        if (pendingUpdate.symbols !== undefined) {
-          setSymbols(pendingUpdate.symbols);
-        }
-        if (pendingUpdate.liveUpdate !== undefined)
-          setLiveUpdate(pendingUpdate.liveUpdate);
-        if (pendingUpdate.error !== undefined) setError(pendingUpdate.error);
-        pendingUpdate = null;
+      if (!pendingUpdate) {
+        return;
       }
+      if (pendingUpdate.addressInput !== undefined) {
+        setAddressInput(pendingUpdate.addressInput);
+      }
+      if (pendingUpdate.availableRegions !== undefined) {
+        setAvailableRegions(pendingUpdate.availableRegions);
+      }
+      if (pendingUpdate.symbols !== undefined) {
+        setSymbols(pendingUpdate.symbols);
+      }
+      if (pendingUpdate.liveUpdate !== undefined)
+        setLiveUpdate(pendingUpdate.liveUpdate);
+      if (pendingUpdate.error !== undefined) {
+        setError(pendingUpdate.error);
+      }
+      if (pendingUpdate.target !== undefined) {
+        const targetAddress = pendingUpdate.target.address;
+        const targetEnd = targetAddress + pendingUpdate.target.size;
+
+        // find region for target
+        const regions = pendingUpdate.availableRegions || availableRegions;
+        const region = regions.find(({ range }) => {
+          const regionEnd = range.address + range.size;
+          return targetAddress >= range.address && targetEnd <= regionEnd;
+        });
+
+        if (targetAddress !== target?.address) {
+          // Target changed - clear chunks
+          setMemoryChunks(new Map());
+        } else {
+          // Force scroll to target, even if unchanged
+          setScrollResetTrigger((prev) => prev + 1);
+        }
+
+        setTarget(pendingUpdate.target);
+        setSelectedRegion(region);
+      }
+      pendingUpdate = null;
       rafScheduled = false;
     };
 
@@ -145,6 +107,7 @@ export function App() {
 
     const handleMessage = (event: MessageEvent) => {
       const message = event.data;
+      console.log('FE recieved message', message)
 
       if (message.command === "updateState") {
         // Store latest update and schedule (combining with any previous to handle optional props) to render on next frame
@@ -153,26 +116,16 @@ export function App() {
           ...(message as UpdateStateMessage),
         };
         scheduleUpdate();
-      } else if (message.command === "symbolSuggestions") {
-        setSuggestions(message.suggestions || []);
+      } else if (message.command === "suggestionsData") {
+        const suggestionsMessage = message as SuggestionsDataMessage;
+        setSuggestions(suggestionsMessage.suggestions || []);
       } else if (message.command === "memoryData") {
         const memData = message as MemoryDataMessage;
-        console.log(
-          `Received chunk: offset=${memData.offset}, baseAddress=${memData.baseAddress}, current=${baseAddressRef.current}`,
-        );
-        // Only update if data is for current base address
-        if (memData.baseAddress === baseAddressRef.current) {
-          setMemoryChunks((prev) => {
-            const next = new Map(prev);
-            next.set(memData.offset, new Uint8Array(memData.data));
-            console.log(
-              `Added chunk at offset ${memData.offset}, total chunks: ${next.size}`,
-            );
-            return next;
-          });
-        } else {
-          console.log(`Ignored chunk - base address mismatch`);
-        }
+        setMemoryChunks((prev) => {
+          const next = new Map(prev);
+          next.set(memData.address, memData.data);
+          return next;
+        });
       }
     };
 
@@ -180,7 +133,7 @@ export function App() {
     return () => {
       window.removeEventListener("message", handleMessage);
     };
-  }, []);
+  }, [target, availableRegions]);
 
   // Downshift combobox for autocomplete
   const {
@@ -200,22 +153,21 @@ export function App() {
       // Request suggestions as user types
       if (inputValue && inputValue.length > 0) {
         vscode.postMessage({
-          command: "getSymbolSuggestions",
+          command: "getSuggestions",
           query: inputValue,
-        });
+        } as GetSuggestionsMessage);
       } else {
         setSuggestions([]);
       }
     },
     onSelectedItemChange: ({ selectedItem }) => {
       if (selectedItem) {
-        const addressToUse = selectedItem.label;
-        setAddressInput(addressToUse);
+        const addressInput = selectedItem.label;
+        setAddressInput(addressInput);
         vscode.postMessage({
           command: "changeAddress",
-          addressInput: addressToUse,
+          addressInput,
           dereferencePointer,
-          resetScroll: true,
         });
       }
     },
@@ -226,7 +178,6 @@ export function App() {
       command: "changeAddress",
       addressInput,
       dereferencePointer,
-      resetScroll: true,
     });
   };
 
@@ -248,11 +199,11 @@ export function App() {
     });
   };
 
-  const requestMemory = (offset: number, count: number) => {
+  const requestMemory = ({ address, size }: MemoryRange) => {
     vscode.postMessage({
       command: "requestMemory",
-      offset,
-      count,
+      address,
+      size,
     });
   };
 
@@ -320,7 +271,6 @@ export function App() {
               command: "changeAddress",
               addressInput,
               dereferencePointer: checked,
-              resetScroll: true,
             });
           }}
         >
@@ -333,15 +283,15 @@ export function App() {
           <vscode-label htmlFor="region">Region:</vscode-label>
           <select
             id="region"
-            value={currentRegionStart}
+            value={selectedRegion?.range.address}
             onChange={handleRegionChange}
             className="region-dropdown"
           >
             <option>Select memory region</option>
-            {availableRegions.map((region) => (
-              <option key={region.address} value={region.address}>
-                {region.name} ({formatHex(region.address)} -{" "}
-                {formatHex(region.address + region.size - 1)})
+            {availableRegions.map(({ name, range }) => (
+              <option key={range.address} value={range.address}>
+                {name} ({formatHex(range.address)} -{" "}
+                {formatHex(range.address + range.size - 1)})
               </option>
             ))}
           </select>
@@ -350,7 +300,7 @@ export function App() {
 
       <vscode-divider></vscode-divider>
 
-      {baseAddress !== undefined ? (
+      {target !== undefined && selectedRegion ? (
         <vscode-tabs
           onvsc-tabs-select={(e) => {
             setViewMode(viewModes[e.detail.selectedIndex]);
@@ -362,28 +312,28 @@ export function App() {
           <vscode-tab-header>Copper</vscode-tab-header>
 
           <vscode-tab-panel>
-            {viewMode === "hex" && baseAddress !== undefined && (
+            {viewMode === "hex" && (
               <HexDump
-                baseAddress={baseAddress}
-                symbolLength={symbolLength}
+                target={target}
+                range={selectedRegion?.range}
                 symbols={symbols}
-                memoryRange={memoryRange}
                 memoryChunks={memoryChunks}
                 onRequestMemory={requestMemory}
                 scrollResetTrigger={scrollResetTrigger}
-                scrollOffsetDelta={scrollOffsetDelta}
               />
             )}
           </vscode-tab-panel>
           <vscode-tab-panel>
-            {viewMode === "visual" && baseAddress !== undefined && (
+            {viewMode === "visual" &&
+              /*
               <VisualView
                 baseAddress={baseAddress}
                 memoryRange={memoryRange}
                 memoryChunks={memoryChunks}
                 onRequestMemory={requestMemory}
               />
-            )}
+              */
+              ""}
           </vscode-tab-panel>
           <vscode-tab-panel>
             {viewMode === "disassembly" &&

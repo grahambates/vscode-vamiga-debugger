@@ -2,14 +2,12 @@ import React, { useState, useRef, useEffect } from "react";
 import "./HexDump.css";
 
 export interface HexDumpProps {
-  baseAddress: number;
-  symbolLength?: number;
+  target: { address: number; size: number };
+  range: { address: number; size: number };
   symbols: Record<string, number>;
-  memoryRange: { start: number; end: number };
   memoryChunks: Map<number, Uint8Array>;
-  onRequestMemory: (offset: number, count: number) => void;
+  onRequestMemory: (range: { address: number; size: number }) => void;
   scrollResetTrigger?: number;
-  scrollOffsetDelta?: number; // Offset delta to adjust scroll by when base address changes
 }
 
 type DisplayFormat = "byte" | "word" | "longword";
@@ -111,14 +109,12 @@ function formatAddress(
 }
 
 export function HexDump({
-  baseAddress,
-  symbolLength,
+  target,
+  range,
   symbols,
-  memoryRange,
   memoryChunks,
   onRequestMemory,
   scrollResetTrigger,
-  scrollOffsetDelta,
 }: HexDumpProps) {
   const [format, setFormat] = useState<DisplayFormat>("word");
   const [tooltip, setTooltip] = useState<{
@@ -138,30 +134,24 @@ export function HexDump({
   const requestedChunksRef = useRef<Set<number>>(new Set()); // Track requested chunks to avoid duplicates
   const memoryChunksRef = useRef<Map<number, Uint8Array>>(memoryChunks);
 
-  // Align baseAddress to 16-byte boundary for clean row display
-  const alignedBaseAddress = baseAddress - (baseAddress % BYTES_PER_LINE);
-  const alignmentOffset = baseAddress - alignedBaseAddress;
+  // Align to 16-byte boundary for clean row display
+  const alignedRangeStart =
+    Math.floor(range.address / BYTES_PER_LINE) * BYTES_PER_LINE;
+  const alignedRangeEnd =
+    Math.floor((range.address + range.size) / BYTES_PER_LINE) * BYTES_PER_LINE;
+  const viewableRangeTotal = alignedRangeEnd - alignedRangeStart;
 
-  const viewableRangeBackward = Math.abs(memoryRange.start); // How far back we can go
-  const viewableRangeForward = memoryRange.end; // How far forward we can go
-  const viewableRangeTotal = viewableRangeBackward + viewableRangeForward;
   const totalLines = Math.ceil(viewableRangeTotal / BYTES_PER_LINE);
 
-  // Lines before aligned base address (accounts for both backward range and alignment offset)
-  const backwardOffsetLines = Math.ceil(
-    (viewableRangeBackward + alignmentOffset) / BYTES_PER_LINE,
-  );
-
-  // Helper to get byte from chunks (offset can be negative)
-  const getByte = (offset: number): number | undefined => {
-    // For negative offsets, we need to floor towards negative infinity
-    const chunkOffset = Math.floor(offset / CHUNK_SIZE) * CHUNK_SIZE;
+  // Helper to get byte from chunks
+  const getByte = (address: number): number | undefined => {
+    const chunkOffset = Math.floor(address / CHUNK_SIZE) * CHUNK_SIZE;
     const chunk = memoryChunks.get(chunkOffset);
     if (!chunk) {
       return undefined;
     }
     // Calculate byte index within chunk (handle negative offsets)
-    const byteIndex = offset - chunkOffset;
+    const byteIndex = address - chunkOffset;
     return byteIndex >= 0 && byteIndex < chunk.length
       ? chunk[byteIndex]
       : undefined;
@@ -213,11 +203,7 @@ export function HexDump({
 
     for (let i = visibleRange.firstLine; i < visibleRange.lastLine; i++) {
       // Calculate line address (aligned to 16-byte boundaries)
-      const lineAddress =
-        alignedBaseAddress + (i - backwardOffsetLines) * BYTES_PER_LINE;
-
-      // Calculate byte offset relative to baseAddress for fetching data
-      const lineOffset = lineAddress - baseAddress;
+      const lineAddress = alignedRangeStart + i * BYTES_PER_LINE;
 
       const y = (i - visibleRange.firstLine) * LINE_HEIGHT;
 
@@ -229,10 +215,9 @@ export function HexDump({
       // Draw hex values
       let x = HEX_OFFSET;
       for (let j = 0; j < valuesPerLine; j++) {
-        const byteOffset = lineOffset + j * bytesPerValue;
-        const address = lineAddress + j * bytesPerValue;
+        const byteAddress = lineAddress + j * bytesPerValue;
 
-        const byte0 = getByte(byteOffset);
+        const byte0 = getByte(byteAddress);
         if (byte0 === undefined) {
           // Show placeholder for missing data
           ctx.fillStyle = commentColor;
@@ -252,14 +237,14 @@ export function HexDump({
               value = byte0;
               break;
             case "word": {
-              const byte1 = getByte(byteOffset + 1);
+              const byte1 = getByte(byteAddress + 1);
               value = byte1 !== undefined ? (byte0 << 8) | byte1 : byte0;
               break;
             }
             case "longword": {
-              const byte1l = getByte(byteOffset + 1);
-              const byte2 = getByte(byteOffset + 2);
-              const byte3 = getByte(byteOffset + 3);
+              const byte1l = getByte(byteAddress + 1);
+              const byte2 = getByte(byteAddress + 2);
+              const byte3 = getByte(byteAddress + 3);
               if (
                 byte1l !== undefined &&
                 byte2 !== undefined &&
@@ -281,14 +266,12 @@ export function HexDump({
 
           // Check if this value overlaps with the symbol range
           // Default to at least one value if symbolLength is 0 or undefined
-          const effectiveSymbolLength =
-            symbolLength && symbolLength > 0 ? symbolLength : bytesPerValue;
-          const symbolEndAddress = baseAddress + effectiveSymbolLength;
-          const valueEndAddress = address + bytesPerValue;
+          const targetEndAddress = target.address + target.size;
+          const valueEndAddress = byteAddress + bytesPerValue;
 
           // Selection background for target symbol/address
           const isTargetAddress =
-            address < symbolEndAddress && valueEndAddress > baseAddress;
+            byteAddress < targetEndAddress && valueEndAddress > target.address;
           if (isTargetAddress) {
             ctx.fillStyle = selectionBackground;
             ctx.fillRect(x, y, hex.length * CHAR_WIDTH, LINE_HEIGHT);
@@ -297,7 +280,7 @@ export function HexDump({
           // Highlight changed bytes - check if ANY byte in this value changed within 1 second
           let mostRecentChange = 0;
           for (let b = 0; b < bytesPerValue; b++) {
-            const changeTime = changedBytesRef.current.get(byteOffset + b);
+            const changeTime = changedBytesRef.current.get(byteAddress + b);
             if (changeTime) {
               mostRecentChange = Math.max(mostRecentChange, changeTime);
             }
@@ -319,7 +302,7 @@ export function HexDump({
           // Store hex value
           renderedValues.push({
             value,
-            address,
+            address: byteAddress,
             hex,
             x,
             y,
@@ -344,18 +327,19 @@ export function HexDump({
 
       let asciiX = asciiOffset + CHAR_WIDTH * 1.5;
       for (let j = 0; j < BYTES_PER_LINE; j++) {
-        const byte = getByte(lineOffset + j);
+        const byte = getByte(lineAddress + j);
         if (byte === undefined) break;
         const char =
           byte >= 32 && byte <= 126 ? String.fromCharCode(byte) : ".";
 
         // Highlight symbol range in ASCII section
         const byteAddress = lineAddress + j;
-        const effectiveSymbolLength =
-          symbolLength && symbolLength > 0 ? symbolLength : 1;
-        const symbolEndAddress = baseAddress + effectiveSymbolLength;
+        const targetEndAddress = target.address + target.size;
+        const valueEndAddress = byteAddress + 1;
+        const isTargetAddress =
+          byteAddress < targetEndAddress && valueEndAddress > target.address;
 
-        if (byteAddress >= baseAddress && byteAddress < symbolEndAddress) {
+        if (isTargetAddress) {
           ctx.fillStyle = selectionBackground;
           ctx.fillRect(asciiX, y, CHAR_WIDTH, LINE_HEIGHT);
         }
@@ -390,44 +374,14 @@ export function HexDump({
     memoryChunksRef.current = memoryChunks;
   }, [memoryChunks]);
 
-  // Clear requested chunks and scroll to base address when it changes
+  // Scroll to target
   useEffect(() => {
-    requestedChunksRef.current.clear();
-
-    // Always scroll to show base address at the top when baseAddress changes
-    // backwardOffsetLines already accounts for alignment offset
-    if (containerRef.current && baseAddress !== undefined) {
-      containerRef.current.scrollTop = backwardOffsetLines * LINE_HEIGHT;
+    if (containerRef.current) {
+      const scrollTop =
+        Math.floor((target.address - alignedRangeStart) / BYTES_PER_LINE) * LINE_HEIGHT;
+      containerRef.current.scrollTop = scrollTop;
     }
-  }, [baseAddress, backwardOffsetLines]);
-
-  // Reset scroll when scrollResetTrigger changes (same address re-submitted)
-  useEffect(() => {
-    if (
-      scrollResetTrigger &&
-      containerRef.current &&
-      baseAddress !== undefined
-    ) {
-      containerRef.current.scrollTop = backwardOffsetLines * LINE_HEIGHT;
-    }
-  }, [scrollResetTrigger, backwardOffsetLines]);
-
-  // Adjust scroll position when base address changes but we want to preserve offset
-  useEffect(() => {
-    if (
-      scrollOffsetDelta !== undefined &&
-      scrollOffsetDelta !== 0 &&
-      containerRef.current
-    ) {
-      // Convert byte offset delta to line offset
-      const lineOffsetDelta = scrollOffsetDelta / BYTES_PER_LINE;
-      const scrollDelta = lineOffsetDelta * LINE_HEIGHT;
-
-      // Adjust scroll position by the delta
-      const currentScrollTop = containerRef.current.scrollTop;
-      containerRef.current.scrollTop = currentScrollTop - scrollDelta;
-    }
-  }, [scrollOffsetDelta]);
+  }, [target.address, alignedRangeStart, scrollResetTrigger]);
 
   // Track changed bytes with timestamps
   useEffect(() => {
@@ -504,13 +458,15 @@ export function HexDump({
       );
       setVisibleRange({ firstLine, lastLine });
 
-      // Convert line numbers to byte offsets
-      const firstByte = (firstLine - backwardOffsetLines) * BYTES_PER_LINE;
-      const lastByte = (lastLine - backwardOffsetLines) * BYTES_PER_LINE;
-
-      // Align byte offsets to chunk starts
-      const firstChunk = Math.floor(firstByte / CHUNK_SIZE) * CHUNK_SIZE;
-      const lastChunk = Math.floor(lastByte / CHUNK_SIZE) * CHUNK_SIZE;
+      // Get byte offsets of chunks
+      const firstChunk =
+        Math.floor(
+          (alignedRangeStart + firstLine * BYTES_PER_LINE) / CHUNK_SIZE,
+        ) * CHUNK_SIZE;
+      const lastChunk =
+        Math.floor(
+          (alignedRangeStart + lastLine * BYTES_PER_LINE) / CHUNK_SIZE,
+        ) * CHUNK_SIZE;
 
       // Fetch any missing chunks in range:
       for (let c = firstChunk; c <= lastChunk; c += CHUNK_SIZE) {
@@ -520,7 +476,7 @@ export function HexDump({
           continue;
         }
         requestedChunksRef.current.add(c);
-        onRequestMemory(c, CHUNK_SIZE);
+        onRequestMemory({ address: c, size: CHUNK_SIZE });
       }
     };
 
@@ -534,12 +490,12 @@ export function HexDump({
         container.removeEventListener("scroll", handleScroll);
       };
     }
-  }, [totalLines, onRequestMemory, baseAddress]);
+  }, [totalLines, onRequestMemory, target.address]);
 
   // Render canvas when content changes:
   useEffect(() => {
     renderCanvas();
-  }, [memoryChunks, visibleRange, format, baseAddress]);
+  }, [memoryChunks, visibleRange, format, target.address]);
 
   // Handle mouse move for tooltips
   const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -631,7 +587,12 @@ export function HexDump({
         </label>
       </div>
       <div className="hex-scroll-container" ref={containerRef}>
-        <div style={{ height: `${totalLines * LINE_HEIGHT}px`, position: "relative" }}>
+        <div
+          style={{
+            height: `${totalLines * LINE_HEIGHT}px`,
+            position: "relative",
+          }}
+        >
           <canvas
             className="hex-canvas"
             ref={canvasRef}

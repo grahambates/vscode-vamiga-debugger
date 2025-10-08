@@ -1,0 +1,183 @@
+body {
+  font-family: var(--vscode-font-family);
+  color: var(--vscode-foreground);
+  background-color: var(--vscode-editor-background);
+  margin: 0;
+  padding: 0;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+.memory-viewer {
+  padding: 20px;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.address-input {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.autocomplete-container {
+  position: relative;
+  flex: 1;
+}
+
+.address-textfield {
+  width: 100%;
+  padding: 4px 8px;
+  font-family: var(--vscode-font-family);
+  font-size: var(--vscode-font-size);
+  background: var(--vscode-input-background);
+  color: var(--vscode-input-foreground);
+  border: 1px solid var(--vscode-input-border);
+  outline: none;
+}
+
+.address-textfield:focus {
+  border-color: var(--vscode-focusBorder);
+}
+
+.autocomplete-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: var(--vscode-dropdown-background);
+  border: 1px solid var(--vscode-dropdown-border);
+  border-top: none;
+  max-height: 300px;
+  overflow-y: auto;
+  z-index: 1000;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.autocomplete-item {
+  padding: 6px 12px;
+  cursor: pointer;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  border-bottom: 1px solid var(--vscode-widget-border);
+}
+
+.autocomplete-item:last-child {
+  border-bottom: none;
+}
+
+.autocomplete-item:hover,
+.autocomplete-item.selected {
+  background: var(--vscode-list-hoverBackground);
+}
+
+.suggestion-label {
+  font-weight: 600;
+  font-family: monospace;
+  flex: 1;
+}
+
+.suggestion-address {
+  color: var(--vscode-descriptionForeground);
+  font-family: monospace;
+  font-size: 0.9em;
+}
+
+.suggestion-description {
+  color: var(--vscode-descriptionForeground);
+  font-size: 0.85em;
+  font-style: italic;
+}
+
+.view-mode-selector {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.view-mode-selector vscode-button {
+  min-width: 100px;
+}
+
+.view-mode-selector vscode-button.active {
+  background: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+}
+
+.live-update-container {
+  margin-bottom: 10px;
+}
+
+.region-selector {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.region-dropdown {
+  flex: 1;
+  background-color: var(--vscode-dropdown-background);
+  color: var(--vscode-dropdown-foreground);
+  border: 1px solid var(--vscode-dropdown-border);
+  padding: 4px 8px;
+  font-family: var(--vscode-font-family);
+  font-size: var(--vscode-font-size);
+}
+
+.current-region-label {
+  color: var(--vscode-descriptionForeground);
+  font-size: 0.9em;
+}
+
+.content {
+  font-family: var(--vscode-editor-font-family);
+  font-size: var(--vscode-editor-font-size);
+  line-height: 1.4;
+  white-space: pre;
+  overflow-x: auto;
+  padding: 10px;
+  background-color: var(--vscode-editor-background);
+  border: 1px solid var(--vscode-panel-border);
+  border-radius: 4px;
+}
+
+.error {
+  color: var(--vscode-errorForeground);
+  margin: 10px 0;
+}
+
+/* Fix height for vscode-tabs */
+vscode-tabs {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+vscode-tab-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Hidden panels should not take up space */
+vscode-tab-panel[hidden] {
+  display: none !important;
+}
+
+.placeholder {
+  padding: 40px;
+  text-align: center;
+  color: var(--vscode-descriptionForeground);
+  font-style: italic;
+}

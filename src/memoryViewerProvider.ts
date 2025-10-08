@@ -3,12 +3,23 @@ import { VAmiga, isEmulatorStateMessage, MemSrc } from "./vAmiga";
 import { VamigaDebugAdapter } from "./vAmigaDebugAdapter";
 import { formatHex } from "./numbers";
 import { EvaluateResultType } from "./evaluateManager";
+import {
+  ChangeAddressMessage,
+  GetSuggestionsMessage,
+  MemoryDataMessage,
+  MemoryRange,
+  MemoryRegion,
+  RequeestMemoryMessage,
+  Suggestion,
+  SuggestionsDataMessage,
+  ToggleLiveUpdateMessage,
+  UpdateStateMessage,
+  UpdateStateMessageProps,
+} from "./webview/memoryViewer/types";
 
-interface MemoryViewerState {
-  panel: vscode.WebviewPanel;
+interface MemoryViewerPanel {
+  webviewPanel: vscode.WebviewPanel;
   addressInput: string;
-  baseAddress?: number;
-  symbolLength?: number;
   liveUpdate: boolean;
   dereferencePointer: boolean;
   liveUpdateInterval?: NodeJS.Timeout;
@@ -17,6 +28,27 @@ interface MemoryViewerState {
 
 const LIVE_UPDATE_RATE_MS = 1000 / 25;
 const CHUNK_SIZE = 1024;
+const SUGGESTIONS_LIMIT = 50;
+
+const memTypeLabels: Record<MemSrc, string> = {
+  [MemSrc.NONE]: "None",
+  [MemSrc.CHIP]: "Chip RAM",
+  [MemSrc.CHIP_MIRROR]: "Chip RAM (mirror)",
+  [MemSrc.SLOW]: "Slow RAM",
+  [MemSrc.SLOW_MIRROR]: "Slow RAM (mirror)",
+  [MemSrc.FAST]: "Fast RAM",
+  [MemSrc.CIA]: "CIA Registers",
+  [MemSrc.CIA_MIRROR]: "CIA Registers (mirror)",
+  [MemSrc.RTC]: "RTC",
+  [MemSrc.CUSTOM]: "Custom Registers",
+  [MemSrc.CUSTOM_MIRROR]: "Custom Registers (mirror)",
+  [MemSrc.AUTOCONF]: "Autoconf",
+  [MemSrc.ZOR]: "ZOR",
+  [MemSrc.ROM]: "ROM",
+  [MemSrc.ROM_MIRROR]: "ROM (mirror)",
+  [MemSrc.WOM]: "WOM",
+  [MemSrc.EXT]: "EXT",
+};
 
 /**
  * Provides a webview for viewing emulator memory in different formats.
@@ -25,7 +57,7 @@ const CHUNK_SIZE = 1024;
 export class MemoryViewerProvider {
   public static readonly viewType = "vamiga-debugger.memoryViewer";
 
-  private panels = new Map<string, MemoryViewerState>();
+  private panels = new Map<string, MemoryViewerPanel>();
   private emulatorMessageListener?: vscode.Disposable;
   private isEmulatorRunning = false;
   private panelCounter = 0;
@@ -44,18 +76,20 @@ export class MemoryViewerProvider {
         this.isEmulatorRunning = message.state === "running";
 
         // Update all panels
-        for (const state of this.panels.values()) {
-          // Refresh on pause or stopped (e.g., stepping, breakpoint)
-          if (message.state === "paused" || message.state === "stopped") {
-            this.updateState(state);
-          }
-          // Handle live update mode
-          if (state.liveUpdate) {
+        for (const panel of this.panels.values()) {
+          if (panel.liveUpdate) {
+            // Stop/start live update mode
             if (this.isEmulatorRunning && !wasRunning) {
-              this.startLiveUpdate(state);
+              this.startLiveUpdate(panel);
             } else if (!this.isEmulatorRunning && wasRunning) {
-              this.stopLiveUpdate(state);
+              this.stopLiveUpdate(panel);
             }
+          } else if (
+            message.state === "paused" ||
+            message.state === "stopped"
+          ) {
+            // update now
+            this.refreshChunks(panel);
           }
         }
       },
@@ -66,9 +100,9 @@ export class MemoryViewerProvider {
    * Disposes all memory viewer panels
    */
   public dispose(): void {
-    for (const state of this.panels.values()) {
-      this.stopLiveUpdate(state);
-      state.panel.dispose();
+    for (const panel of this.panels.values()) {
+      this.stopLiveUpdate(panel);
+      panel.webviewPanel.dispose();
     }
     this.panels.clear();
     this.emulatorMessageListener?.dispose();
@@ -81,7 +115,7 @@ export class MemoryViewerProvider {
   public async show(addressInput: string): Promise<void> {
     const panelId = `memory-viewer-${this.panelCounter++}`;
 
-    const panel = vscode.window.createWebviewPanel(
+    const webviewPanel = vscode.window.createWebviewPanel(
       MemoryViewerProvider.viewType,
       "Memory Viewer",
       vscode.ViewColumn.Active,
@@ -91,72 +125,92 @@ export class MemoryViewerProvider {
       },
     );
 
-    const state: MemoryViewerState = {
-      panel,
+    const panel: MemoryViewerPanel = {
+      webviewPanel: webviewPanel,
       addressInput,
-      baseAddress: undefined,
       liveUpdate: true,
       dereferencePointer: false,
       memoryCache: new Map(),
     };
 
-    this.panels.set(panelId, state);
+    this.panels.set(panelId, panel);
 
-    panel.webview.html = this.getHtmlContent(panel.webview);
+    webviewPanel.webview.html = this.getHtmlContent(webviewPanel.webview);
 
-    panel.onDidDispose(() => {
-      this.stopLiveUpdate(state);
+    webviewPanel.onDidDispose(() => {
+      this.stopLiveUpdate(panel);
       this.panels.delete(panelId);
     });
 
-    panel.webview.onDidReceiveMessage(async (message) => {
+    webviewPanel.webview.onDidReceiveMessage(async (message) => {
       switch (message.command) {
-        case "ready":
-          // Send initial state when webview is ready
-          await this.updateState(state);
-          // Only send input text once, to avoid clobbering user input during live update
-          state.panel.webview.postMessage({
+        case "ready": {
+          const adapter = VamigaDebugAdapter.getActiveAdapter();
+          if (!adapter) {
+            return;
+          }
+          const msg: UpdateStateMessage = {
             command: "updateState",
             addressInput,
-          });
+            availableRegions: this.getAvailableRegions(adapter),
+            symbols: adapter.getSourceMap().getSymbols(),
+          };
+          // Send initial state once
+          panel.webviewPanel.webview.postMessage(msg);
+
+          // Update initial content
+          await this.updateContent(panel);
+
+          // TODO: don't really know if it's running on start
           if (this.isEmulatorRunning) {
-            this.startLiveUpdate(state);
-          }
-          break;
-        case "changeAddress": {
-          state.addressInput = message.addressInput;
-          state.dereferencePointer = message.dereferencePointer ?? false;
-          const previousAddress = state.baseAddress;
-          await this.updateState(state);
-          // Only clear cache if address actually changed
-          if (state.baseAddress !== previousAddress) {
-            state.memoryCache.clear();
+            this.startLiveUpdate(panel);
           }
           break;
         }
-        case "requestMemory":
-          await this.fetchMemoryChunk(state, message.offset, message.count);
+
+        case "changeAddress": {
+          const changeAddressMsg = message as ChangeAddressMessage;
+          panel.addressInput = changeAddressMsg.addressInput;
+          panel.dereferencePointer =
+            changeAddressMsg.dereferencePointer ?? false;
+          // const previousAddress = state.baseAddress;
+          await this.updateContent(panel);
+          // TODO: do we actually need to clear cache?
+          // // Only clear cache if address actually changed
+          // if (state.baseAddress !== previousAddress) {
+          //   state.memoryCache.clear();
+          // }
           break;
+        }
+        case "requestMemory": {
+          const requestMemoryMsg = message as RequeestMemoryMessage;
+          await this.fetchMemoryChunk(
+            panel,
+            requestMemoryMsg.address,
+            requestMemoryMsg.size,
+          );
+          break;
+        }
         case "toggleLiveUpdate":
-          state.liveUpdate = message.enabled;
-          state.dereferencePointer = message.dereferencePointer ?? false;
-          if (state.liveUpdate && this.isEmulatorRunning) {
-            this.startLiveUpdate(state);
+          panel.liveUpdate = (message as ToggleLiveUpdateMessage).enabled;
+          if (panel.liveUpdate && this.isEmulatorRunning) {
+            this.startLiveUpdate(panel);
           } else {
-            this.stopLiveUpdate(state);
+            this.stopLiveUpdate(panel);
           }
           break;
-        case "getSymbolSuggestions": {
+        case "getSuggestions": {
+          const getSuggestionsMsg = message as GetSuggestionsMessage;
           const adapter = VamigaDebugAdapter.getActiveAdapter();
           if (adapter) {
             const suggestions = this.getSymbolSuggestions(
               adapter,
-              message.query || "",
+              getSuggestionsMsg.query || "",
             );
-            state.panel.webview.postMessage({
-              command: "symbolSuggestions",
+            panel.webviewPanel.webview.postMessage({
+              command: "suggestionsData",
               suggestions,
-            });
+            } as SuggestionsDataMessage);
           }
           break;
         }
@@ -169,23 +223,13 @@ export class MemoryViewerProvider {
    */
   private sendStateToWebview(
     panel: vscode.WebviewPanel,
-    params: {
-      baseAddress?: number;
-      symbolLength?: number;
-      symbols?: Record<string, number>;
-      memoryRange?: { start: number; end: number };
-      currentRegion?: string;
-      currentRegionStart?: number | undefined;
-      availableRegions?: Array<{ name: string; address: number; size: number }>;
-      liveUpdate?: boolean;
-      preserveOffset?: number;
-    },
+    params: UpdateStateMessageProps,
   ): void {
     panel.webview.postMessage({
       command: "updateState",
       ...params,
       error: null,
-    });
+    } as UpdateStateMessage);
   }
 
   /**
@@ -196,259 +240,128 @@ export class MemoryViewerProvider {
     panel.webview.postMessage({
       command: "updateState",
       error: errorMessage,
-    });
-  }
-
-  /**
-   * Calculates memory range and region information for a given base address
-   * @returns Memory range, region name, and region start address
-   */
-  private calculateMemoryRange(
-    baseAddress: number,
-    adapter: VamigaDebugAdapter,
-  ): {
-    memoryRange: { start: number; end: number };
-    currentRegionStart: number | undefined;
-  } {
-    // Prefer segment bounds, fall back to memory regions
-    const segment = adapter.getSourceMap().findSegmentForAddress(baseAddress);
-    if (segment) {
-      return {
-        memoryRange: {
-          start: segment.address - baseAddress,
-          end: segment.address + segment.size - 1 - baseAddress,
-        },
-        currentRegionStart: segment.address,
-      };
-    }
-
-    // Fall back to memory region
-    const memoryRegion = this.vAmiga.getMemoryRegion(baseAddress);
-    if (memoryRegion) {
-      return {
-        memoryRange: {
-          start: memoryRegion.start - baseAddress,
-          end: memoryRegion.end - baseAddress,
-        },
-        currentRegionStart: memoryRegion.start,
-      };
-    }
-
-    // Unknown region
-    return {
-      memoryRange: { start: -1024 * 1024, end: 1024 * 1024 },
-      currentRegionStart: undefined,
-    };
+    } as UpdateStateMessage);
   }
 
   /**
    * Evaluates the address expression and optionally dereferences it as a 32-bit pointer
-   * @returns Object with the final base address and optional symbol length
+   * @returns Memory range resulting from expression
    * @throws Error if address is invalid or dereferencing fails
    */
-  private async evaluateAndDereferenceAddress(
-    state: MemoryViewerState,
-    adapter: VamigaDebugAdapter,
-  ): Promise<{ address: number; symbolLength?: number } | undefined> {
-    // Evaluate input expression (can change each update, e.g., register values)
-    const evaluateManager = adapter.getEvaluateManager();
-    const { value, memoryReference, type } = await evaluateManager.evaluate(
-      state.addressInput,
-    );
+  private async evaluateAddressInput(
+    panel: MemoryViewerPanel,
+  ): Promise<MemoryRange | undefined> {
+    const adapter = VamigaDebugAdapter.getActiveAdapter();
+    if (!adapter) {
+      throw new Error("Debugger is not running");
+    }
+
+    const { value, memoryReference, type } = await adapter
+      .getEvaluateManager()
+      .evaluate(panel.addressInput);
     if (type === EvaluateResultType.EMPTY) {
       return;
     }
-    let baseAddress = memoryReference ? Number(memoryReference) : value;
+    let address = memoryReference ? Number(memoryReference) : value;
+    let size = 0;
 
-    if (typeof baseAddress !== "number") {
+    if (typeof address !== "number") {
       throw new Error("Does not evaluate to a numeric value");
     }
-    if (!this.vAmiga.isValidAddress(baseAddress)) {
-      throw new Error(`Not a valid address: ${formatHex(baseAddress)}`);
+    if (!this.vAmiga.isValidAddress(address)) {
+      throw new Error(`Not a valid address: ${formatHex(address)}`);
     }
 
     // Get symbol length if the input is a symbol name
-    let symbolLength: number | undefined;
     const sourceMap = adapter.getSourceMap();
     const symbols = sourceMap.getSymbols();
     const symbolLengths = sourceMap.getSymbolLengths();
 
     // Check if input matches a symbol name
     if (symbols && symbolLengths) {
-      const symbolAddress = symbols[state.addressInput];
-      if (symbolAddress === baseAddress) {
-        symbolLength = symbolLengths[state.addressInput];
+      const symbolAddress = symbols[panel.addressInput];
+      if (symbolAddress === address) {
+        size = symbolLengths[panel.addressInput];
       }
     }
 
     // If dereferencePointer is enabled, read 32-bit value at this address
-    if (state.dereferencePointer) {
-      const targetAddress = await this.vAmiga.peek32(baseAddress);
+    if (panel.dereferencePointer) {
+      const targetAddress = await this.vAmiga.peek32(address);
       if (!this.vAmiga.isValidAddress(targetAddress)) {
         throw new Error(
-          `Pointer at ${formatHex(baseAddress)} points to invalid address: ${formatHex(targetAddress)}`,
+          `Pointer at ${formatHex(address)} points to invalid address: ${formatHex(targetAddress)}`,
         );
       }
-      baseAddress = targetAddress;
-      // Clear symbol length when dereferencing
-      symbolLength = undefined;
+      address = targetAddress;
     }
 
-    return { address: baseAddress, symbolLength };
+    return { address, size };
   }
 
   /**
-   * Updates the memory viewer state
-   * @param preserveOffset Optional scroll offset to preserve when base address changes
+   * Updates the memory viewer content state
    */
-  private async updateState(
-    state: MemoryViewerState,
-    preserveOffset?: number,
-  ): Promise<void> {
+  private async updateContent(panel: MemoryViewerPanel): Promise<void> {
     try {
-      const adapter = VamigaDebugAdapter.getActiveAdapter();
-      if (!adapter) {
-        throw new Error("Debugger is not running");
+      // Evaluate address input
+      const target = await this.evaluateAddressInput(panel);
+      if (target?.address !== undefined) {
+        // Send target if we have one
+        this.sendStateToWebview(panel.webviewPanel, { target });
+        panel.webviewPanel.title = `Memory: ${panel.addressInput}`;
+      } else {
+        panel.webviewPanel.title = "Memory Viewer";
       }
 
-      // Initial state
-      state.panel.title = "Memory Viewer";
-      const initialState = {
-        availableRegions: this.getAvailableRegions(adapter),
-        liveUpdate: state.liveUpdate,
-        preserveOffset,
-      };
-
-      // Evaluate and dereference address (unless preserveOffset is set, meaning address already evaluated)
-      if (preserveOffset === undefined) {
-        const result = await this.evaluateAndDereferenceAddress(
-          state,
-          adapter,
-        );
-        if (result) {
-          state.baseAddress = result.address;
-          state.symbolLength = result.symbolLength;
-        }
-      }
-      if (state.baseAddress === undefined) {
-        // Send intial state without address
-        return this.sendStateToWebview(state.panel, initialState);
-      }
-
-      // Send state with address, range, and symbols for tooltips
-      state.panel.title = `Memory: ${state.addressInput}`;
-
-      this.sendStateToWebview(state.panel, {
-        baseAddress: state.baseAddress,
-        symbolLength: state.symbolLength,
-        symbols: adapter.getSourceMap().getSymbols(),
-        ...this.calculateMemoryRange(state.baseAddress, adapter),
-        ...initialState,
-      });
+      return;
     } catch (err) {
-      this.sendErrorToWebview(state.panel, err);
+      this.sendErrorToWebview(panel.webviewPanel, err);
     }
   }
 
   private async fetchMemoryChunk(
-    state: MemoryViewerState,
-    offset: number,
-    count: number,
+    panel: MemoryViewerPanel,
+    address: number,
+    size: number,
   ): Promise<void> {
     try {
       // Check cache first
-      if (state.memoryCache.has(offset)) {
+      if (panel.memoryCache.has(address)) {
         return; // Already have this chunk
       }
-      if (state.baseAddress === undefined) {
-        return;
-      }
 
-      const address = state.baseAddress + offset;
-      const result = await this.vAmiga.readMemory(address, count);
+      const result = await this.vAmiga.readMemory(address, size);
+      const data = new Uint8Array(result);
 
       // Cache the chunk
-      state.memoryCache.set(offset, new Uint8Array(result));
+      panel.memoryCache.set(address, data);
 
       // Send to webview
-      state.panel.webview.postMessage({
+      panel.webviewPanel.webview.postMessage({
         command: "memoryData",
-        offset,
-        data: Array.from(new Uint8Array(result)), // Convert to array for JSON serialization
-        baseAddress: state.baseAddress,
-      });
+        address,
+        data,
+      } as MemoryDataMessage);
     } catch (err) {
-      // Silently ignore errors for now - chunk just won't be available
-      console.error(`Failed to fetch memory chunk at offset ${offset}:`, err);
+      console.error(
+        `Failed to fetch memory chunk at ${address.toString(16)}:`,
+        err,
+      );
     }
   }
 
   /**
    * Starts live updates at ~25fps when emulator is running
    */
-  private startLiveUpdate(state: MemoryViewerState): void {
-    if (state.liveUpdateInterval) {
+  private startLiveUpdate(panel: MemoryViewerPanel): void {
+    if (panel.liveUpdateInterval) {
       return; // Already running
     }
 
-    state.liveUpdateInterval = setInterval(async () => {
-      if (state.liveUpdate && this.isEmulatorRunning) {
-        if (!state.baseAddress) {
-          return;
-        }
-        // Check if address expression result has changed (e.g., register value, pointer)
-        const previousBaseAddress = state.baseAddress;
-        try {
-          const adapter = VamigaDebugAdapter.getActiveAdapter();
-          if (adapter) {
-            const result = await this.evaluateAndDereferenceAddress(
-              state,
-              adapter,
-            );
-
-            if (
-              result !== undefined &&
-              result.address !== previousBaseAddress
-            ) {
-              // Base address changed - update state and preserve scroll offset
-              const offsetDelta = result.address - previousBaseAddress;
-              state.baseAddress = result.address;
-              state.symbolLength = result.symbolLength;
-              state.memoryCache.clear();
-
-              // Send update with offset preservation hint
-              await this.updateState(state, offsetDelta);
-              return; // Skip chunk refresh this cycle, chunks will be re-requested
-            }
-          }
-        } catch (err) {
-          // Address evaluation failed - stop live updates and show error
-          this.stopLiveUpdate(state);
-          this.sendErrorToWebview(state.panel, err);
-          return;
-        }
-
-        // For live updates, re-fetch all cached chunks without clearing
-        const cachedOffsets = Array.from(state.memoryCache.keys());
-        for (const offset of cachedOffsets) {
-          try {
-            const address = state.baseAddress + offset;
-            const result = await this.vAmiga.readMemory(address, CHUNK_SIZE);
-
-            // Update cache
-            state.memoryCache.set(offset, new Uint8Array(result));
-
-            // Send updated chunk to webview
-            state.panel.webview.postMessage({
-              command: "memoryData",
-              offset,
-              data: Array.from(new Uint8Array(result)),
-              baseAddress: state.baseAddress,
-            });
-          } catch {
-            // Ignore errors during live update
-          }
-        }
+    panel.liveUpdateInterval = setInterval(async () => {
+      if (panel.liveUpdate && this.isEmulatorRunning) {
+        this.refreshChunks(panel);
       }
     }, LIVE_UPDATE_RATE_MS);
   }
@@ -456,49 +369,37 @@ export class MemoryViewerProvider {
   /**
    * Stops live updates
    */
-  private stopLiveUpdate(state: MemoryViewerState): void {
-    if (state.liveUpdateInterval) {
-      clearInterval(state.liveUpdateInterval);
-      state.liveUpdateInterval = undefined;
+  private stopLiveUpdate(panel: MemoryViewerPanel): void {
+    if (panel.liveUpdateInterval) {
+      clearInterval(panel.liveUpdateInterval);
+      panel.liveUpdateInterval = undefined;
     }
   }
 
-  private getMemoryTypeName(type: MemSrc): string {
-    switch (type) {
-      case MemSrc.NONE:
-        return "None";
-      case MemSrc.CHIP:
-        return "Chip RAM";
-      case MemSrc.CHIP_MIRROR:
-        return "Chip RAM (mirror)";
-      case MemSrc.SLOW:
-        return "Slow RAM";
-      case MemSrc.SLOW_MIRROR:
-        return "Slow RAM (mirror)";
-      case MemSrc.FAST:
-        return "Fast RAM";
-      case MemSrc.CIA:
-        return "CIA Registers";
-      case MemSrc.CIA_MIRROR:
-        return "CIA Registers (mirror)";
-      case MemSrc.RTC:
-        return "RTC";
-      case MemSrc.CUSTOM:
-        return "Custom Registers";
-      case MemSrc.CUSTOM_MIRROR:
-        return "Custom Registers (mirror)";
-      case MemSrc.AUTOCONF:
-        return "Autoconf";
-      case MemSrc.ZOR:
-        return "ZOR";
-      case MemSrc.ROM:
-        return "ROM";
-      case MemSrc.ROM_MIRROR:
-        return "ROM (mirror)";
-      case MemSrc.WOM:
-        return "WOM";
-      case MemSrc.EXT:
-        return "EXT";
+  // Re-fetch all cached chunks without clearing
+  // TODO: is it better to just send clear event?
+  // cache can grow large
+  private async refreshChunks(panel: MemoryViewerPanel) {
+    const cachedOffsets = Array.from(panel.memoryCache.keys());
+    for (const address of cachedOffsets) {
+      try {
+        const result = await this.vAmiga.readMemory(address, CHUNK_SIZE);
+
+        // Update cache
+        panel.memoryCache.set(address, new Uint8Array(result));
+
+        // Send updated chunk to webview
+        panel.webviewPanel.webview.postMessage({
+          command: "memoryData",
+          address,
+          data: new Uint8Array(result),
+        });
+      } catch (err) {
+        console.error(
+          `Failed to fetch memory chunk at ${address.toString(16)}:`,
+          err,
+        );
+      }
     }
   }
 
@@ -508,7 +409,7 @@ export class MemoryViewerProvider {
   private getSymbolSuggestions(
     adapter: VamigaDebugAdapter,
     query: string,
-  ): Array<{ label: string; address: string; description?: string }> {
+  ): Suggestion[] {
     const suggestions: Array<{
       label: string;
       address: string;
@@ -538,8 +439,7 @@ export class MemoryViewerProvider {
           description: segment?.name,
         });
 
-        // Limit to 50 suggestions
-        if (suggestions.length >= 50) break;
+        if (suggestions.length >= SUGGESTIONS_LIMIT) break;
       }
     }
 
@@ -549,20 +449,18 @@ export class MemoryViewerProvider {
     return suggestions;
   }
 
-  private getAvailableRegions(
-    adapter: VamigaDebugAdapter,
-  ): Array<{ name: string; address: number; size: number }> {
-    const regions: Array<{ name: string; address: number; size: number }> = [];
-
+  private getAvailableRegions(adapter: VamigaDebugAdapter): MemoryRegion[] {
     // Add segments from source map
-    const segments = adapter.getSourceMap().getSegmentsInfo();
-    for (const seg of segments) {
-      regions.push({
+    const regions: MemoryRegion[] = adapter
+      .getSourceMap()
+      .getSegmentsInfo()
+      .map((seg) => ({
         name: seg.name,
-        address: seg.address,
-        size: seg.size,
-      });
-    }
+        range: {
+          address: seg.address,
+          size: seg.size,
+        },
+      }));
 
     // Add memory regions
     const memInfo = this.vAmiga.getCachedMemoryInfo();
@@ -577,9 +475,11 @@ export class MemoryViewerProvider {
           // Save previous region
           if (currentType !== null) {
             regions.push({
-              name: this.getMemoryTypeName(currentType),
-              address: currentStart,
-              size: (bank << 16) - currentStart,
+              name: memTypeLabels[currentType],
+              range: {
+                address: currentStart,
+                size: (bank << 16) - currentStart,
+              },
             });
           }
           currentType = type;
@@ -587,9 +487,11 @@ export class MemoryViewerProvider {
         } else if (type === MemSrc.NONE && currentType !== null) {
           // End of region
           regions.push({
-            name: this.getMemoryTypeName(currentType),
-            address: currentStart,
-            size: (bank << 16) - currentStart,
+            name: memTypeLabels[currentType],
+            range: {
+              address: currentStart,
+              size: (bank << 16) - currentStart,
+            },
           });
           currentType = null;
         }
@@ -598,9 +500,11 @@ export class MemoryViewerProvider {
       // Handle last region
       if (currentType !== null) {
         regions.push({
-          name: this.getMemoryTypeName(currentType),
-          address: currentStart,
-          size: (256 << 16) - currentStart,
+          name: memTypeLabels[currentType],
+          range: {
+            address: currentStart,
+            size: (256 << 16) - currentStart,
+          },
         });
       }
     }
