@@ -45,19 +45,6 @@ const ASCII_WIDTH =
   BYTES_PER_LINE * CHAR_WIDTH +
   CHAR_WIDTH;
 
-// Get colors from CSS variables / theme
-const styles = getComputedStyle(document.documentElement);
-const foregroundColor =
-  styles.getPropertyValue("--vscode-editor-foreground").trim() || "#d4d4d4";
-const commentColor =
-  styles.getPropertyValue("--vscode-editorLineNumber-foreground").trim() ||
-  "#858585";
-const backgroundColor =
-  styles.getPropertyValue("--vscode-editor-background").trim() || "#1e1e1e";
-const selectionBackground =
-  styles.getPropertyValue("--vscode-editor-selectionBackground").trim() ||
-  "rgba(0, 120, 215, 0.3)";
-
 const dpr = window.devicePixelRatio || 1;
 
 /**
@@ -132,13 +119,12 @@ export function HexDump({
   const previousDataRef = useRef<Map<number, Uint8Array> | null>(null);
   const changedBytesRef = useRef<Map<number, number>>(new Map()); // byte offset -> timestamp
   const requestedChunksRef = useRef<Set<number>>(new Set()); // Track requested chunks to avoid duplicates
-  const memoryChunksRef = useRef<Map<number, Uint8Array>>(memoryChunks);
 
   // Align to 16-byte boundary for clean row display
   const alignedRangeStart =
     Math.floor(range.address / BYTES_PER_LINE) * BYTES_PER_LINE;
   const alignedRangeEnd =
-    Math.floor((range.address + range.size) / BYTES_PER_LINE) * BYTES_PER_LINE;
+    Math.ceil((range.address + range.size) / BYTES_PER_LINE) * BYTES_PER_LINE;
   const viewableRangeTotal = alignedRangeEnd - alignedRangeStart;
 
   const totalLines = Math.ceil(viewableRangeTotal / BYTES_PER_LINE);
@@ -149,6 +135,19 @@ export function HexDump({
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
+
+    // Get colors from CSS variables / theme
+    const styles = getComputedStyle(document.documentElement);
+    const foregroundColor =
+      styles.getPropertyValue("--vscode-editor-foreground").trim() || "#d4d4d4";
+    const commentColor =
+      styles.getPropertyValue("--vscode-editorLineNumber-foreground").trim() ||
+      "#858585";
+    const backgroundColor =
+      styles.getPropertyValue("--vscode-editor-background").trim() || "#1e1e1e";
+    const selectionBackground =
+      styles.getPropertyValue("--vscode-editor-selectionBackground").trim() ||
+      "rgba(0, 120, 215, 0.3)";
 
     // Helper to get byte from chunks
     const getByte = (address: number): number | undefined => {
@@ -369,11 +368,6 @@ export function HexDump({
     renderedValuesRef.current = renderedValues;
   }, [alignedRangeStart, format, target, memoryChunks, visibleRange]);
 
-  // Keep ref in sync with state
-  useEffect(() => {
-    memoryChunksRef.current = memoryChunks;
-  }, [memoryChunks]);
-
   // Clear requested on address
   useEffect(() => {
     requestedChunksRef.current.clear();
@@ -449,7 +443,6 @@ export function HexDump({
   // Calculate visible range on scroll and request missing chunks
   useEffect(() => {
     const handleScroll = () => {
-      console.log('handleScroll')
       if (!containerRef.current) return;
 
       // Calculate range of lines that should be available - visible range + buffer
@@ -477,11 +470,13 @@ export function HexDump({
 
       // Fetch any missing chunks in range:
       for (let c = firstChunk; c <= lastChunk; c += CHUNK_SIZE) {
-        const alreadyHaveChunk = memoryChunksRef.current.has(c);
+        const alreadyHaveChunk = memoryChunks.has(c);
         const alreadyRequested = requestedChunksRef.current.has(c);
         console.log({
-          c, alreadyHaveChunk, alreadyRequested
-        })
+          c,
+          alreadyHaveChunk,
+          alreadyRequested,
+        });
         if (alreadyHaveChunk || alreadyRequested) {
           continue;
         }
@@ -493,14 +488,32 @@ export function HexDump({
     // Call immediately when baseAddress changes or component mounts
     handleScroll();
 
+    // Call max once per frame
+    let ticking = false;
+    const handleScrollPerFrame = () => {
+      if (!ticking) {
+        window.requestAnimationFrame(() => {
+          handleScroll();
+          ticking = false;
+        });
+        ticking = true;
+      }
+    };
+
     const container = containerRef.current;
     if (container) {
-      container.addEventListener("scroll", handleScroll);
+      container.addEventListener("scroll", handleScrollPerFrame);
       return () => {
-        container.removeEventListener("scroll", handleScroll);
+        container.removeEventListener("scroll", handleScrollPerFrame);
       };
     }
-  }, [totalLines, onRequestMemory, target.address, alignedRangeStart]);
+  }, [
+    totalLines,
+    onRequestMemory,
+    target.address,
+    alignedRangeStart,
+    memoryChunks,
+  ]);
 
   // Render canvas when content changes:
   useEffect(() => {
