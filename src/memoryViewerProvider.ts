@@ -326,15 +326,10 @@ export class MemoryViewerProvider {
     size: number,
   ): Promise<void> {
     try {
-      // Check cache first
-      if (panel.fetchedChunks.has(address)) {
-        return; // Already have this chunk
-      }
-
       const result = await this.vAmiga.readMemory(address, size);
       const data = new Uint8Array(result);
 
-      // Cache the chunk
+      // Track fetched chunk
       panel.fetchedChunks.add(address);
 
       // Send to webview
