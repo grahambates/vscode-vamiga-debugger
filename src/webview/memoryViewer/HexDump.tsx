@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import "./HexDump.css";
 
 export interface HexDumpProps {
@@ -143,26 +143,26 @@ export function HexDump({
 
   const totalLines = Math.ceil(viewableRangeTotal / BYTES_PER_LINE);
 
-  // Helper to get byte from chunks
-  const getByte = (address: number): number | undefined => {
-    const chunkOffset = Math.floor(address / CHUNK_SIZE) * CHUNK_SIZE;
-    const chunk = memoryChunks.get(chunkOffset);
-    if (!chunk) {
-      return undefined;
-    }
-    // Calculate byte index within chunk (handle negative offsets)
-    const byteIndex = address - chunkOffset;
-    return byteIndex >= 0 && byteIndex < chunk.length
-      ? chunk[byteIndex]
-      : undefined;
-  };
-
   // Render canvas
-  const renderCanvas = () => {
+  const renderCanvas = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
+
+    // Helper to get byte from chunks
+    const getByte = (address: number): number | undefined => {
+      const chunkOffset = Math.floor(address / CHUNK_SIZE) * CHUNK_SIZE;
+      const chunk = memoryChunks.get(chunkOffset);
+      if (!chunk) {
+        return undefined;
+      }
+      // Calculate byte index within chunk (handle negative offsets)
+      const byteIndex = address - chunkOffset;
+      return byteIndex >= 0 && byteIndex < chunk.length
+        ? chunk[byteIndex]
+        : undefined;
+    };
 
     // Don't render if no visible range
     if (visibleRange.firstLine >= visibleRange.lastLine) return;
@@ -367,18 +367,24 @@ export function HexDump({
     }
 
     renderedValuesRef.current = renderedValues;
-  };
+  }, [alignedRangeStart, format, target, memoryChunks, visibleRange]);
 
   // Keep ref in sync with state
   useEffect(() => {
     memoryChunksRef.current = memoryChunks;
   }, [memoryChunks]);
 
+  // Clear requested on address
+  useEffect(() => {
+    requestedChunksRef.current.clear();
+  }, [target.address]);
+
   // Scroll to target
   useEffect(() => {
     if (containerRef.current) {
       const scrollTop =
-        Math.floor((target.address - alignedRangeStart) / BYTES_PER_LINE) * LINE_HEIGHT;
+        Math.floor((target.address - alignedRangeStart) / BYTES_PER_LINE) *
+        LINE_HEIGHT;
       containerRef.current.scrollTop = scrollTop;
     }
   }, [target.address, alignedRangeStart, scrollResetTrigger]);
@@ -438,11 +444,12 @@ export function HexDump({
       animationId = requestAnimationFrame(animate);
       return () => cancelAnimationFrame(animationId);
     }
-  }, [memoryChunks]);
+  }, [memoryChunks, renderCanvas]);
 
   // Calculate visible range on scroll and request missing chunks
   useEffect(() => {
     const handleScroll = () => {
+      console.log('handleScroll')
       if (!containerRef.current) return;
 
       // Calculate range of lines that should be available - visible range + buffer
@@ -472,6 +479,9 @@ export function HexDump({
       for (let c = firstChunk; c <= lastChunk; c += CHUNK_SIZE) {
         const alreadyHaveChunk = memoryChunksRef.current.has(c);
         const alreadyRequested = requestedChunksRef.current.has(c);
+        console.log({
+          c, alreadyHaveChunk, alreadyRequested
+        })
         if (alreadyHaveChunk || alreadyRequested) {
           continue;
         }
@@ -490,12 +500,12 @@ export function HexDump({
         container.removeEventListener("scroll", handleScroll);
       };
     }
-  }, [totalLines, onRequestMemory, target.address]);
+  }, [totalLines, onRequestMemory, target.address, alignedRangeStart]);
 
   // Render canvas when content changes:
   useEffect(() => {
     renderCanvas();
-  }, [memoryChunks, visibleRange, format, target.address]);
+  }, [renderCanvas]);
 
   // Handle mouse move for tooltips
   const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {

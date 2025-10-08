@@ -200,6 +200,7 @@ export function App() {
   };
 
   const requestMemory = ({ address, size }: MemoryRange) => {
+    console.log(`Requesting memory`, { address, size })
     vscode.postMessage({
       command: "requestMemory",
       address,
@@ -214,6 +215,7 @@ export function App() {
     vscode.postMessage({
       command: "changeAddress",
       addressInput,
+      dereferencePointer
     });
   };
 

@@ -18,12 +18,13 @@ import {
 } from "./webview/memoryViewer/types";
 
 interface MemoryViewerPanel {
+  target?: MemoryRange;
   webviewPanel: vscode.WebviewPanel;
   addressInput: string;
   liveUpdate: boolean;
   dereferencePointer: boolean;
   liveUpdateInterval?: NodeJS.Timeout;
-  memoryCache: Map<number, Uint8Array>; // offset -> chunk
+  fetchedChunks: Set<number>;
 }
 
 const LIVE_UPDATE_RATE_MS = 1000 / 25;
@@ -130,7 +131,7 @@ export class MemoryViewerProvider {
       addressInput,
       liveUpdate: true,
       dereferencePointer: false,
-      memoryCache: new Map(),
+      fetchedChunks: new Set(),
     };
 
     this.panels.set(panelId, panel);
@@ -173,13 +174,7 @@ export class MemoryViewerProvider {
           panel.addressInput = changeAddressMsg.addressInput;
           panel.dereferencePointer =
             changeAddressMsg.dereferencePointer ?? false;
-          // const previousAddress = state.baseAddress;
           await this.updateContent(panel);
-          // TODO: do we actually need to clear cache?
-          // // Only clear cache if address actually changed
-          // if (state.baseAddress !== previousAddress) {
-          //   state.memoryCache.clear();
-          // }
           break;
         }
         case "requestMemory": {
@@ -314,7 +309,12 @@ export class MemoryViewerProvider {
         panel.webviewPanel.title = "Memory Viewer";
       }
 
-      return;
+      // Clear fetched map on target change
+      // This should match what App does
+      if (target?.address !== panel.target?.address) {
+        panel.fetchedChunks.clear();
+      }
+      panel.target = target;
     } catch (err) {
       this.sendErrorToWebview(panel.webviewPanel, err);
     }
@@ -327,7 +327,7 @@ export class MemoryViewerProvider {
   ): Promise<void> {
     try {
       // Check cache first
-      if (panel.memoryCache.has(address)) {
+      if (panel.fetchedChunks.has(address)) {
         return; // Already have this chunk
       }
 
@@ -335,7 +335,7 @@ export class MemoryViewerProvider {
       const data = new Uint8Array(result);
 
       // Cache the chunk
-      panel.memoryCache.set(address, data);
+      panel.fetchedChunks.add(address);
 
       // Send to webview
       panel.webviewPanel.webview.postMessage({
@@ -376,17 +376,12 @@ export class MemoryViewerProvider {
     }
   }
 
-  // Re-fetch all cached chunks without clearing
-  // TODO: is it better to just send clear event?
-  // cache can grow large
+  // Re-send all previously fetched chunks
+  // TODO: is it better to just send clear event? Set can grow large
   private async refreshChunks(panel: MemoryViewerPanel) {
-    const cachedOffsets = Array.from(panel.memoryCache.keys());
-    for (const address of cachedOffsets) {
+    for (const address of panel.fetchedChunks.values()) {
       try {
         const result = await this.vAmiga.readMemory(address, CHUNK_SIZE);
-
-        // Update cache
-        panel.memoryCache.set(address, new Uint8Array(result));
 
         // Send updated chunk to webview
         panel.webviewPanel.webview.postMessage({
