@@ -427,7 +427,7 @@ export function HexDump({
       const currentScrollTop = containerRef.current.scrollTop;
       containerRef.current.scrollTop = currentScrollTop - scrollDelta;
     }
-  }, [scrollOffsetDelta, BYTES_PER_LINE]);
+  }, [scrollOffsetDelta]);
 
   // Track changed bytes with timestamps
   useEffect(() => {
