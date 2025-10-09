@@ -35,6 +35,7 @@ export function App() {
 
   const [addressInput, setAddressInput] = useState<string>("");
   const [dereferencePointer, setDereferencePointer] = useState(false);
+  const [viewMode, setViewMode] = useState<"hex" | "visual" | "disassembly" | "copper">("hex");
   const [liveUpdate, setLiveUpdate] = useState<boolean>(false);
   const [selectedRegion, setSelectedRegion] = useState<
     MemoryRegion | undefined
@@ -306,54 +307,67 @@ export function App() {
       <vscode-divider></vscode-divider>
 
       {target !== undefined && selectedRegion ? (
-        <vscode-tabs>
+        <vscode-tabs
+          onvsc-tabs-select={(e) => {
+            const modes = ["hex", "visual", "disassembly", "copper"] as const;
+            setViewMode(modes[e.detail.selectedIndex]);
+          }}
+        >
           <vscode-tab-header>Hex Dump</vscode-tab-header>
           <vscode-tab-header>Visual</vscode-tab-header>
           <vscode-tab-header>Disassembly</vscode-tab-header>
           <vscode-tab-header>Copper</vscode-tab-header>
 
           <vscode-tab-panel>
-            <HexDump
-              target={target}
-              range={selectedRegion?.range}
-              symbols={symbols}
-              symbolLengths={symbolLengths}
-              memoryChunks={memoryChunks}
-              onRequestMemory={requestMemory}
-              scrollResetTrigger={scrollResetTrigger}
-            />
+            {viewMode === "hex" && (
+              <HexDump
+                target={target}
+                range={selectedRegion?.range}
+                symbols={symbols}
+                symbolLengths={symbolLengths}
+                memoryChunks={memoryChunks}
+                onRequestMemory={requestMemory}
+                scrollResetTrigger={scrollResetTrigger}
+              />
+            )}
           </vscode-tab-panel>
           <vscode-tab-panel>
-            <VisualView
-              target={target}
-              range={selectedRegion?.range}
-              symbols={symbols}
-              symbolLengths={symbolLengths}
-              memoryChunks={memoryChunks}
-              onRequestMemory={requestMemory}
-              scrollResetTrigger={scrollResetTrigger}
-            />
+            {viewMode === "visual" && (
+              <VisualView
+                target={target}
+                range={selectedRegion?.range}
+                symbols={symbols}
+                symbolLengths={symbolLengths}
+                memoryChunks={memoryChunks}
+                onRequestMemory={requestMemory}
+                scrollResetTrigger={scrollResetTrigger}
+              />
+            )}
           </vscode-tab-panel>
           <vscode-tab-panel>
-            <DisassemblyView
-              target={target}
-              range={selectedRegion?.range}
-              symbols={symbols}
-              memoryChunks={memoryChunks}
-              onRequestMemory={requestMemory}
-              scrollResetTrigger={scrollResetTrigger}
-            />
+            {viewMode === "disassembly" && (
+              <DisassemblyView
+                target={target}
+                range={selectedRegion?.range}
+                symbols={symbols}
+                memoryChunks={memoryChunks}
+                onRequestMemory={requestMemory}
+                scrollResetTrigger={scrollResetTrigger}
+              />
+            )}
           </vscode-tab-panel>
           <vscode-tab-panel>
-            <CopperView
-              target={target}
-              range={selectedRegion?.range}
-              symbols={symbols}
-              symbolLengths={symbolLengths}
-              memoryChunks={memoryChunks}
-              onRequestMemory={requestMemory}
-              scrollResetTrigger={scrollResetTrigger}
-            />
+            {viewMode === "copper" && (
+              <CopperView
+                target={target}
+                range={selectedRegion?.range}
+                symbols={symbols}
+                symbolLengths={symbolLengths}
+                memoryChunks={memoryChunks}
+                onRequestMemory={requestMemory}
+                scrollResetTrigger={scrollResetTrigger}
+              />
+            )}
           </vscode-tab-panel>
         </vscode-tabs>
       ) : (
