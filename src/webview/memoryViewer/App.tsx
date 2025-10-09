@@ -24,8 +24,6 @@ function formatHex(value: number): string {
 }
 
 export function App() {
-  console.log('App component mounted/rendered');
-
   const [target, setTarget] = useState<MemoryRange | undefined>(undefined);
   const [symbols, setSymbols] = useState<Record<string, number>>({});
   const [symbolLengths, setSymbolLengths] = useState<Record<string, number>>({});
@@ -84,7 +82,7 @@ export function App() {
         const regions = pendingUpdate.availableRegions || availableRegions;
         const region = regions.find(({ range }) => {
           const regionEnd = range.address + range.size;
-          return targetAddress >= range.address && targetEnd < regionEnd;
+          return targetAddress >= range.address && targetEnd <= regionEnd;
         });
 
         if (targetAddress !== target?.address) {
@@ -111,7 +109,6 @@ export function App() {
 
     const handleMessage = (event: MessageEvent) => {
       const message = event.data;
-      console.log('FE recieved message', message)
 
       if (message.command === "updateState") {
         // Store latest update and schedule (combining with any previous to handle optional props) to render on next frame
@@ -204,7 +201,6 @@ export function App() {
   };
 
   const requestMemory = ({ address, size }: MemoryRange) => {
-    console.log(`Requesting memory`, { address, size })
     vscode.postMessage({
       command: "requestMemory",
       address,
@@ -322,7 +318,7 @@ export function App() {
             {viewMode === "hex" && (
               <HexDump
                 target={target}
-                range={selectedRegion?.range}
+                range={selectedRegion.range}
                 symbols={symbols}
                 symbolLengths={symbolLengths}
                 memoryChunks={memoryChunks}
@@ -335,7 +331,7 @@ export function App() {
             {viewMode === "visual" && (
               <VisualView
                 target={target}
-                range={selectedRegion?.range}
+                range={selectedRegion.range}
                 symbols={symbols}
                 symbolLengths={symbolLengths}
                 memoryChunks={memoryChunks}
@@ -348,7 +344,7 @@ export function App() {
             {viewMode === "disassembly" && (
               <DisassemblyView
                 target={target}
-                range={selectedRegion?.range}
+                range={selectedRegion.range}
                 symbols={symbols}
                 memoryChunks={memoryChunks}
                 onRequestMemory={requestMemory}
@@ -360,7 +356,7 @@ export function App() {
             {viewMode === "copper" && (
               <CopperView
                 target={target}
-                range={selectedRegion?.range}
+                range={selectedRegion.range}
                 symbols={symbols}
                 symbolLengths={symbolLengths}
                 memoryChunks={memoryChunks}

@@ -2,8 +2,6 @@
 // - bp ignores not working - implemented in vamiga?
 // - step on first instruction in non-fast mode
 // TODO: features
-// - memory viewer
-// - Variable display ordering - alpha or address for custom, symbols
 // - trace
 // - memory to disk?
 // - beamtraps?
@@ -981,7 +979,7 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
    */
 
   private async handleMessageFromEmulator(message: EmulatorMessage) {
-    logger.log(`Recieved message: ${message.type}`);
+    logger.log(`Received message: ${message.type}`);
 
     if (isAttachedMessage(message)) {
       return this.attach(message.segments.map((s) => s.start));

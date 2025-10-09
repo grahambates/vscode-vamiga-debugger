@@ -2573,7 +2573,7 @@ postMessage({ type: 'ready' });
         // Debugger commands:
         if (event.data.command) {
             const message = event.data;
-            console.log('Command recieved', message)
+            console.log('Command received', message)
             const rpcRequest = async (resultCb) => {
                 const res = {
                     type: 'rpcResponse',

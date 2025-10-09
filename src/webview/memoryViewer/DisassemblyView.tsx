@@ -18,7 +18,7 @@ export interface DisassemblyViewProps {
 
 const CHUNK_SIZE = 1024;
 const LINE_HEIGHT = 20;
-const LOAD_MORE_THRESHOLD = 100; // Load more when within 300 lines of bottom
+const LOAD_MORE_THRESHOLD = 100; // Load more when within this many lines of bottom
 const INSTRUCTIONS_PER_LOAD = 200; // Load this many instructions at a time
 const RENDER_BUFFER_LINES = 50; // Render this many extra lines above and below visible area
 
