@@ -5,6 +5,7 @@ import { useCombobox } from "downshift";
 import { HexDump } from "./HexDump";
 import { VisualView } from "./VisualView";
 import { CopperView } from "./CopperView";
+import { DisassemblyView } from "./DisassemblyView";
 import "./App.css";
 import {
   GetSuggestionsMessage,
@@ -344,8 +345,15 @@ export function App() {
             />
           </vscode-tab-panel>
           <vscode-tab-panel>
-            {viewMode === "disassembly" &&
-              "View mode 'disassembly' not yet implemented."}
+            <DisassemblyView
+              target={target}
+              range={selectedRegion?.range}
+              symbols={symbols}
+              symbolLengths={symbolLengths}
+              memoryChunks={memoryChunks}
+              onRequestMemory={requestMemory}
+              scrollResetTrigger={scrollResetTrigger}
+            />
           </vscode-tab-panel>
           <vscode-tab-panel>
             <CopperView

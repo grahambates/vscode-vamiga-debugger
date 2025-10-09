@@ -1,0 +1,16 @@
+.disassemblyView {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.disassembly-scroll-container {
+  flex: 1;
+  overflow: auto;
+  background-color: var(--vscode-editor-background);
+}
+
+.disassembly-canvas {
+  position: absolute;
+  cursor: default;
+}

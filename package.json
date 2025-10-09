@@ -344,6 +344,7 @@
     "@vscode/debugadapter": "^1.68.0",
     "downshift": "^9.0.10",
     "expr-eval": "^2.0.2",
+    "m68kdecode": "^1.1.4",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"
   },
