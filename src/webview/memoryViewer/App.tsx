@@ -4,6 +4,7 @@ import { VscodeCheckbox } from "@vscode-elements/elements";
 import { useCombobox } from "downshift";
 import { HexDump } from "./HexDump";
 import { VisualView } from "./VisualView";
+import { CopperView } from "./CopperView";
 import "./App.css";
 import {
   GetSuggestionsMessage,
@@ -38,7 +39,7 @@ export function App() {
   const [addressInput, setAddressInput] = useState<string>("");
   const [dereferencePointer, setDereferencePointer] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>("hex");
-  const [liveUpdate, setLiveUpdate] = useState<boolean>(true);
+  const [liveUpdate, setLiveUpdate] = useState<boolean>(false);
   const [selectedRegion, setSelectedRegion] = useState<
     MemoryRegion | undefined
   >();
@@ -347,7 +348,15 @@ export function App() {
               "View mode 'disassembly' not yet implemented."}
           </vscode-tab-panel>
           <vscode-tab-panel>
-            {viewMode === "copper" && "View mode 'copper' not yet implemented."}
+            <CopperView
+              target={target}
+              range={selectedRegion?.range}
+              symbols={symbols}
+              symbolLengths={symbolLengths}
+              memoryChunks={memoryChunks}
+              onRequestMemory={requestMemory}
+              scrollResetTrigger={scrollResetTrigger}
+            />
           </vscode-tab-panel>
         </vscode-tabs>
       ) : (

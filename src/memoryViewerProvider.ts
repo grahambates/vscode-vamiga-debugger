@@ -129,7 +129,7 @@ export class MemoryViewerProvider {
     const panel: MemoryViewerPanel = {
       webviewPanel: webviewPanel,
       addressInput,
-      liveUpdate: true,
+      liveUpdate: false,
       dereferencePointer: false,
       fetchedChunks: new Set(),
     };
@@ -162,11 +162,6 @@ export class MemoryViewerProvider {
 
           // Update initial content
           await this.updateContent(panel);
-
-          // TODO: don't really know if it's running on start
-          if (this.isEmulatorRunning) {
-            this.startLiveUpdate(panel);
-          }
           break;
         }
 
