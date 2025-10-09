@@ -5,7 +5,7 @@
 }
 
 .visual-controls {
-  padding: 8px;
+  padding: 15px 10px;
   display: flex;
   gap: 16px;
   align-items: center;
@@ -14,7 +14,6 @@
 .visual-controls label {
   display: flex;
   align-items: center;
-  gap: 8px;
 }
 
 .visual-controls input[type="number"],

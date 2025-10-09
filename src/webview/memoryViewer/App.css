@@ -11,7 +11,7 @@ body {
 }
 
 .memory-viewer {
-  padding: 20px;
+  padding: 15px;
   height: 100vh;
   display: flex;
   flex-direction: column;
@@ -97,22 +97,9 @@ body {
   font-style: italic;
 }
 
-.view-mode-selector {
+.options-container {
   display: flex;
-  gap: 10px;
-  margin-bottom: 10px;
-}
-
-.view-mode-selector vscode-button {
-  min-width: 100px;
-}
-
-.view-mode-selector vscode-button.active {
-  background: var(--vscode-button-background);
-  color: var(--vscode-button-foreground);
-}
-
-.live-update-container {
+  gap: 20px;
   margin-bottom: 10px;
 }
 
@@ -173,11 +160,4 @@ vscode-tab-panel {
 /* Hidden panels should not take up space */
 vscode-tab-panel[hidden] {
   display: none !important;
-}
-
-.placeholder {
-  padding: 40px;
-  text-align: center;
-  color: var(--vscode-descriptionForeground);
-  font-style: italic;
 }

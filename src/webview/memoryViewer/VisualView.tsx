@@ -1,14 +1,15 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { guessWidthsUnknownLength } from "./strideGuesser";
 import "./VisualView.css";
+import { MemoryRange } from "../../shared/memoryViewerTypes";
 
 export interface VisualViewProps {
-  target: { address: number; size: number };
-  range: { address: number; size: number };
+  target: MemoryRange;
+  range: MemoryRange;
   symbols: Record<string, number>;
   symbolLengths: Record<string, number>;
   memoryChunks: Map<number, Uint8Array>;
-  onRequestMemory: (range: { address: number; size: number }) => void;
+  onRequestMemory: (range: MemoryRange) => void;
   scrollResetTrigger?: number;
 }
 

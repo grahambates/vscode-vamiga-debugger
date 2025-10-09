@@ -1,14 +1,15 @@
-import React, { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { disassembleCopperInstruction, CopperInstruction } from "./copperDisassembler";
 import "./CopperView.css";
+import { MemoryRange } from "../../shared/memoryViewerTypes";
 
 export interface CopperViewProps {
-  target: { address: number; size: number };
-  range: { address: number; size: number };
+  target: MemoryRange;
+  range: MemoryRange;
   symbols: Record<string, number>;
   symbolLengths: Record<string, number>;
   memoryChunks: Map<number, Uint8Array>;
-  onRequestMemory: (range: { address: number; size: number }) => void;
+  onRequestMemory: (range: MemoryRange) => void;
   scrollResetTrigger?: number;
 }
 
@@ -31,10 +32,6 @@ export function CopperView({
     lastLine: 0,
   });
   const requestedChunksRef = useRef<Set<number>>(new Set());
-
-  if (!range) {
-    return <div style={{ padding: "20px" }}>No memory region selected</div>;
-  }
 
   // Start disassembly at target address (must be even-aligned)
   const startAddress = target.address & ~1; // Ensure even address
@@ -97,8 +94,6 @@ export function CopperView({
     }
 
     const styles = getComputedStyle(document.documentElement);
-    const foregroundColor =
-      styles.getPropertyValue("--vscode-editor-foreground").trim() || "#d4d4d4";
     const commentColor =
       styles.getPropertyValue("--vscode-editorLineNumber-foreground").trim() ||
       "#858585";

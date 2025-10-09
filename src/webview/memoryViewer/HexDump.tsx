@@ -1,13 +1,14 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import "./HexDump.css";
+import { MemoryRange } from "../../shared/memoryViewerTypes";
 
 export interface HexDumpProps {
-  target: { address: number; size: number };
-  range: { address: number; size: number };
+  target: MemoryRange;
+  range: MemoryRange;
   symbols: Record<string, number>;
   symbolLengths: Record<string, number>;
   memoryChunks: Map<number, Uint8Array>;
-  onRequestMemory: (range: { address: number; size: number }) => void;
+  onRequestMemory: (range: MemoryRange) => void;
   scrollResetTrigger?: number;
 }
 
@@ -381,7 +382,7 @@ export function HexDump({
     }
 
     renderedValuesRef.current = renderedValues;
-  }, [alignedRangeStart, format, target, memoryChunks, visibleRange]);
+  }, [alignedRangeStart, format, target, memoryChunks, visibleRange, range]);
 
   // Clear requested on address
   useEffect(() => {

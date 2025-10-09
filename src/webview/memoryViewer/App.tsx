@@ -19,10 +19,6 @@ import {
 
 const vscode = acquireVsCodeApi();
 
-type ViewMode = "hex" | "visual" | "disassembly" | "copper";
-
-const viewModes: ViewMode[] = ["hex", "visual", "disassembly", "copper"];
-
 function formatHex(value: number): string {
   return "0x" + value.toString(16).toUpperCase().padStart(8, "0");
 }
@@ -39,7 +35,6 @@ export function App() {
 
   const [addressInput, setAddressInput] = useState<string>("");
   const [dereferencePointer, setDereferencePointer] = useState(false);
-  const [viewMode, setViewMode] = useState<ViewMode>("hex");
   const [liveUpdate, setLiveUpdate] = useState<boolean>(false);
   const [selectedRegion, setSelectedRegion] = useState<
     MemoryRegion | undefined
@@ -267,10 +262,10 @@ export function App() {
 
       {error ? <div className="error">{error}</div> : ""}
 
-      <div className="live-update-container">
+      <div className="options-container">
         <vscode-checkbox checked={liveUpdate} onChange={toggleLiveUpdate}>
           Live Update
-        </vscode-checkbox>{" "}
+        </vscode-checkbox>
         <vscode-checkbox
           checked={dereferencePointer}
           onChange={(e: React.FormEvent) => {
@@ -311,12 +306,7 @@ export function App() {
       <vscode-divider></vscode-divider>
 
       {target !== undefined && selectedRegion ? (
-        <vscode-tabs
-          onvsc-tabs-select={(e) => {
-            console.log('Tab selected:', e.detail.selectedIndex, viewModes[e.detail.selectedIndex]);
-            setViewMode(viewModes[e.detail.selectedIndex]);
-          }}
-        >
+        <vscode-tabs>
           <vscode-tab-header>Hex Dump</vscode-tab-header>
           <vscode-tab-header>Visual</vscode-tab-header>
           <vscode-tab-header>Disassembly</vscode-tab-header>
@@ -349,7 +339,6 @@ export function App() {
               target={target}
               range={selectedRegion?.range}
               symbols={symbols}
-              symbolLengths={symbolLengths}
               memoryChunks={memoryChunks}
               onRequestMemory={requestMemory}
               scrollResetTrigger={scrollResetTrigger}

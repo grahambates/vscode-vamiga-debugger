@@ -1,25 +1,26 @@
-import React, { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import {
   disassembleBytes,
   CPUInstruction,
   concatBytes,
 } from "./cpuDisassembler";
 import "./DisassemblyView.css";
+import { MemoryRange } from "../../shared/memoryViewerTypes";
 
 export interface DisassemblyViewProps {
-  target: { address: number; size: number };
-  range: { address: number; size: number };
+  target: MemoryRange;
+  range: MemoryRange;
   symbols: Record<string, number>;
-  symbolLengths: Record<string, number>;
   memoryChunks: Map<number, Uint8Array>;
-  onRequestMemory: (range: { address: number; size: number }) => void;
+  onRequestMemory: (range: MemoryRange) => void;
   scrollResetTrigger?: number;
 }
 
 const CHUNK_SIZE = 1024;
 const LINE_HEIGHT = 20;
-const LOAD_MORE_THRESHOLD = 100; // Load more when within 100 lines of bottom
+const LOAD_MORE_THRESHOLD = 100; // Load more when within 300 lines of bottom
 const INSTRUCTIONS_PER_LOAD = 200; // Load this many instructions at a time
+const RENDER_BUFFER_LINES = 50; // Render this many extra lines above and below visible area
 
 /**
  * DisassemblyView component for M68k CPU instructions
@@ -34,7 +35,6 @@ export function DisassemblyView({
   target,
   range,
   symbols,
-  symbolLengths,
   memoryChunks,
   onRequestMemory,
   scrollResetTrigger,
@@ -58,10 +58,6 @@ export function DisassemblyView({
 
   // Track if we're currently loading more instructions
   const isLoadingRef = useRef(false);
-
-  if (!range) {
-    return <div style={{ padding: "20px" }}>No memory region selected</div>;
-  }
 
   // Start disassembly at target address (must be even-aligned)
   const startAddress = target.address & ~1;
@@ -209,8 +205,6 @@ export function DisassemblyView({
     }
 
     const styles = getComputedStyle(document.documentElement);
-    const foregroundColor =
-      styles.getPropertyValue("--vscode-editor-foreground").trim() || "#d4d4d4";
     const commentColor =
       styles.getPropertyValue("--vscode-editorLineNumber-foreground").trim() ||
       "#858585";
@@ -222,9 +216,6 @@ export function DisassemblyView({
     const numberColor =
       styles.getPropertyValue("--vscode-symbolIcon-numberForeground").trim() ||
       "#b5cea8";
-    const selectionBackground =
-      styles.getPropertyValue("--vscode-editor-selectionBackground").trim() ||
-      "rgba(0, 120, 215, 0.3)";
 
     const canvasHeight = (visibleRange.lastLine - visibleRange.firstLine) * LINE_HEIGHT;
     const canvasWidth = containerRef.current?.clientWidth || 800;
@@ -256,31 +247,22 @@ export function DisassemblyView({
       const instr = instructions[i];
       let x = 10;
 
-      // Highlight target address range
-      const isTarget =
-        instr.address >= target.address &&
-        instr.address < target.address + target.size;
-
-      if (isTarget) {
-        ctx.fillStyle = selectionBackground;
-        ctx.fillRect(0, y, canvasWidth, LINE_HEIGHT);
-      }
-
       // Address
       ctx.fillStyle = commentColor;
       const addrStr = instr.address.toString(16).toUpperCase().padStart(6, "0");
       ctx.fillText(addrStr + ":", x, y + 2);
       x += 80;
 
-      // Raw bytes (show up to 5 bytes, with ellipsis if truncated)
+      // Raw bytes (with ellipsis if truncated)
+      const maxBytesToShow = 8;
       ctx.fillStyle = commentColor;
       const bytesStr = Array.from(instr.bytes)
-        .slice(0, 5)
+        .slice(0, maxBytesToShow)
         .map(b => b.toString(16).toUpperCase().padStart(2, "0"))
         .join(" ");
-      const bytesDisplay = instr.bytes.length > 5 ? bytesStr + "..." : bytesStr;
+      const bytesDisplay = instr.bytes.length > maxBytesToShow ? bytesStr + "..." : bytesStr;
       ctx.fillText(bytesDisplay.padEnd(17), x, y + 2);
-      x += 140;
+      x += 220;
 
       // Mnemonic
       ctx.fillStyle = keywordColor;
@@ -290,7 +272,7 @@ export function DisassemblyView({
       // Operands
       ctx.fillStyle = numberColor;
       ctx.fillText(instr.operands, x, y + 2);
-      x += 250;
+      x += 200;
 
       // Comment (symbol information)
       if (instr.comment) {
@@ -307,7 +289,7 @@ export function DisassemblyView({
         }
       }
     }
-  }, [visibleRange, instructions, target, symbols, reachedEnd]);
+  }, [visibleRange, instructions, symbols, reachedEnd]);
 
   // Reset state when target address changes
   useEffect(() => {
@@ -345,8 +327,14 @@ export function DisassemblyView({
 
       const scrollTop = containerRef.current.scrollTop;
       const scrollBottom = scrollTop + containerRef.current.clientHeight;
-      const firstLine = Math.max(0, Math.floor(scrollTop / LINE_HEIGHT));
-      const lastLine = Math.ceil(scrollBottom / LINE_HEIGHT);
+
+      // Calculate visible lines
+      const visibleFirstLine = Math.max(0, Math.floor(scrollTop / LINE_HEIGHT));
+      const visibleLastLine = Math.ceil(scrollBottom / LINE_HEIGHT);
+
+      // Add buffer for smooth scrolling
+      const firstLine = Math.max(0, visibleFirstLine - RENDER_BUFFER_LINES);
+      const lastLine = Math.min(instructions.length, visibleLastLine + RENDER_BUFFER_LINES);
 
       setVisibleRange({ firstLine, lastLine });
 
