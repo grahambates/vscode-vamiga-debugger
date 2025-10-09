@@ -18,22 +18,17 @@ export interface DisassemblyViewProps {
 
 const CHUNK_SIZE = 1024;
 const LINE_HEIGHT = 20;
-const BUFFER_LINES = 30; // Extra buffer for variable-length instructions
+const LOAD_MORE_THRESHOLD = 100; // Load more when within 100 lines of bottom
+const INSTRUCTIONS_PER_LOAD = 200; // Load this many instructions at a time
 
 /**
  * DisassemblyView component for M68k CPU instructions
  *
- * Challenges:
- * 1. Variable-length instructions (2-10 bytes) make it impossible to calculate
- *    exact line positions without disassembling from the start
- * 2. Instructions may span chunk boundaries
- * 3. We can only disassemble sequentially from a known starting point
- *
- * Solution:
- * - Disassemble from the target address forward only (no backward scrolling)
- * - Build instruction array incrementally as more chunks are loaded
- * - Handle cross-chunk instruction boundaries by concatenating adjacent chunks
- * - Use virtual scrolling but rebuild from start address each time
+ * Uses infinite scroll pattern:
+ * - Start with a reasonable number of instructions
+ * - Grow the content area as user scrolls down
+ * - Stop when reaching the end of the memory region
+ * - No need to know total height upfront
  */
 export function DisassemblyView({
   target,
@@ -52,9 +47,17 @@ export function DisassemblyView({
   });
   const requestedChunksRef = useRef<Set<number>>(new Set());
 
-  // Cache disassembled instructions to avoid re-disassembling on every render
+  // Accumulate instructions as we disassemble
   const [instructions, setInstructions] = useState<CPUInstruction[]>([]);
-  const lastDisassemblyAddressRef = useRef<number>(-1);
+
+  // Track the next address to disassemble from (use ref to avoid stale closures)
+  const nextAddressRef = useRef<number>(0);
+
+  // Track if we've reached the end of the region
+  const [reachedEnd, setReachedEnd] = useState(false);
+
+  // Track if we're currently loading more instructions
+  const isLoadingRef = useRef(false);
 
   if (!range) {
     return <div style={{ padding: "20px" }}>No memory region selected</div>;
@@ -97,32 +100,101 @@ export function DisassemblyView({
     [memoryChunks]
   );
 
-  // Disassemble instructions from start address up to a certain byte count
-  // This is rebuilt whenever we need more instructions or chunks change
-  const disassembleFromStart = useCallback(
-    (maxBytes: number): CPUInstruction[] => {
-      const bytes = getContiguousBytes(startAddress, maxBytes);
+  // Load more instructions from the nextAddress
+  const loadMoreInstructions = useCallback(() => {
+    if (isLoadingRef.current || reachedEnd) {
+      return;
+    }
+
+    const fromAddress = nextAddressRef.current;
+
+    // Can't go beyond the end address
+    if (fromAddress >= endAddress) {
+      setReachedEnd(true);
+      return;
+    }
+
+    isLoadingRef.current = true;
+
+    // Calculate how many bytes we need (worst case scenario)
+    const bytesNeeded = Math.min(
+      INSTRUCTIONS_PER_LOAD * 10, // Worst case: all 10-byte instructions
+      endAddress - fromAddress
+    );
+
+    // Request all chunks we might need
+    const firstChunk = Math.floor(fromAddress / CHUNK_SIZE) * CHUNK_SIZE;
+    const lastChunk = Math.floor((fromAddress + bytesNeeded) / CHUNK_SIZE) * CHUNK_SIZE;
+
+    let needsChunks = false;
+    for (let c = firstChunk; c <= lastChunk; c += CHUNK_SIZE) {
+      if (!memoryChunks.has(c)) {
+        needsChunks = true;
+        if (!requestedChunksRef.current.has(c)) {
+          requestedChunksRef.current.add(c);
+          onRequestMemory({ address: c, size: CHUNK_SIZE });
+        }
+      }
+    }
+
+    // If we need chunks, wait for them to arrive
+    if (needsChunks) {
+      isLoadingRef.current = false;
+      return;
+    }
+
+    // Try to disassemble with increasing byte counts until we get enough instructions
+    let bytesToTry = Math.ceil(INSTRUCTIONS_PER_LOAD * 3); // Start with average case
+    const maxBytesToTry = Math.min(bytesNeeded, endAddress - fromAddress);
+
+    for (let attempt = 0; attempt < 5; attempt++) {
+      bytesToTry = Math.min(bytesToTry, maxBytesToTry);
+
+      const bytes = getContiguousBytes(fromAddress, bytesToTry);
       if (!bytes || bytes.length === 0) {
-        return [];
+        break;
       }
 
-      const result = disassembleBytes(startAddress, bytes);
-      return result.instructions;
-    },
-    [startAddress, getContiguousBytes]
-  );
+      const result = disassembleBytes(fromAddress, bytes);
+      const newInstructions = result.instructions;
 
-  // Calculate how many bytes we need to disassemble to get enough instructions
-  // for the visible range plus buffer
-  const calculateRequiredBytes = useCallback(
-    (targetLineCount: number): number => {
-      // Estimate: average instruction is ~3 bytes, but use 2.5 to be safe
-      // Add extra buffer for chunk alignment
-      const estimatedBytes = Math.ceil(targetLineCount * 2.5);
-      return Math.min(estimatedBytes, endAddress - startAddress);
-    },
-    [startAddress, endAddress]
-  );
+      // If we got enough instructions or can't get more data, use what we have
+      if (
+        newInstructions.length >= INSTRUCTIONS_PER_LOAD ||
+        bytes.length < bytesToTry ||
+        bytesToTry >= maxBytesToTry
+      ) {
+        if (newInstructions.length > 0) {
+          setInstructions(prev => [...prev, ...newInstructions]);
+
+          // Update next address
+          const lastInstr = newInstructions[newInstructions.length - 1];
+          const newNextAddress = lastInstr.address + lastInstr.bytes.length;
+          nextAddressRef.current = newNextAddress;
+
+          // Check if we've reached the end
+          if (newNextAddress >= endAddress) {
+            setReachedEnd(true);
+          }
+        } else {
+          // No instructions decoded - reached end
+          setReachedEnd(true);
+        }
+        break;
+      }
+
+      // Need more bytes
+      bytesToTry = Math.ceil(bytesToTry * 1.5);
+    }
+
+    isLoadingRef.current = false;
+  }, [
+    reachedEnd,
+    endAddress,
+    getContiguousBytes,
+    memoryChunks,
+    onRequestMemory,
+  ]);
 
   // Render disassembly to canvas
   const renderCanvas = useCallback(() => {
@@ -173,9 +245,11 @@ export function DisassemblyView({
       const y = (i - visibleRange.firstLine) * LINE_HEIGHT;
 
       if (i >= instructions.length) {
-        // No instruction available yet
-        ctx.fillStyle = commentColor;
-        ctx.fillText("...", 10, y + 2);
+        // No instruction available yet - show loading indicator
+        if (!reachedEnd) {
+          ctx.fillStyle = commentColor;
+          ctx.fillText("Loading...", 10, y + 2);
+        }
         continue;
       }
 
@@ -198,10 +272,10 @@ export function DisassemblyView({
       ctx.fillText(addrStr + ":", x, y + 2);
       x += 80;
 
-      // Raw bytes (show up to 10 bytes, with ellipsis if truncated)
+      // Raw bytes (show up to 5 bytes, with ellipsis if truncated)
       ctx.fillStyle = commentColor;
       const bytesStr = Array.from(instr.bytes)
-        .slice(0, 5) // Show first 5 bytes max
+        .slice(0, 5)
         .map(b => b.toString(16).toUpperCase().padStart(2, "0"))
         .join(" ");
       const bytesDisplay = instr.bytes.length > 5 ? bytesStr + "..." : bytesStr;
@@ -233,42 +307,38 @@ export function DisassemblyView({
         }
       }
     }
-  }, [visibleRange, instructions, target, symbols]);
+  }, [visibleRange, instructions, target, symbols, reachedEnd]);
 
-  // Clear requested chunks and instructions on target address change
+  // Reset state when target address changes
   useEffect(() => {
     requestedChunksRef.current.clear();
     setInstructions([]);
-    lastDisassemblyAddressRef.current = -1;
-  }, [target.address]);
+    nextAddressRef.current = startAddress;
+    setReachedEnd(false);
+    isLoadingRef.current = false;
+  }, [startAddress]);
 
   // Scroll to target
   useEffect(() => {
     if (containerRef.current) {
-      containerRef.current.scrollTop = 0; // Always start at top
+      containerRef.current.scrollTop = 0;
     }
   }, [target.address, scrollResetTrigger]);
 
-  // Update instructions when chunks change or we need more lines
+  // Load initial instructions and more when chunks arrive
   useEffect(() => {
-    const linesNeeded = visibleRange.lastLine + BUFFER_LINES;
-    if (linesNeeded > instructions.length || lastDisassemblyAddressRef.current !== startAddress) {
-      const bytesNeeded = calculateRequiredBytes(linesNeeded);
-      const newInstructions = disassembleFromStart(bytesNeeded);
+    // Try to load if we don't have enough instructions
+    const shouldLoad =
+      !isLoadingRef.current &&
+      !reachedEnd &&
+      instructions.length < INSTRUCTIONS_PER_LOAD;
 
-      setInstructions(newInstructions);
-      lastDisassemblyAddressRef.current = startAddress;
+    if (shouldLoad) {
+      loadMoreInstructions();
     }
-  }, [
-    visibleRange,
-    memoryChunks,
-    startAddress,
-    instructions.length,
-    disassembleFromStart,
-    calculateRequiredBytes,
-  ]);
+  }, [memoryChunks, instructions.length, reachedEnd, loadMoreInstructions]);
 
-  // Calculate visible range on scroll and request missing chunks
+  // Handle scroll and load more when near bottom
   useEffect(() => {
     const handleScroll = () => {
       if (!containerRef.current) return;
@@ -276,24 +346,14 @@ export function DisassemblyView({
       const scrollTop = containerRef.current.scrollTop;
       const scrollBottom = scrollTop + containerRef.current.clientHeight;
       const firstLine = Math.max(0, Math.floor(scrollTop / LINE_HEIGHT));
-      const lastLine = Math.ceil(scrollBottom / LINE_HEIGHT) + BUFFER_LINES;
+      const lastLine = Math.ceil(scrollBottom / LINE_HEIGHT);
 
       setVisibleRange({ firstLine, lastLine });
 
-      // Calculate which chunks we need based on instruction addresses
-      // We need to be conservative and request extra chunks since we don't
-      // know exactly where instructions end
-      const bytesNeeded = calculateRequiredBytes(lastLine);
-      const endByte = Math.min(startAddress + bytesNeeded, endAddress);
-
-      const firstChunk = Math.floor(startAddress / CHUNK_SIZE) * CHUNK_SIZE;
-      const lastChunk = Math.floor(endByte / CHUNK_SIZE) * CHUNK_SIZE;
-
-      for (let c = firstChunk; c <= lastChunk; c += CHUNK_SIZE) {
-        if (!memoryChunks.has(c) && !requestedChunksRef.current.has(c)) {
-          requestedChunksRef.current.add(c);
-          onRequestMemory({ address: c, size: CHUNK_SIZE });
-        }
+      // Load more if we're near the bottom
+      const distanceFromBottom = instructions.length - lastLine;
+      if (distanceFromBottom < LOAD_MORE_THRESHOLD && !isLoadingRef.current && !reachedEnd) {
+        loadMoreInstructions();
       }
     };
 
@@ -317,26 +377,15 @@ export function DisassemblyView({
         container.removeEventListener("scroll", handleScrollPerFrame);
       };
     }
-  }, [
-    startAddress,
-    endAddress,
-    memoryChunks,
-    onRequestMemory,
-    calculateRequiredBytes,
-  ]);
+  }, [instructions.length, reachedEnd, loadMoreInstructions]);
 
   // Render canvas when content changes
   useEffect(() => {
     renderCanvas();
   }, [renderCanvas]);
 
-  // Calculate total height based on instruction count
-  // Add extra space for instructions we haven't disassembled yet
-  const estimatedTotalInstructions = Math.max(
-    instructions.length,
-    Math.ceil((endAddress - startAddress) / 2.5)
-  );
-  const totalHeight = estimatedTotalInstructions * LINE_HEIGHT;
+  // Total height grows with instruction count
+  const totalHeight = instructions.length * LINE_HEIGHT + (reachedEnd ? 0 : LINE_HEIGHT * 10);
 
   return (
     <div className="disassemblyView">
