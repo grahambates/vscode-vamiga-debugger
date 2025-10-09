@@ -15,7 +15,7 @@ import {
   ToggleLiveUpdateMessage,
   UpdateStateMessage,
   UpdateStateMessageProps,
-} from "./webview/memoryViewer/types";
+} from "./shared/memoryViewerTypes";
 
 interface MemoryViewerPanel {
   target?: MemoryRange;

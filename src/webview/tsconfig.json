@@ -8,9 +8,8 @@
     "skipLibCheck": true,
     "isolatedModules": true,
     "types": ["vscode-webview"],
-    "composite": true,
     "jsx": "react-jsx"
   },
-  "include": ["./**/*"],
+  "include": ["./**/*", "../shared/**/*"],
   "exclude": ["node_modules"]
 }

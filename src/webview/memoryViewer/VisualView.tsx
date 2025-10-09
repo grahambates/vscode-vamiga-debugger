@@ -1,84 +1,250 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import { guessWidthsUnknownLength } from "./strideGuesser";
+import "./VisualView.css";
 
 export interface VisualViewProps {
-  baseAddress: number;
-  memoryRange: { start: number; end: number };
+  target: { address: number; size: number };
+  range: { address: number; size: number };
+  symbols: Record<string, number>;
+  symbolLengths: Record<string, number>;
   memoryChunks: Map<number, Uint8Array>;
-  onRequestMemory: (offset: number, count: number) => void;
+  onRequestMemory: (range: { address: number; size: number }) => void;
+  scrollResetTrigger?: number;
 }
 
-export function VisualView({ baseAddress, memoryRange, memoryChunks }: VisualViewProps) {
+export function VisualView({
+  target,
+  range,
+  memoryChunks,
+  onRequestMemory,
+  scrollResetTrigger,
+}: VisualViewProps) {
   const [bytesPerRow, setBytesPerRow] = useState<number>(40); // Default 40 bytes = 320 pixels
-  const [scale, setScale] = useState<number>(1);
+  const [scale, setScale] = useState<number>(2);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const [visibleRange, setVisibleRange] = useState({
+    firstLine: 0,
+    lastLine: 0,
+  });
+  const requestedChunksRef = useRef<Set<number>>(new Set());
 
   const CHUNK_SIZE = 1024;
-  const VIEWABLE_RANGE = Math.abs(memoryRange.start) + memoryRange.end;
+  const BUFFER_LINES = 20; // Lines beyond visible range to fetch
+
+  // Calculate row alignment - align to target address so it's the first pixel in a row
+  // The target address should be at the start of a row
+  const alignedRangeStart = range ? target.address : 0;
+  const alignedRangeEnd = range
+    ? Math.ceil((range.address + range.size - target.address) / bytesPerRow) *
+        bytesPerRow +
+      target.address
+    : 0;
+  const viewableRangeTotal = alignedRangeEnd - alignedRangeStart;
+
   const pixelsPerByte = 8;
   const pixelWidth = bytesPerRow * pixelsPerByte;
-  const totalRows = Math.ceil(VIEWABLE_RANGE / bytesPerRow);
+  const totalRows = Math.ceil(viewableRangeTotal / bytesPerRow);
 
   // Helper to get byte from chunks
-  const getByte = (offset: number): number | undefined => {
-    const chunkOffset = Math.floor(offset / CHUNK_SIZE) * CHUNK_SIZE;
-    const chunk = memoryChunks.get(chunkOffset);
-    if (!chunk) return undefined;
-    const byteIndex = offset - chunkOffset;
-    return byteIndex < chunk.length ? chunk[byteIndex] : undefined;
-  };
+  const getByte = useCallback(
+    (address: number): number | undefined => {
+      const chunkOffset = Math.floor(address / CHUNK_SIZE) * CHUNK_SIZE;
+      const chunk = memoryChunks.get(chunkOffset);
+      if (!chunk) return undefined;
+      const byteIndex = address - chunkOffset;
+      return byteIndex >= 0 && byteIndex < chunk.length
+        ? chunk[byteIndex]
+        : undefined;
+    },
+    [memoryChunks, CHUNK_SIZE],
+  );
 
-  // Render bitmap
-  useEffect(() => {
+  // Render bitmap with virtualized scrolling
+  const renderCanvas = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext("2d");
     if (!ctx) return;
+
+    // Don't render if no visible range
+    if (visibleRange.firstLine >= visibleRange.lastLine) {
+      return;
+    }
 
     // Get colors from theme
     const styles = getComputedStyle(document.documentElement);
-    const foregroundColor = styles.getPropertyValue('--vscode-editor-foreground').trim() || '#d4d4d4';
-    const backgroundColor = styles.getPropertyValue('--vscode-editor-background').trim() || '#1e1e1e';
+    const foregroundColor =
+      styles.getPropertyValue("--vscode-editor-foreground").trim() || "#d4d4d4";
+    const backgroundColor =
+      styles.getPropertyValue("--vscode-editor-background").trim() || "#1e1e1e";
+
+    const canvasHeight =
+      (visibleRange.lastLine - visibleRange.firstLine) * scale;
+    const canvasWidth = pixelWidth * scale;
 
     // Set canvas size
-    canvas.width = pixelWidth * scale;
-    canvas.height = totalRows * scale;
+    canvas.width = canvasWidth;
+    canvas.height = canvasHeight;
+    canvas.style.width = `${canvasWidth}px`;
+    canvas.style.height = `${canvasHeight}px`;
 
     // Fill background
     ctx.fillStyle = backgroundColor;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillRect(0, 0, canvasWidth, canvasHeight);
 
     // Draw pixels
     ctx.fillStyle = foregroundColor;
 
-    let pixelX = 0;
-    let pixelY = 0;
+    for (
+      let line = visibleRange.firstLine;
+      line < visibleRange.lastLine;
+      line++
+    ) {
+      const lineAddress = alignedRangeStart + line * bytesPerRow;
+      const lineY = (line - visibleRange.firstLine);
 
-    for (let i = 0; i < VIEWABLE_RANGE; i++) {
-      const byte = getByte(i);
-      if (byte === undefined) continue;
+      for (let byteOffset = 0; byteOffset < bytesPerRow; byteOffset++) {
+        const byteAddress = lineAddress + byteOffset;
 
-      // Draw 8 pixels for this byte (MSB first)
-      for (let bit = 7; bit >= 0; bit--) {
-        const isOn = (byte & (1 << bit)) !== 0;
-
-        if (isOn) {
-          ctx.fillRect(pixelX * scale, pixelY * scale, scale, scale);
+        // Check if within range
+        if (
+          !range ||
+          byteAddress < range.address ||
+          byteAddress >= range.address + range.size
+        ) {
+          continue;
         }
 
-        pixelX++;
-        if (pixelX >= pixelWidth) {
-          pixelX = 0;
-          pixelY++;
+        const byte = getByte(byteAddress);
+        if (byte === undefined) continue;
+
+        // Draw 8 pixels for this byte (MSB first)
+        for (let bit = 7; bit >= 0; bit--) {
+          const isOn = (byte & (1 << bit)) !== 0;
+
+          if (isOn) {
+            const pixelX = byteOffset * 8 + (7 - bit);
+            ctx.fillRect(pixelX * scale, lineY * scale, scale, scale);
+          }
         }
       }
     }
-  }, [memoryChunks, bytesPerRow, scale, pixelWidth, totalRows]);
+  }, [
+    alignedRangeStart,
+    bytesPerRow,
+    scale,
+    pixelWidth,
+    visibleRange,
+    range,
+    getByte,
+  ]);
+
+  // Clear requested chunks on target address change
+  useEffect(() => {
+    requestedChunksRef.current.clear();
+  }, [target.address]);
+
+  // Scroll to target
+  useEffect(() => {
+    if (containerRef.current) {
+      const scrollTop =
+        Math.floor((target.address - alignedRangeStart) / bytesPerRow) *
+        scale;
+      containerRef.current.scrollTop = scrollTop;
+    }
+  }, [
+    target.address,
+    alignedRangeStart,
+    scrollResetTrigger,
+    bytesPerRow,
+    scale,
+  ]);
+
+  // Calculate visible range on scroll and request missing chunks
+  useEffect(() => {
+    const handleScroll = () => {
+      if (!containerRef.current) return;
+
+      // Calculate range of lines that should be available - visible range + buffer
+      const scrollTop = containerRef.current.scrollTop;
+      const scrollBottom = scrollTop + containerRef.current.clientHeight;
+      const firstLine = Math.max(
+        0,
+        Math.floor(scrollTop / scale) - BUFFER_LINES,
+      );
+      const lastLine = Math.min(
+        totalRows,
+        Math.ceil(scrollBottom / scale) + BUFFER_LINES,
+      );
+      setVisibleRange({ firstLine, lastLine });
+
+      // Get byte offsets of chunks
+      const firstChunk =
+        Math.floor((alignedRangeStart + firstLine * bytesPerRow) / CHUNK_SIZE) *
+        CHUNK_SIZE;
+      const lastChunk =
+        Math.floor((alignedRangeStart + lastLine * bytesPerRow) / CHUNK_SIZE) *
+        CHUNK_SIZE;
+
+      // Fetch any missing chunks in range:
+      for (let c = firstChunk; c <= lastChunk; c += CHUNK_SIZE) {
+        const alreadyHaveChunk = memoryChunks.has(c);
+        const alreadyRequested = requestedChunksRef.current.has(c);
+        if (alreadyHaveChunk || alreadyRequested) {
+          continue;
+        }
+        requestedChunksRef.current.add(c);
+        onRequestMemory({ address: c, size: CHUNK_SIZE });
+      }
+    };
+
+    // Call immediately when target address changes or component mounts
+    handleScroll();
+
+    // Call max once per frame
+    let ticking = false;
+    const handleScrollPerFrame = () => {
+      if (!ticking) {
+        window.requestAnimationFrame(() => {
+          handleScroll();
+          ticking = false;
+        });
+        ticking = true;
+      }
+    };
+
+    const container = containerRef.current;
+    if (container) {
+      container.addEventListener("scroll", handleScrollPerFrame);
+      return () => {
+        container.removeEventListener("scroll", handleScrollPerFrame);
+      };
+    }
+  }, [
+    totalRows,
+    onRequestMemory,
+    target.address,
+    alignedRangeStart,
+    memoryChunks,
+    bytesPerRow,
+    scale,
+    BUFFER_LINES,
+    CHUNK_SIZE,
+  ]);
+
+  // Render canvas when content changes:
+  useEffect(() => {
+    renderCanvas();
+  }, [renderCanvas]);
 
   // Handle mouse move for showing pixel info
-  const [tooltip, setTooltip] = useState<{ x: number; y: number; text: string } | null>(null);
+  const [tooltip, setTooltip] = useState<{
+    x: number;
+    y: number;
+    text: string;
+  } | null>(null);
 
   const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
@@ -88,21 +254,28 @@ export function VisualView({ baseAddress, memoryRange, memoryChunks }: VisualVie
     const x = Math.floor((e.clientX - rect.left) / scale);
     const y = Math.floor((e.clientY - rect.top) / scale);
 
-    // Calculate byte offset and bit position
-    const byteOffset = Math.floor(y * bytesPerRow + x / 8);
-    const bitPosition = 7 - (x % 8);
+    // Calculate absolute line and byte address
+    const absoluteLine =
+      visibleRange.firstLine + Math.floor(y / scale);
+    const lineAddress = alignedRangeStart + absoluteLine * bytesPerRow;
+    const pixelXInLine = x % pixelWidth;
+    const byteOffset = Math.floor(pixelXInLine / 8);
+    const bitPosition = 7 - (pixelXInLine % 8);
+    const byteAddress = lineAddress + byteOffset;
 
-    const byte = getByte(byteOffset);
+    const byte = getByte(byteAddress);
     if (byte !== undefined) {
       const isOn = (byte & (1 << bitPosition)) !== 0;
-      const address = baseAddress + byteOffset;
-      const addressHex = address.toString(16).toUpperCase().padStart(6, "0");
+      const addressHex = byteAddress
+        .toString(16)
+        .toUpperCase()
+        .padStart(6, "0");
       const byteHex = byte.toString(16).toUpperCase().padStart(2, "0");
 
       setTooltip({
         x: e.clientX,
         y: e.clientY,
-        text: `Pixel ${x},${y} | Byte 0x${byteHex} @ ${addressHex} | Bit ${bitPosition} = ${isOn ? 1 : 0}`
+        text: `Pixel ${x},${y} | Byte 0x${byteHex} @ ${addressHex} | Bit ${bitPosition} = ${isOn ? 1 : 0}`,
       });
     } else {
       setTooltip(null);
@@ -113,9 +286,13 @@ export function VisualView({ baseAddress, memoryRange, memoryChunks }: VisualVie
     setTooltip(null);
   };
 
+  if (!range) {
+    return <div style={{ padding: "20px" }}>No memory region selected</div>;
+  }
+
   return (
-    <div className="visualView" style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      <div className="visual-controls" style={{ padding: '8px', display: 'flex', gap: '16px', alignItems: 'center' }}>
+    <div className="visualView">
+      <div className="visual-controls">
         <label>
           Width (bytes):
           <input
@@ -123,29 +300,52 @@ export function VisualView({ baseAddress, memoryRange, memoryChunks }: VisualVie
             min="1"
             max="256"
             value={bytesPerRow}
-            onChange={(e) => setBytesPerRow(Math.max(1, parseInt(e.target.value) || 40))}
-            style={{ marginLeft: '8px', width: '60px' }}
+            onChange={(e) =>
+              setBytesPerRow(Math.max(1, parseInt(e.target.value) || 40))
+            }
           />
-          <span style={{ marginLeft: '8px', opacity: 0.7 }}>
+          <span className="visual-info-text">
             ({bytesPerRow * 8} pixels)
           </span>
         </label>
 
-        <vscode-button onClick={() => {
-          const chunk = memoryChunks.get(0);
-          if (chunk) {
-            const guesses = guessWidthsUnknownLength(chunk);
-            console.log(guesses);
-            setBytesPerRow(guesses[0].widthBytes);
-          }
-        }}>Guess</vscode-button>
+        <vscode-button
+          onClick={() => {
+            // Collect enough data starting from target address, potentially spanning chunks
+            const GUESS_SAMPLE_SIZE = 1024; // Need enough data for accurate prediction
+            const sampleData = new Uint8Array(GUESS_SAMPLE_SIZE);
+            let bytesCollected = 0;
+
+            for (
+              let offset = 0;
+              offset < GUESS_SAMPLE_SIZE && bytesCollected < GUESS_SAMPLE_SIZE;
+              offset++
+            ) {
+              const byte = getByte(target.address + offset);
+              if (byte !== undefined) {
+                sampleData[bytesCollected++] = byte;
+              } else {
+                // Stop if we hit missing data
+                break;
+              }
+            }
+
+            const sample = sampleData.slice(0, bytesCollected);
+            const guesses = guessWidthsUnknownLength(sample);
+            if (guesses.length > 0) {
+              console.log("Width guesses:", guesses);
+              setBytesPerRow(guesses[0].widthBytes);
+            }
+          }}
+        >
+          Guess
+        </vscode-button>
 
         <label>
           Scale:
           <select
             value={scale}
             onChange={(e) => setScale(parseInt(e.target.value))}
-            style={{ marginLeft: '8px' }}
           >
             <option value="1">1x</option>
             <option value="2">2x</option>
@@ -154,47 +354,33 @@ export function VisualView({ baseAddress, memoryRange, memoryChunks }: VisualVie
             <option value="5">5x</option>
           </select>
         </label>
-
-        <div style={{ opacity: 0.7 }}>
-          {pixelWidth} × {totalRows} pixels
-        </div>
       </div>
 
-      <div
-        ref={containerRef}
-        style={{
-          flex: 1,
-          overflow: 'auto',
-          backgroundColor: 'var(--vscode-editor-background)'
-        }}
-      >
-        <canvas
-          ref={canvasRef}
-          onMouseMove={handleMouseMove}
-          onMouseLeave={handleMouseLeave}
+      <div ref={containerRef} className="visual-scroll-container">
+        <div
+          className="visual-canvas-wrapper"
           style={{
-            imageRendering: 'pixelated',
-            cursor: 'crosshair'
+            height: `${totalRows * scale}px`,
           }}
-        />
+        >
+          <canvas
+            ref={canvasRef}
+            className="visual-canvas"
+            onMouseMove={handleMouseMove}
+            onMouseLeave={handleMouseLeave}
+            style={{
+              top: `${visibleRange.firstLine * scale}px`,
+            }}
+          />
+        </div>
       </div>
 
       {tooltip && (
         <div
+          className="visual-tooltip"
           style={{
-            position: 'fixed',
             left: tooltip.x + 10,
             top: tooltip.y + 10,
-            backgroundColor: '#1e1e1e',
-            color: '#d4d4d4',
-            border: '1px solid #454545',
-            padding: '4px 8px',
-            borderRadius: '3px',
-            fontSize: '12px',
-            fontFamily: 'monospace',
-            pointerEvents: 'none',
-            zIndex: 1000,
-            whiteSpace: 'nowrap'
           }}
         >
           {tooltip.text}

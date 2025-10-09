@@ -1,0 +1,62 @@
+.visualView {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.visual-controls {
+  padding: 8px;
+  display: flex;
+  gap: 16px;
+  align-items: center;
+}
+
+.visual-controls label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.visual-controls input[type="number"],
+.visual-controls select {
+  margin-left: 8px;
+}
+
+.visual-controls input[type="number"] {
+  width: 60px;
+}
+
+.visual-scroll-container {
+  flex: 1;
+  overflow: auto;
+  background-color: var(--vscode-editor-background);
+}
+
+.visual-canvas-wrapper {
+  position: relative;
+}
+
+.visual-canvas {
+  position: absolute;
+  image-rendering: pixelated;
+  cursor: crosshair;
+}
+
+.visual-tooltip {
+  position: fixed;
+  background-color: var(--vscode-editorHoverWidget-background);
+  color: var(--vscode-editorHoverWidget-foreground);
+  border: 1px solid var(--vscode-editorHoverWidget-border);
+  padding: 4px 8px;
+  border-radius: 3px;
+  font-size: 12px;
+  font-family: var(--vscode-editor-font-family);
+  pointer-events: none;
+  z-index: 1000;
+  white-space: nowrap;
+}
+
+.visual-info-text {
+  margin-left: 8px;
+  opacity: 0.7;
+}

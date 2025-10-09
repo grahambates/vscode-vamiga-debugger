@@ -3,7 +3,7 @@ import "@vscode-elements/elements";
 import { VscodeCheckbox } from "@vscode-elements/elements";
 import { useCombobox } from "downshift";
 import { HexDump } from "./HexDump";
-// import { VisualView } from "./VisualView";
+import { VisualView } from "./VisualView";
 import "./App.css";
 import {
   GetSuggestionsMessage,
@@ -13,7 +13,7 @@ import {
   Suggestion,
   SuggestionsDataMessage,
   UpdateStateMessage,
-} from "./types";
+} from "../../shared/memoryViewerTypes";
 
 const vscode = acquireVsCodeApi();
 
@@ -26,6 +26,8 @@ function formatHex(value: number): string {
 }
 
 export function App() {
+  console.log('App component mounted/rendered');
+
   const [target, setTarget] = useState<MemoryRange | undefined>(undefined);
   const [symbols, setSymbols] = useState<Record<string, number>>({});
   const [symbolLengths, setSymbolLengths] = useState<Record<string, number>>({});
@@ -309,6 +311,7 @@ export function App() {
       {target !== undefined && selectedRegion ? (
         <vscode-tabs
           onvsc-tabs-select={(e) => {
+            console.log('Tab selected:', e.detail.selectedIndex, viewModes[e.detail.selectedIndex]);
             setViewMode(viewModes[e.detail.selectedIndex]);
           }}
         >
@@ -318,29 +321,26 @@ export function App() {
           <vscode-tab-header>Copper</vscode-tab-header>
 
           <vscode-tab-panel>
-            {viewMode === "hex" && (
-              <HexDump
-                target={target}
-                range={selectedRegion?.range}
-                symbols={symbols}
-                symbolLengths={symbolLengths}
-                memoryChunks={memoryChunks}
-                onRequestMemory={requestMemory}
-                scrollResetTrigger={scrollResetTrigger}
-              />
-            )}
+            <HexDump
+              target={target}
+              range={selectedRegion?.range}
+              symbols={symbols}
+              symbolLengths={symbolLengths}
+              memoryChunks={memoryChunks}
+              onRequestMemory={requestMemory}
+              scrollResetTrigger={scrollResetTrigger}
+            />
           </vscode-tab-panel>
           <vscode-tab-panel>
-            {viewMode === "visual" &&
-              /*
-              <VisualView
-                baseAddress={baseAddress}
-                memoryRange={memoryRange}
-                memoryChunks={memoryChunks}
-                onRequestMemory={requestMemory}
-              />
-              */
-              ""}
+            <VisualView
+              target={target}
+              range={selectedRegion?.range}
+              symbols={symbols}
+              symbolLengths={symbolLengths}
+              memoryChunks={memoryChunks}
+              onRequestMemory={requestMemory}
+              scrollResetTrigger={scrollResetTrigger}
+            />
           </vscode-tab-panel>
           <vscode-tab-panel>
             {viewMode === "disassembly" &&
