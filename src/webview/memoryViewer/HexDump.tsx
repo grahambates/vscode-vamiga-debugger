@@ -5,6 +5,7 @@ export interface HexDumpProps {
   target: { address: number; size: number };
   range: { address: number; size: number };
   symbols: Record<string, number>;
+  symbolLengths: Record<string, number>;
   memoryChunks: Map<number, Uint8Array>;
   onRequestMemory: (range: { address: number; size: number }) => void;
   scrollResetTrigger?: number;
@@ -66,6 +67,7 @@ function convertToSigned(value: number, valueSize: number): number {
 function formatAddress(
   address: number,
   symbols: Record<string, number>,
+  symbolLengths: Record<string, number>,
 ): string {
   const addrHex = address.toString(16).toUpperCase().padStart(6, "0");
 
@@ -76,7 +78,7 @@ function formatAddress(
     const symAddr = symbols[symbol];
     const offset = address - symAddr;
     // Address is at or after symbol
-    if (offset >= 0) {
+    if (offset >= 0 && offset < symbolLengths[symbol]) {
       // Keep the closest symbol (smallest offset)
       if (!symbolOffset || offset <= symbolOffset.offset) {
         symbolOffset = { symbol, offset };
@@ -87,7 +89,7 @@ function formatAddress(
   // Build address string with symbol+offset if available
   let addressStr = addrHex;
   if (symbolOffset) {
-    addressStr += " = " + symbolOffset.symbol;
+    addressStr += ": " + symbolOffset.symbol;
     if (symbolOffset.offset > 0) {
       addressStr += "+" + symbolOffset.offset;
     }
@@ -99,6 +101,7 @@ export function HexDump({
   target,
   range,
   symbols,
+  symbolLengths,
   memoryChunks,
   onRequestMemory,
   scrollResetTrigger,
@@ -107,6 +110,7 @@ export function HexDump({
   const [tooltip, setTooltip] = useState<{
     x: number;
     y: number;
+    heading?: string;
     text: string;
   } | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -215,16 +219,23 @@ export function HexDump({
       let x = HEX_OFFSET;
       for (let j = 0; j < valuesPerLine; j++) {
         const byteAddress = lineAddress + j * bytesPerValue;
+        const inRange =
+          byteAddress >= range.address &&
+          byteAddress < range.address + range.size;
+        const hexLength = format === "byte" ? 2 : format === "word" ? 4 : 8;
+
+        let xInc = hexLength * CHAR_WIDTH + CHAR_WIDTH;
+        // Extra spacing for byte groups
+        if (format === "byte" && (j === 3 || j === 7 || j === 11)) {
+          xInc += CHAR_WIDTH;
+        }
 
         const byte0 = getByte(byteAddress);
-        if (byte0 === undefined) {
+        if (byte0 === undefined || !inRange) {
           // Show placeholder for missing data
           ctx.fillStyle = commentColor;
-          ctx.fillText("..", x, y + 2);
-          x += 2 * CHAR_WIDTH + CHAR_WIDTH;
-          if (format === "byte" && (j === 3 || j === 7 || j === 11)) {
-            x += CHAR_WIDTH;
-          }
+          ctx.fillText(".".repeat(hexLength), x, y + 2);
+          x += xInc;
           continue;
         }
 
@@ -258,14 +269,12 @@ export function HexDump({
             }
           }
 
-          const hex = value
-            .toString(16)
-            .toUpperCase()
-            .padStart(format === "byte" ? 2 : format === "word" ? 4 : 8, "0");
+          const hex = value.toString(16).toUpperCase().padStart(hexLength, "0");
 
           // Check if this value overlaps with the symbol range
           // Default to at least one value if symbolLength is 0 or undefined
-          const targetEndAddress = target.address + target.size;
+          const targetEndAddress =
+            target.address + (target.size || bytesPerValue);
           const valueEndAddress = byteAddress + bytesPerValue;
 
           // Selection background for target symbol/address
@@ -310,12 +319,7 @@ export function HexDump({
             byteLength: bytesPerValue,
           });
 
-          x += hex.length * CHAR_WIDTH + CHAR_WIDTH;
-
-          // Extra spacing for byte groups
-          if (format === "byte" && (j === 3 || j === 7 || j === 11)) {
-            x += CHAR_WIDTH;
-          }
+          x += xInc;
         }
       }
 
@@ -326,14 +330,25 @@ export function HexDump({
 
       let asciiX = asciiOffset + CHAR_WIDTH * 1.5;
       for (let j = 0; j < BYTES_PER_LINE; j++) {
-        const byte = getByte(lineAddress + j);
-        if (byte === undefined) break;
+        const byteAddress = lineAddress + j;
+        const byte = getByte(byteAddress);
+
+        const inRange =
+          byteAddress >= range.address &&
+          byteAddress < range.address + range.size;
+
+        if (byte === undefined || !inRange) {
+          ctx.fillStyle = commentColor;
+          ctx.fillText(".", asciiX, y + 2);
+          asciiX += CHAR_WIDTH;
+          continue;
+        }
+
         const char =
           byte >= 32 && byte <= 126 ? String.fromCharCode(byte) : ".";
 
         // Highlight symbol range in ASCII section
-        const byteAddress = lineAddress + j;
-        const targetEndAddress = target.address + target.size;
+        const targetEndAddress = target.address + (target.size || 1);
         const valueEndAddress = byteAddress + 1;
         const isTargetAddress =
           byteAddress < targetEndAddress && valueEndAddress > target.address;
@@ -539,12 +554,17 @@ export function HexDump({
     );
 
     if (byteInfo) {
-      const addressStr = formatAddress(byteInfo.address, symbols);
+      const heading = formatAddress(byteInfo.address, symbols, symbolLengths);
       const signedValue = convertToSigned(byteInfo.value, byteInfo.byteLength);
+      const text =
+        signedValue === byteInfo.value
+          ? byteInfo.value.toString()
+          : `${byteInfo.value.toString()}, ${signedValue.toString()}`;
       setTooltip({
         x: e.clientX,
         y: e.clientY,
-        text: `0x${byteInfo.hex} (u:${byteInfo.value.toString()} s:${signedValue.toString()}) @ ${addressStr}`,
+        heading,
+        text,
       });
     } else {
       setTooltip(null);
@@ -636,6 +656,9 @@ export function HexDump({
             top: tooltip.y + 10,
           }}
         >
+          {tooltip.heading && (
+            <div className="hex-tooltip-heading">{tooltip.heading}</div>
+          )}
           {tooltip.text}
         </div>
       )}

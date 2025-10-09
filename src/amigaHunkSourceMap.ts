@@ -25,7 +25,7 @@ export function sourceMapFromHunks(
     return {
       address,
       // TODO: can we get section names?
-      name: `Seg${i}_${hunk.hunkType}_${hunk.memType}`,
+      name: `${i}: ${hunk.hunkType} ${hunk.memType}`,
       size: hunk.dataSize ?? hunk.allocSize,
       memType: hunk.memType,
     };

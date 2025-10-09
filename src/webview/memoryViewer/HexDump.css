@@ -79,6 +79,10 @@
   position: fixed;
 }
 
+.hex-tooltip-heading {
+  color: var(--vscode-editorLineNumber-foreground);
+}
+
 .hex-canvas {
   position: absolute;
   left: 0;

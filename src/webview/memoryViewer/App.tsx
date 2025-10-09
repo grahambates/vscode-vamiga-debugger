@@ -28,6 +28,7 @@ function formatHex(value: number): string {
 export function App() {
   const [target, setTarget] = useState<MemoryRange | undefined>(undefined);
   const [symbols, setSymbols] = useState<Record<string, number>>({});
+  const [symbolLengths, setSymbolLengths] = useState<Record<string, number>>({});
   const [availableRegions, setAvailableRegions] = useState<MemoryRegion[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
@@ -67,6 +68,9 @@ export function App() {
       if (pendingUpdate.symbols !== undefined) {
         setSymbols(pendingUpdate.symbols);
       }
+      if (pendingUpdate.symbolLengths !== undefined) {
+        setSymbolLengths(pendingUpdate.symbolLengths);
+      }
       if (pendingUpdate.liveUpdate !== undefined)
         setLiveUpdate(pendingUpdate.liveUpdate);
       if (pendingUpdate.error !== undefined) {
@@ -80,7 +84,7 @@ export function App() {
         const regions = pendingUpdate.availableRegions || availableRegions;
         const region = regions.find(({ range }) => {
           const regionEnd = range.address + range.size;
-          return targetAddress >= range.address && targetEnd <= regionEnd;
+          return targetAddress >= range.address && targetEnd < regionEnd;
         });
 
         if (targetAddress !== target?.address) {
@@ -319,6 +323,7 @@ export function App() {
                 target={target}
                 range={selectedRegion?.range}
                 symbols={symbols}
+                symbolLengths={symbolLengths}
                 memoryChunks={memoryChunks}
                 onRequestMemory={requestMemory}
                 scrollResetTrigger={scrollResetTrigger}

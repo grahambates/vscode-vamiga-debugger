@@ -19,6 +19,7 @@ export interface UpdateStateMessageProps {
   addressInput?: string;
   target?: MemoryRange;
   symbols?: Record<string, number>;
+  symbolLengths?: Record<string, number>;
   availableRegions?: MemoryRegion[];
   liveUpdate?: boolean;
   error?: string | null;

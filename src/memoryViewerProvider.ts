@@ -155,6 +155,7 @@ export class MemoryViewerProvider {
             addressInput,
             availableRegions: this.getAvailableRegions(adapter),
             symbols: adapter.getSourceMap().getSymbols(),
+            symbolLengths: adapter.getSourceMap().getSymbolLengths(),
           };
           // Send initial state once
           panel.webviewPanel.webview.postMessage(msg);
