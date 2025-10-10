@@ -113,9 +113,9 @@ function combinedScore(img: number[][]): number {
  */
 export function guessWidthsUnknownLength(
   data: Uint8Array,
-  minWidthBytes = 1,
+  minWidthBytes = 2,
   maxWidthBytes: number = Math.min(1024, data.length),
-  sampleRows = 16,
+  sampleRows = 32,
   topK = 5,
 ) {
   const bits = bytesToBits(data);

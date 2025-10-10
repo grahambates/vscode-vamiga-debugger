@@ -6,6 +6,7 @@
   "author": "Graham Bates",
   "publisher": "gigabates",
   "license": "SEE LICENSE IN LICENSE.txt",
+  "preview": true,
   "repository": {
     "type": "git",
     "url": "git@github.com:grahambates/vscode-vamiga-debugger.git"
