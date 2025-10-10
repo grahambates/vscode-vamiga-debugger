@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import "@vscode-elements/elements";
 import { VscodeCheckbox } from "@vscode-elements/elements";
 import { useCombobox } from "downshift";
@@ -218,13 +218,13 @@ export function App() {
     });
   };
 
-  const requestMemory = ({ address, size }: MemoryRange) => {
+  const requestMemory = useCallback(({ address, size }: MemoryRange) => {
     vscode.postMessage({
       command: "requestMemory",
       address,
       size,
     });
-  };
+  }, []);
 
   const handleRegionChange: React.FormEventHandler<HTMLSelectElement> = (e) => {
     const addressValue = Number((e.target as HTMLSelectElement).value);
