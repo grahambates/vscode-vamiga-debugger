@@ -242,6 +242,9 @@ export function parseDwarf(elfBuffer: Buffer): DWARFData {
     let size = 0;
 
     while (true) {
+      if (offset + size >= elfBuffer.length) {
+        throw new Error(`Invalid ULEB128 read at offset ${offset + size} (buffer size: ${elfBuffer.length})`);
+      }
       const byte = elfBuffer[offset + size];
       if (byte === undefined) {
         throw new Error(`Invalid ULEB128 read at offset ${offset + size}`);
@@ -252,6 +255,11 @@ export function parseDwarf(elfBuffer: Buffer): DWARFData {
 
       if ((byte & 0x80) === 0) break;
       shift += 7;
+
+      // Prevent infinite loops on malformed data
+      if (size > 10) {
+        throw new Error(`ULEB128 too long at offset ${offset} (size: ${size})`);
+      }
     }
 
     return { value: result, size };
@@ -264,6 +272,9 @@ export function parseDwarf(elfBuffer: Buffer): DWARFData {
     let byte: number | undefined;
 
     do {
+      if (offset + size >= elfBuffer.length) {
+        throw new Error(`Invalid SLEB128 read at offset ${offset + size} (buffer size: ${elfBuffer.length})`);
+      }
       byte = elfBuffer[offset + size];
       if (byte === undefined) {
         throw new Error(`Invalid SLEB128 read at offset ${offset + size}`);
@@ -272,6 +283,11 @@ export function parseDwarf(elfBuffer: Buffer): DWARFData {
 
       result |= (byte & 0x7f) << shift;
       shift += 7;
+
+      // Prevent infinite loops on malformed data
+      if (size > 10) {
+        throw new Error(`SLEB128 too long at offset ${offset} (size: ${size})`);
+      }
     } while (byte & 0x80);
 
     if (shift < 32 && byte & 0x40) {
@@ -546,16 +562,53 @@ export function parseDwarf(elfBuffer: Buffer): DWARFData {
     const version = readUInt16(offset);
     offset += 2;
 
-    const abbrevOffset = readUInt32(offset);
-    offset += 4;
+    let abbrevOffset: number;
+    let addressSize: number;
 
-    const addressSize = elfBuffer[offset];
-    if (addressSize === undefined) {
-      throw new Error(
-        "DWARF parsing error: Invalid address size in compilation unit",
-      );
+    // DWARF 5 has a different header format than DWARF 2-4
+    if (version >= 5) {
+      // DWARF 5 format:
+      // - unit_type (1 byte)
+      // - address_size (1 byte)
+      // - debug_abbrev_offset (4 or 8 bytes depending on format)
+      const unitType = elfBuffer[offset];
+      offset += 1;
+
+      // Validate unit type - we primarily support DW_UT_compile (0x01)
+      // Other types: DW_UT_type (0x02), DW_UT_partial (0x03), DW_UT_skeleton (0x04)
+      if (unitType !== undefined && unitType !== 0x01 && unitType !== 0x03) {
+        // Log warning for unsupported types but continue parsing
+        console.warn(
+          `DWARF parsing: Unsupported unit type 0x${unitType.toString(16)} at offset ${startOffset}. Attempting to parse anyway.`,
+        );
+      }
+
+      addressSize = elfBuffer[offset];
+      if (addressSize === undefined) {
+        throw new Error(
+          "DWARF parsing error: Invalid address size in compilation unit",
+        );
+      }
+      offset += 1;
+
+      // Read abbreviation offset (assume 32-bit format for now)
+      abbrevOffset = readUInt32(offset);
+      offset += 4;
+    } else {
+      // DWARF 2-4 format:
+      // - debug_abbrev_offset (4 or 8 bytes)
+      // - address_size (1 byte)
+      abbrevOffset = readUInt32(offset);
+      offset += 4;
+
+      addressSize = elfBuffer[offset];
+      if (addressSize === undefined) {
+        throw new Error(
+          "DWARF parsing error: Invalid address size in compilation unit",
+        );
+      }
+      offset += 1;
     }
-    offset += 1;
 
     const cu: CompilationUnit = {
       length,
@@ -572,9 +625,17 @@ export function parseDwarf(elfBuffer: Buffer): DWARFData {
       // Parse abbreviation table if not already cached
       const abbrevSection = sections.get(".debug_abbrev");
       if (abbrevSection) {
-        abbrevTable = parseAbbreviationTable(
-          abbrevSection.offset + abbrevOffset,
-        );
+        const actualOffset = abbrevSection.offset + abbrevOffset;
+        const sectionEnd = abbrevSection.offset + abbrevSection.size;
+
+        // Validate that the abbreviation offset is within the section bounds
+        if (actualOffset >= sectionEnd || actualOffset < abbrevSection.offset) {
+          throw new Error(
+            `DWARF parsing error: Invalid abbreviation offset ${abbrevOffset} (section offset: ${abbrevSection.offset}, size: ${abbrevSection.size}, actual offset: ${actualOffset})`
+          );
+        }
+
+        abbrevTable = parseAbbreviationTable(actualOffset);
         abbreviationTables.set(abbrevOffset, abbrevTable);
       } else {
         abbrevTable = [];

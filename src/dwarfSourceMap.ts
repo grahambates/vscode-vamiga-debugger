@@ -1,4 +1,4 @@
-import { join } from "path";
+import { join, isAbsolute } from "path";
 import {
   DWARFData,
   LineNumberState,
@@ -111,7 +111,10 @@ export function sourceMapFromDwarf(
               program.includeDirectories[fileEntry.directoryIndex - 1];
             path = join(directory, fileEntry.name);
           }
-          path = join(baseDir, path);
+          // Only prepend baseDir if path is not already absolute
+          if (!isAbsolute(path)) {
+            path = join(baseDir, path);
+          }
 
           // Find which section this address belongs to
           let sectionIndex = 0;
