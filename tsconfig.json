@@ -1,12 +1,12 @@
 {
   "compilerOptions": {
-    "module": "Node16",
+    "module": "node20",
     "target": "ES2022",
     "lib": ["ES2022"],
     "outDir": "out",
     "rootDir": "src",
     "strict": true,
-    "moduleResolution": "Node16",
+    "moduleResolution": "nodenext",
     "sourceMap": true,
     "skipLibCheck": true,
     "declaration": true,

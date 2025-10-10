@@ -14,12 +14,7 @@ export default defineConfig([
   tseslint.configs.recommended,
   reactPlugin.configs.flat.recommended,
   reactPlugin.configs.flat["jsx-runtime"],
-  {
-    plugins: {
-      "react-hooks": reactHooks,
-    },
-    extends: ['react-hooks/recommended'],
-  },
+  reactHooks.configs.flat.recommended,
   {
     files: ["**/*.{ts,tsx}"],
     settings: {

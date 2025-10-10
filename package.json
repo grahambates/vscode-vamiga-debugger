@@ -2,7 +2,10 @@
   "name": "vscode-vamiga-debugger",
   "displayName": "VAmiga Debugger",
   "description": "Debug Amiga programs with an integrated VAmiga emulator in vscode",
-  "version": "0.0.1",
+  "version": "1.0.0",
+  "author": "Graham Bates",
+  "publisher": "gigabates",
+  "license": "SEE LICENSE IN LICENSE.txt",
   "repository": {
     "type": "git",
     "url": "git@github.com:grahambates/vscode-vamiga-debugger.git"
@@ -13,6 +16,14 @@
   "categories": [
     "Debuggers"
   ],
+  "keywords": [
+    "amiga",
+    "debugger",
+    "m68k",
+    "vamiga",
+    "assembly"
+  ],
+  "icon": "images/icon.png",
   "activationEvents": [
     "onDebugResolve:vamiga"
   ],
@@ -148,10 +159,6 @@
               "emulatorOptions": {
                 "type": "object",
                 "properties": {
-                  "programPath": {
-                    "type": "string",
-                    "description": "Path to the Amiga program to run"
-                  },
                   "kickstartRomPath": {
                     "type": "string",
                     "description": "Path to kickstart ROM file"
@@ -310,21 +317,69 @@
           {
             "type": "vamiga",
             "request": "launch",
-            "name": "vAmiga: Launch",
+            "name": "Launch vAmiga",
             "program": "${workspaceFolder}/out/a.exe",
-            "stopOnEntry": true
+            "fastLoad": true,
+            "stopOnEntry": true,
+            "emulatorOptions": {
+              "kickstartRomPath": "${workspaceFolder}/roms/kick13.rom",
+              "chipRam": "512k",
+              "slowRam": "512k",
+              "fastRam": "0",
+              "agnusRevision": "OCS",
+              "deniseRevision": "OCS",
+              "paulaRevision": "OCS",
+              "blitterAccuracy": 2,
+              "cpuRevision": "68000",
+              "cpuSpeed": "7MHz"
+            }
           }
         ],
         "configurationSnippets": [
           {
-            "label": "vAmiga: Launch",
-            "description": "A new configuration for debugging with vAmiga",
+            "label": "vAmiga: OCS 512k + 512k Slow",
+            "description": "A500 OCS with 512k chip and slow RAM",
             "body": {
               "type": "vamiga",
               "request": "launch",
-              "name": "vAmiga: Launch",
-              "program": "^\"\\${workspaceFolder\\}/out/a.exe\"",
-              "stopOnEntry": true
+              "name": "vAmiga: OCS 512k + 512k Slow",
+              "program": "^\"\\${workspaceFolder\\}/${1:out/a.exe}\"",
+              "fastLoad": true,
+              "stopOnEntry": true,
+              "emulatorOptions": {
+                "kickstartRomPath": "^\"\\${workspaceFolder\\}/${2:roms/kick13.rom}\"",
+                "chipRam": "512k",
+                "slowRam": "512k",
+                "fastRam": "0",
+                "agnusRevision": "OCS",
+                "deniseRevision": "OCS",
+                "blitterAccuracy": 2,
+                "cpuRevision": "68000",
+                "cpuSpeed": "7MHz"
+              }
+            }
+          },
+          {
+            "label": "vAmiga: ECS 1M + 1M Fast",
+            "description": "A500 ECS with 1M chip and 1M fast RAM",
+            "body": {
+              "type": "vamiga",
+              "request": "launch",
+              "name": "vAmiga: ECS 1M + 1M Fast",
+              "program": "^\"\\${workspaceFolder\\}/${1:out/a.exe}\"",
+              "fastLoad": true,
+              "stopOnEntry": true,
+              "emulatorOptions": {
+                "kickstartRomPath": "^\"\\${workspaceFolder\\}/${2:roms/kick310.rom}\"",
+                "chipRam": "1M",
+                "slowRam": "0",
+                "fastRam": "1M",
+                "agnusRevision": "ECS_2MB",
+                "deniseRevision": "ECS",
+                "blitterAccuracy": 2,
+                "cpuRevision": "68000",
+                "cpuSpeed": "7MHz"
+              }
             }
           }
         ]
@@ -371,7 +426,7 @@
     "esbuild": "^0.25.10",
     "eslint": "^9.36.0",
     "eslint-plugin-react": "^7.37.5",
-    "eslint-plugin-react-hooks": "^6.1.1",
+    "eslint-plugin-react-hooks": "7.0.0",
     "jest": "^30.1.3",
     "prettier": "^3.6.2",
     "sinon": "^21.0.0",
@@ -397,7 +452,5 @@
     "setupFilesAfterEnv": [
       "<rootDir>/src/test/jestSetup.ts"
     ]
-  },
-  "author": "",
-  "license": "ISC"
+  }
 }
