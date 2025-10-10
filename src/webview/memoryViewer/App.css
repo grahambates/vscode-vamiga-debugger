@@ -27,20 +27,56 @@ body {
 .autocomplete-container {
   position: relative;
   flex: 1;
+  display: flex;
 }
 
 .address-textfield {
-  width: 100%;
+  flex: 1;
   padding: 4px 8px;
   font-family: var(--vscode-font-family);
   font-size: var(--vscode-font-size);
   background: var(--vscode-input-background);
   color: var(--vscode-input-foreground);
   border: 1px solid var(--vscode-input-border);
+  border-right: none;
   outline: none;
 }
 
 .address-textfield:focus {
+  border-color: var(--vscode-focusBorder);
+}
+
+.address-textfield:focus + .dropdown-button {
+  border-color: var(--vscode-focusBorder);
+}
+
+.dropdown-button {
+  padding: 4px 8px;
+  background: var(--vscode-input-background);
+  color: var(--vscode-input-foreground);
+  border: 1px solid var(--vscode-input-border);
+  border-left: none;
+  cursor: pointer;
+  font-size: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+}
+
+.dropdown-button:hover {
+  background: var(--vscode-list-hoverBackground);
+}
+
+.dropdown-button:focus,
+.dropdown-button:active {
+  border-color: var(--vscode-focusBorder);
+  outline: none;
+}
+
+/* When button is focused/active, also apply border to adjacent input */
+.address-textfield:has(+ .dropdown-button:focus),
+.address-textfield:has(+ .dropdown-button:active) {
   border-color: var(--vscode-focusBorder);
 }
 

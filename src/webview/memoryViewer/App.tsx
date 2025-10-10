@@ -26,14 +26,18 @@ function formatHex(value: number): string {
 export function App() {
   const [target, setTarget] = useState<MemoryRange | undefined>(undefined);
   const [symbols, setSymbols] = useState<Record<string, number>>({});
-  const [symbolLengths, setSymbolLengths] = useState<Record<string, number>>({});
+  const [symbolLengths, setSymbolLengths] = useState<Record<string, number>>(
+    {},
+  );
   const [availableRegions, setAvailableRegions] = useState<MemoryRegion[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
 
   const [addressInput, setAddressInput] = useState<string>("");
   const [dereferencePointer, setDereferencePointer] = useState(false);
-  const [viewMode, setViewMode] = useState<"hex" | "visual" | "disassembly" | "copper">("hex");
+  const [viewMode, setViewMode] = useState<
+    "hex" | "visual" | "disassembly" | "copper"
+  >("hex");
   const [liveUpdate, setLiveUpdate] = useState<boolean>(false);
   const [selectedRegion, setSelectedRegion] = useState<
     MemoryRegion | undefined
@@ -82,7 +86,7 @@ export function App() {
         const regions = pendingUpdate.availableRegions || availableRegions;
         const region = regions.find(({ range }) => {
           const regionEnd = range.address + range.size;
-          return targetAddress >= range.address && targetEnd <= regionEnd;
+          return targetAddress >= range.address && targetEnd < regionEnd;
         });
 
         if (targetAddress !== target?.address) {
@@ -141,6 +145,7 @@ export function App() {
     isOpen,
     getMenuProps,
     getInputProps,
+    getToggleButtonProps,
     highlightedIndex,
     getItemProps,
   } = useCombobox({
@@ -151,11 +156,12 @@ export function App() {
       // Update local state
       setAddressInput(inputValue || "");
 
-      // Request suggestions as user types
+      // Request suggestions as user types (limited)
       if (inputValue && inputValue.length > 0) {
         vscode.postMessage({
           command: "getSuggestions",
           query: inputValue,
+          showAll: false, // Use limit for autocomplete
         } as GetSuggestionsMessage);
       } else {
         setSuggestions([]);
@@ -173,6 +179,18 @@ export function App() {
       }
     },
   });
+
+  // Handler to show all symbols when dropdown button is clicked
+  const handleToggleButton = () => {
+    if (!isOpen) {
+      // Request all symbols with showAll flag when opening
+      vscode.postMessage({
+        command: "getSuggestions",
+        query: "", // Empty query to get all symbols
+        showAll: true, // Bypass limit
+      } as GetSuggestionsMessage);
+    }
+  };
 
   const goToAddress = () => {
     vscode.postMessage({
@@ -210,12 +228,16 @@ export function App() {
 
   const handleRegionChange: React.FormEventHandler<HTMLSelectElement> = (e) => {
     const addressValue = Number((e.target as HTMLSelectElement).value);
+    if (isNaN(addressValue)) {
+      setSelectedRegion(undefined);
+      return;
+    }
     const addressInput = formatHex(addressValue);
     setAddressInput(addressInput);
     vscode.postMessage({
       command: "changeAddress",
       addressInput,
-      dereferencePointer
+      dereferencePointer,
     });
   };
 
@@ -233,6 +255,15 @@ export function App() {
             className="address-textfield"
             autoFocus
           />
+          <button
+            {...getToggleButtonProps({
+              onClick: handleToggleButton,
+            })}
+            type="button"
+            className="dropdown-button codicon codicon-chevron-down"
+            aria-label="Show all symbols"
+            tabIndex={-1}
+          ></button>
           <ul {...getMenuProps()} className="autocomplete-dropdown">
             {isOpen &&
               suggestions.map((suggestion, index) => (

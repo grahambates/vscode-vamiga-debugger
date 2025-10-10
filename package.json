@@ -346,6 +346,7 @@
     "format:check": "prettier --check \"src/**/*.{ts,tsx}\""
   },
   "dependencies": {
+    "@vscode/codicons": "^0.0.41",
     "@vscode/debugadapter": "^1.68.0",
     "downshift": "^9.0.10",
     "expr-eval": "^2.0.2",

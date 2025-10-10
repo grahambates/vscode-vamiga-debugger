@@ -197,6 +197,7 @@ export class MemoryViewerProvider {
             const suggestions = this.getSymbolSuggestions(
               adapter,
               getSuggestionsMsg.query || "",
+              getSuggestionsMsg.showAll || false,
             );
             panel.webviewPanel.webview.postMessage({
               command: "suggestionsData",
@@ -395,6 +396,7 @@ export class MemoryViewerProvider {
   private getSymbolSuggestions(
     adapter: VamigaDebugAdapter,
     query: string,
+    showAll: boolean = false,
   ): Suggestion[] {
     const suggestions: Array<{
       label: string;
@@ -425,7 +427,8 @@ export class MemoryViewerProvider {
           description: segment?.name,
         });
 
-        if (suggestions.length >= SUGGESTIONS_LIMIT) break;
+        // Only apply limit when not showing all
+        if (!showAll && suggestions.length >= SUGGESTIONS_LIMIT) break;
       }
     }
 
@@ -506,6 +509,16 @@ export class MemoryViewerProvider {
     const styleUri = webview.asWebviewUri(
       vscode.Uri.joinPath(this.extensionUri, "out", "webview", "main.css"),
     );
+    const codiconsUri = webview.asWebviewUri(
+      vscode.Uri.joinPath(
+        this.extensionUri,
+        "node_modules",
+        "@vscode",
+        "codicons",
+        "dist",
+        "codicon.css",
+      ),
+    );
     const cspSource = webview.cspSource;
 
     return `<!DOCTYPE html>
@@ -513,8 +526,9 @@ export class MemoryViewerProvider {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${cspSource} 'unsafe-inline'; script-src ${cspSource};">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${cspSource} 'unsafe-inline'; font-src ${cspSource}; script-src ${cspSource};">
   <title>Memory Viewer</title>
+  <link rel="stylesheet" href="${codiconsUri}">
   <link rel="stylesheet" href="${styleUri}">
 </head>
 <body>

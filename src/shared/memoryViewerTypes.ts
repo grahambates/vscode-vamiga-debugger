@@ -63,4 +63,5 @@ export interface ToggleLiveUpdateMessage {
 export interface GetSuggestionsMessage {
   command: "getSuggestions";
   query: string;
+  showAll?: boolean; // If true, ignore limit and return all symbols
 }
