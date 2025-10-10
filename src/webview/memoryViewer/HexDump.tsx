@@ -488,11 +488,6 @@ export function HexDump({
       for (let c = firstChunk; c <= lastChunk; c += CHUNK_SIZE) {
         const alreadyHaveChunk = memoryChunks.has(c);
         const alreadyRequested = requestedChunksRef.current.has(c);
-        console.log({
-          c,
-          alreadyHaveChunk,
-          alreadyRequested,
-        });
         if (alreadyHaveChunk || alreadyRequested) {
           continue;
         }

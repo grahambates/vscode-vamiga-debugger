@@ -34,10 +34,19 @@ export class SourceMap {
     locations: Location[],
   ) {
     for (const location of locations) {
-      this.locationsByAddress.set(location.address, location);
+      // Don't overwrite existing address mappings - first wins
+      // This handles cases where multiple DWARF line programs map the same address
+      // (e.g., assembly files with C macro expansions)
+      if (!this.locationsByAddress.has(location.address)) {
+        this.locationsByAddress.set(location.address, location);
+      }
+
       const pathKey = location.path.toUpperCase();
       const linesMap =
         this.locationsBySource.get(pathKey) || new Map<number, Location>();
+
+      // For source->address mapping, we do want to update to get the latest mapping
+      // for that source line (in case a line maps to multiple addresses)
       linesMap.set(location.line, location);
       this.locationsBySource.set(pathKey, linesMap);
     }

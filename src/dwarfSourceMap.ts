@@ -74,8 +74,13 @@ export function sourceMapFromDwarf(
     }
   }
 
-  // Process each line number program to build locations
-  for (const program of dwarfData.lineNumberPrograms) {
+  // Process line number programs, sorted by DWARF version (descending)
+  // This ensures DWARF 5 programs (more accurate) are processed first
+  // and establish primary address->source mappings before DWARF 2 programs
+  // (which may include macro expansions from C files in assembly code)
+  const sortedPrograms = [...dwarfData.lineNumberPrograms].sort((a, b) => b.version - a.version);
+
+  for (const program of sortedPrograms) {
     const state: LineNumberState = {
       address: 0,
       file: 1,
@@ -94,12 +99,15 @@ export function sourceMapFromDwarf(
         (instruction.type === "standard" && instruction.name === "copy") ||
         instruction.type === "special";
 
+      // DWARF 5 uses 0-based file indices, DWARF 2-4 uses 1-based
+      const fileIndex = program.version >= 5 ? state.file : state.file - 1;
+
       if (
         shouldEmitLocation &&
-        state.file >= 1 &&
-        state.file <= program.fileNames.length
+        fileIndex >= 0 &&
+        fileIndex < program.fileNames.length
       ) {
-        const fileEntry = program.fileNames[state.file - 1];
+        const fileEntry = program.fileNames[fileIndex];
         if (fileEntry) {
           // Skip special DWARF markers that don't correspond to real source files
           // These are compiler-generated code locations that should show disassembly
@@ -139,28 +147,54 @@ export function sourceMapFromDwarf(
             path = join(baseDir, path);
           }
 
-          // Find which section this address belongs to
+          // Find which ELF section this DWARF address belongs to
+          // state.address is from the line number program and represents an address
+          // in the ELF file's address space (usually section virtual address + offset)
           let sectionIndex = 0;
-          let sectionOffset = state.address;
+          let sectionOffset = 0;
+          let found = false;
 
-          for (let i = 0; i < segments.length; i++) {
-            const section = segments[i];
-            if (
-              state.address >= section.address &&
-              state.address < section.address + section.size
-            ) {
-              sectionIndex = i;
-              sectionOffset = state.address - section.address;
-              break;
+          // Need to compare against original ELF section addresses, not loaded addresses
+          let elfSectionIndex = 0;
+          for (const [sectionName, header] of dwarfData.sections) {
+            // Extract clean section name (remove memory type suffix if present)
+            let cleanName = sectionName;
+            if (cleanName.endsWith(".MEMF_CHIP") || cleanName.endsWith(".MEMF_FAST") || cleanName.endsWith(".MEMF_ANY")) {
+              cleanName = cleanName.substring(0, cleanName.lastIndexOf('.'));
+            }
+
+            // Check if this section was included in segments (has size > 0 and valid addr)
+            const isIncluded = header.size > 0 && (header.addr > 0 ||
+              cleanName === ".text" || cleanName === ".data" ||
+              cleanName === ".bss" || cleanName === ".rodata");
+
+            if (isIncluded) {
+              // Check if state.address falls within this ELF section's address range
+              if (state.address >= header.addr &&
+                  state.address < header.addr + header.size) {
+                sectionIndex = elfSectionIndex;
+                sectionOffset = state.address - header.addr;
+                found = true;
+                break;
+              }
+              elfSectionIndex++;
             }
           }
+
+          if (!found) {
+            // Address doesn't belong to any known section, skip it
+            continue;
+          }
+
+          // Calculate final loaded address: base address + offset within section
+          const finalAddress = offsets[sectionIndex] + sectionOffset;
 
           const location: Location = {
             path,
             line: state.line,
-            address: state.address + offsets[sectionIndex],
-            segmentIndex: sectionIndex, // segmentIndex refers to section index
-            segmentOffset: sectionOffset, // segmentOffset is offset within section
+            address: finalAddress,
+            segmentIndex: sectionIndex,
+            segmentOffset: sectionOffset,
           };
           locations.push(location);
 

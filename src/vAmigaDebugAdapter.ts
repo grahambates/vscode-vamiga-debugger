@@ -1,4 +1,5 @@
 // TODO: bugs
+// - view in memory viewer context menu requires clicking on submit
 // - bp ignores not working - implemented in vamiga?
 // - step on first instruction in non-fast mode
 // TODO: features
