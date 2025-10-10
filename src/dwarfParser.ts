@@ -311,6 +311,20 @@ export function parseDwarf(elfBuffer: Buffer): DWARFData {
     return { value, size: size + 1 };
   }
 
+  function readStringFromTable(offset: number, stringTable: Uint8Array): string {
+    let value = "";
+    let i = offset;
+
+    while (i < stringTable.length) {
+      const byte = stringTable[i];
+      if (byte === undefined || byte === 0) break;
+      value += String.fromCharCode(byte);
+      i++;
+    }
+
+    return value;
+  }
+
   // Parse ELF sections
   const headerSize = is64bit ? 64 : 52;
   const shoff = is64bit ? readUInt64(40) : readUInt32(32);
@@ -777,10 +791,26 @@ export function parseDwarf(elfBuffer: Buffer): DWARFData {
     const version = readUInt16(offset);
     offset += 2;
 
+    let addressSize = 4; // Default for DWARF 2-4
+    let segmentSelectorSize = 0;
+
+    // DWARF 5 has additional header fields
+    if (version >= 5) {
+      addressSize = elfBuffer[offset++] || 4;
+      segmentSelectorSize = elfBuffer[offset++] || 0;
+    }
+
     const headerLength = readUInt32(offset);
     offset += 4;
 
     const minimumInstructionLength = elfBuffer[offset++];
+
+    // DWARF 4+ has maximum_operations_per_instruction
+    let maxOpsPerInstruction = 1;
+    if (version >= 4) {
+      maxOpsPerInstruction = elfBuffer[offset++] || 1;
+    }
+
     const defaultIsStmt = elfBuffer[offset++] === 1;
     const lineBase = readInt8(offset++);
     const lineRange = elfBuffer[offset++];
@@ -804,35 +834,128 @@ export function parseDwarf(elfBuffer: Buffer): DWARFData {
     }
 
     const includeDirectories: string[] = [];
-    while (elfBuffer[offset] !== 0) {
-      const dir = readString(offset);
-      includeDirectories.push(dir.value);
-      offset += dir.size;
-    }
-    offset++;
-
     const fileNames: FileEntry[] = [];
-    while (elfBuffer[offset] !== 0) {
-      const fileName = readString(offset);
-      offset += fileName.size;
 
-      const dirIndex = readULEB128(offset);
-      offset += dirIndex.size;
+    if (version >= 5) {
+      // DWARF 5 format with directory_entry_format and file_name_entry_format
 
-      const modTime = readULEB128(offset);
-      offset += modTime.size;
+      // Parse directory entry format
+      const directoryEntryFormatCount = elfBuffer[offset++] || 0;
+      const directoryEntryFormats: Array<{ contentType: number; form: number }> = [];
+      for (let i = 0; i < directoryEntryFormatCount; i++) {
+        const contentType = readULEB128(offset);
+        offset += contentType.size;
+        const form = readULEB128(offset);
+        offset += form.size;
+        directoryEntryFormats.push({ contentType: contentType.value, form: form.value });
+      }
 
-      const fileSize = readULEB128(offset);
-      offset += fileSize.size;
+      // Parse directories count and entries
+      const directoriesCount = readULEB128(offset);
+      offset += directoriesCount.size;
 
-      fileNames.push({
-        name: fileName.value,
-        directoryIndex: dirIndex.value,
-        modificationTime: modTime.value,
-        size: fileSize.value,
-      });
+      for (let i = 0; i < directoriesCount.value; i++) {
+        let dirPath = "";
+        for (const format of directoryEntryFormats) {
+          // DW_LNCT_path = 0x01
+          if (format.contentType === 0x01) {
+            const value = parseAttributeValue(offset, format.form, addressSize);
+            offset += value.size;
+            // Handle both direct strings and string table offsets
+            if (typeof value.value === "string") {
+              dirPath = value.value;
+            } else if (typeof value.value === "number" && debugStrings) {
+              // String table offset
+              dirPath = readStringFromTable(value.value, debugStrings);
+            }
+          } else {
+            // Skip unknown content types
+            const value = parseAttributeValue(offset, format.form, addressSize);
+            offset += value.size;
+          }
+        }
+        if (dirPath) {
+          includeDirectories.push(dirPath);
+        }
+      }
+
+      // Parse file entry format
+      const fileEntryFormatCount = elfBuffer[offset++] || 0;
+      const fileEntryFormats: Array<{ contentType: number; form: number }> = [];
+      for (let i = 0; i < fileEntryFormatCount; i++) {
+        const contentType = readULEB128(offset);
+        offset += contentType.size;
+        const form = readULEB128(offset);
+        offset += form.size;
+        fileEntryFormats.push({ contentType: contentType.value, form: form.value });
+      }
+
+      // Parse file names count and entries
+      const fileNamesCount = readULEB128(offset);
+      offset += fileNamesCount.size;
+
+      for (let i = 0; i < fileNamesCount.value; i++) {
+        let fileName = "";
+        let dirIndex = 0;
+
+        for (const format of fileEntryFormats) {
+          const value = parseAttributeValue(offset, format.form, addressSize);
+          offset += value.size;
+
+          // DW_LNCT_path = 0x01, DW_LNCT_directory_index = 0x02
+          if (format.contentType === 0x01) {
+            // Path
+            if (typeof value.value === "string") {
+              fileName = value.value;
+            } else if (typeof value.value === "number" && debugStrings) {
+              fileName = readStringFromTable(value.value, debugStrings);
+            }
+          } else if (format.contentType === 0x02) {
+            // Directory index
+            dirIndex = typeof value.value === "number" ? value.value : 0;
+          }
+        }
+
+        if (fileName) {
+          fileNames.push({
+            name: fileName,
+            directoryIndex: dirIndex,
+            modificationTime: 0,
+            size: 0,
+          });
+        }
+      }
+    } else {
+      // DWARF 2-4 format with null-terminated strings
+      while (elfBuffer[offset] !== 0) {
+        const dir = readString(offset);
+        includeDirectories.push(dir.value);
+        offset += dir.size;
+      }
+      offset++;
+
+      while (elfBuffer[offset] !== 0) {
+        const fileName = readString(offset);
+        offset += fileName.size;
+
+        const dirIndex = readULEB128(offset);
+        offset += dirIndex.size;
+
+        const modTime = readULEB128(offset);
+        offset += modTime.size;
+
+        const fileSize = readULEB128(offset);
+        offset += fileSize.size;
+
+        fileNames.push({
+          name: fileName.value,
+          directoryIndex: dirIndex.value,
+          modificationTime: modTime.value,
+          size: fileSize.value,
+        });
+      }
+      offset++;
     }
-    offset++;
 
     const program: LineNumberProgram = {
       totalLength: unitLength,

@@ -101,14 +101,37 @@ export function sourceMapFromDwarf(
       ) {
         const fileEntry = program.fileNames[state.file - 1];
         if (fileEntry) {
+          // Skip special DWARF markers that don't correspond to real source files
+          // These are compiler-generated code locations that should show disassembly
+          if (
+            fileEntry.name === "<artificial>" ||
+            fileEntry.name === "<built-in>" ||
+            fileEntry.name.startsWith("<") && fileEntry.name.endsWith(">")
+          ) {
+            continue;
+          }
+
           // Build full path
           let path = fileEntry.name;
-          if (
-            fileEntry.directoryIndex > 0 &&
-            fileEntry.directoryIndex <= program.includeDirectories.length
-          ) {
-            const directory =
-              program.includeDirectories[fileEntry.directoryIndex - 1];
+
+          // Handle directory indexing - DWARF 5 uses 0-based, DWARF 2-4 uses 1-based
+          let dirIndex = -1;
+
+          if (program.version >= 5) {
+            // DWARF 5: directory indices are 0-based, directly index into the array
+            if (fileEntry.directoryIndex >= 0 && fileEntry.directoryIndex < program.includeDirectories.length) {
+              dirIndex = fileEntry.directoryIndex;
+            }
+          } else {
+            // DWARF 2-4: directory index 0 means current directory (no prefix)
+            // Directory index 1+ means index into the directory table (subtract 1 for array index)
+            if (fileEntry.directoryIndex > 0 && fileEntry.directoryIndex <= program.includeDirectories.length) {
+              dirIndex = fileEntry.directoryIndex - 1;
+            }
+          }
+
+          if (dirIndex >= 0 && dirIndex < program.includeDirectories.length) {
+            const directory = program.includeDirectories[dirIndex];
             path = join(directory, fileEntry.name);
           }
           // Only prepend baseDir if path is not already absolute
