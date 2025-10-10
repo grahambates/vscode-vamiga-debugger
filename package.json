@@ -62,6 +62,11 @@
           "command": "vamiga-debugger.eol",
           "when": "debugType == 'vamiga'",
           "group": "navigation@52"
+        },
+        {
+          "command": "vamiga-debugger.openMemoryViewer",
+          "when": "debugType == 'vamiga'",
+          "group": "navigation@53"
         }
       ],
       "debug/variables/context": [
