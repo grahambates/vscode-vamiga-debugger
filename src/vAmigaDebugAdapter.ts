@@ -287,6 +287,11 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
       if (debugProgram.match(/\.(elf|o)$/i)) {
         logger.log("Interpreting as dwarf data");
         this.dwarfData = parseDwarf(buffer);
+        // Still need hunks for loading
+        if (this.fastLoad) {
+          const hunkExeBuffer = await readFile(this.programPath);
+          this.hunks = parseHunks(hunkExeBuffer);
+        }
       } else {
         logger.log("Interpreting as hunk data");
         this.hunks = parseHunks(buffer);

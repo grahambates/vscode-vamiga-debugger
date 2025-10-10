@@ -5,3 +5,4 @@ node_modules
 *.vsix
 *.local.json
 coverage
+tsconfig.tsbuildinfo
