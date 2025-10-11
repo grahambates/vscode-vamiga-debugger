@@ -1,0 +1,4 @@
+[submodule "vamigaweb_fork"]
+	path = vamigaweb_fork
+	url = git@github.com:grahambates/vAmigaWeb.git
+	branch = vscode_vamiga_debugger
