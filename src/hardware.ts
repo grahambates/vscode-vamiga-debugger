@@ -1,14 +1,31 @@
 import { DebugProtocol } from "@vscode/debugprotocol";
 
+// RESET             = 1,    // CPU reset exception
+// BUS_ERROR         = 2,    // Bus error
+// ADDRESS_ERROR     = 3,    // Address error
+// ILLEGAL           = 4,    // Illegal instruction
+// DIVIDE_BY_ZERO    = 5,    // Division by zero
+// CHK               = 6,    // CHK instruction exception
+// TRAPV             = 7,    // TRAPV instruction exception
+// PRIVILEGE         = 8,    // Privilege violation
+// TRACE             = 9,    // Trace exception
+// LINEA             = 10,   // Line A emulator trap
+// LINEF             = 11,   // Line F emulator trap
+// FORMAT_ERROR      = 14,   // Stack frame format error
+// IRQ_UNINITIALIZED = 15,   // Uninitialized interrupt request
+// IRQ_SPURIOUS      = 24,   // Spurious interrupt
+// TRAP              = 32,   // TRAP instruction exception
+
 export const exceptionBreakpointFilters: DebugProtocol.ExceptionBreakpointsFilter[] =
   [
-    { filter: "0x8", label: "Bus error", default: true },
-    { filter: "0xC", label: "Address error", default: true },
-    { filter: "0x10", label: "Illegal instruction", default: true },
-    { filter: "0x14", label: "Zero divide", default: true },
-    // { filter: '0x18', label: 'CHK' },
-    // { filter: '0x1C', label: 'TRAPV' },
-    { filter: "0x20", label: "Privilege violation", default: true },
+    // { filter: "1", label: "CPU reset", default: false },
+    { filter: "2", label: "Bus error", default: true },
+    { filter: "3", label: "Address error", default: true },
+    { filter: "4", label: "Illegal instruction", default: true },
+    { filter: "5", label: "Zero divide", default: true },
+    // { filter: '6', label: 'CHK instruction', default: false },
+    // { filter: '7', label: 'TRAPV instruction', default: false },
+    { filter: "8", label: "Privilege violation", default: true },
   ];
 
 // What's your vector Victor?

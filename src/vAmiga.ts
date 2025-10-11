@@ -519,7 +519,7 @@ export class VAmiga {
 
   /**
    * Sets a catchpoint for the specified exception vector
-   * @param vector Exception vector number (e.g. 0x8 for bus error)
+   * @param vector Exception vector number (e.g. 2 for bus error)
    * @param ignores Number of times to ignore the exception before stopping
    */
   public setCatchpoint(vector: number, ignores = 0): void {
