@@ -174,6 +174,10 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
   private hunks: Hunk[] = [];
   private dwarfData?: DWARFData;
   private sourceMap?: SourceMap;
+  private exceptionInstruction: {
+    address: number;
+    isSupervisor: boolean;
+  } | null = null;
 
   private disposables: (vscode.Disposable | undefined)[] = [];
 
@@ -420,7 +424,9 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
       const stk = await this.getStackManager().getStackFrames(
         startFrame,
         maxLevels,
+        this.exceptionInstruction,
       );
+      this.exceptionInstruction = null; // clear after using it once
       response.body = {
         stackFrames: stk,
         totalFrames: stk.length,
@@ -548,7 +554,10 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
   ): Promise<void> {
     try {
       // vAmiga has no stepOut function, as it doesn't track stack frames. We need to use our guessed stack list to set a tmp breakpoint.
-      const stack = await this.getStackManager().guessStack();
+      const cpuInfo = await this.vAmiga.getCpuInfo();
+      const pc = Number(cpuInfo.pc);
+      const stackAddress = Number(cpuInfo.a7);
+      const stack = await this.getStackManager().guessStack(pc, stackAddress);
 
       // stack 0 is pc
       if (stack[1]) {
@@ -1150,7 +1159,7 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
    *
    * @param message Stop message containing stop details
    */
-  private handleStop(message: StopMessage) {
+  private async handleStop(message: StopMessage) {
     const evt: DebugProtocol.StoppedEvent = new StoppedEvent(
       "breakpoint",
       VamigaDebugAdapter.THREAD_ID,
@@ -1171,6 +1180,23 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
     }
     if (result.hitBreakpointIds) {
       evt.body.hitBreakpointIds = result.hitBreakpointIds;
+    }
+
+    if (result.reason === "exception") {
+      try {
+        // Get last instruction executed before exception
+        // The current PC is the exception vector handler, so we need to step back one instruction
+        // If the previous instruction is not in supervisor mode, we need to use the user stack for the next stack frame request
+        const trace = await this.vAmiga.getCpuTrace(1);
+        if (trace[0]) {
+          const lastInst = trace[0];
+          const isSupervisor = lastInst.flags.includes("S");
+          const address = parseInt(lastInst.pc, 16);
+          this.exceptionInstruction = { address, isSupervisor };
+        }
+      } catch (error) {
+        console.warn("Failed to get CPU trace:", error);
+      }
     }
 
     this.sendEvent(evt);

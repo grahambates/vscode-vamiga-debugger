@@ -1947,6 +1947,7 @@ function InitWrappers() {
             !isSupervisor
         ) {
             execReady = true;
+            wasm_enable_cpu_logging(true);
             const fastLoad = !callParams.url;
             if (fastLoad) {
                 // Fast load mode - emulator will inject program into RAM
@@ -2626,6 +2627,13 @@ postMessage({ type: 'ready' });
                 case 'stepInto':
                     wasm_step_into();
                     wasm_run();
+                    break;
+                case 'enableCpuLogging':
+                    console.log("enableCpuLogging", message.args.enabled);
+                    wasm_enable_cpu_logging(message.args.enabled);
+                    break;
+                case 'getCpuTrace':
+                    rpcRequest(() => JSON.parse(wasm_get_cpu_trace(message.args.count)));
                     break;
                 case 'stepBack':
                     rpcRequest(() => {

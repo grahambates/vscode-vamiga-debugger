@@ -39,9 +39,23 @@ export class StackManager {
   public async getStackFrames(
     startFrame: number,
     maxLevels: number,
+    exceptionInstruction: { address: number; isSupervisor: boolean } | null = null,
   ): Promise<StackFrame[]> {
     const endFrame = startFrame + maxLevels;
-    const addresses = await this.guessStack(endFrame);
+
+    const cpuInfo = await this.vAmiga.getCpuInfo();
+    let pc = Number(cpuInfo.pc);
+    let stackAddress = Number(cpuInfo.a7);
+    if (exceptionInstruction) {
+      // If we have an exception instruction, use its address as the top of stack
+      pc = exceptionInstruction.address;
+      //  If last instruction was user mode, use USP instead of SSP
+      if (!exceptionInstruction.isSupervisor) {
+        stackAddress = Number(cpuInfo.usp);
+      }
+    }
+
+    const addresses = await this.guessStack(pc, stackAddress, endFrame);
 
     let foundSource = false;
 
@@ -93,15 +107,12 @@ export class StackManager {
    * @param maxLength Maximum number of stack frames to return
    * @returns Array of [call instruction address, return address] pairs
    */
-  public async guessStack(maxLength = 16): Promise<[number, number][]> {
-    const cpuInfo = await this.vAmiga.getCpuInfo();
-
+  public async guessStack(pc: number, stackAddress: number, maxLength = 16): Promise<[number, number][]> {
     // vAmiga doesn't currently track stack frames, so we'll need to look at the stack data and guess...
     // Fetch data from sp, up to a reasonable length
     const maxSize = 128;
-    const stackData = await this.vAmiga.readMemory(Number(cpuInfo.a7), 128);
+    const stackData = await this.vAmiga.readMemory(stackAddress, 128);
 
-    const pc = Number(cpuInfo.pc);
     const addresses: [number, number][] = [[pc, pc]]; // Start with at least the current frame
 
     // Look for values that could be a possible return address (as opposed to other data pushed to the stack)

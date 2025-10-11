@@ -160,7 +160,9 @@ describe("StackManager - Comprehensive Tests", () => {
     });
 
     it("should handle pagination with startFrame and maxLevels", async () => {
-      // Setup: Mock multiple stack frames
+      // Setup: Mock CPU info and stub guessStack with multiple frames
+      const mockCpuInfo = createMockCpuInfo({ pc: "0x1000", a7: "0x8000" });
+      mockVAmiga.getCpuInfo.resolves(mockCpuInfo);
       sinon.stub(stackManager, "guessStack").resolves([
         [0x1000, 0x1000], // Frame 0
         [0x2000, 0x2000], // Frame 1
@@ -184,13 +186,11 @@ describe("StackManager - Comprehensive Tests", () => {
   describe("Stack Analysis Algorithm", () => {
     it("should include current PC as first frame", async () => {
       // Setup: Mock CPU state
-      const mockCpuInfo = createMockCpuInfo({ pc: "0x1000", a7: "0x8000" });
-      mockVAmiga.getCpuInfo.resolves(mockCpuInfo);
       mockVAmiga.readMemory.resolves(Buffer.alloc(128));
       mockVAmiga.isValidAddress.returns(false);
 
-      // Test: Analyze stack
-      const addresses = await stackManager.guessStack(5);
+      // Test: Analyze stack with explicit pc and stackAddress
+      const addresses = await stackManager.guessStack(0x1000, 0x8000, 5);
 
       // Verify: Current PC is first entry
       assert.strictEqual(addresses.length, 1);
@@ -198,10 +198,7 @@ describe("StackManager - Comprehensive Tests", () => {
     });
 
     it("should detect JSR return addresses in stack memory", async () => {
-      // Setup: Mock CPU and stack containing return address
-      const mockCpuInfo = createMockCpuInfo({ pc: "0x1000", a7: "0x8000" });
-      mockVAmiga.getCpuInfo.resolves(mockCpuInfo);
-
+      // Setup: Mock stack containing return address
       // Create stack buffer with return address at offset 0
       const stackBuffer = Buffer.alloc(128);
       stackBuffer.writeInt32BE(0x2000, 0); // Return address to 0x2000
@@ -215,8 +212,8 @@ describe("StackManager - Comprehensive Tests", () => {
       instrBuffer.writeUInt16BE(0x4e80, 4); // JSR instruction at offset 4 (0x2000-2)
       mockVAmiga.readMemory.withArgs(0x2000 - 6, 6).resolves(instrBuffer);
 
-      // Test: Analyze stack
-      const addresses = await stackManager.guessStack(5);
+      // Test: Analyze stack with explicit pc and stackAddress
+      const addresses = await stackManager.guessStack(0x1000, 0x8000, 5);
 
       // Verify: Finds JSR call site and return address
       assert.strictEqual(addresses.length, 2);
@@ -225,10 +222,7 @@ describe("StackManager - Comprehensive Tests", () => {
     });
 
     it("should detect BSR return addresses in stack memory", async () => {
-      // Setup: Mock CPU and stack containing BSR return
-      const mockCpuInfo = createMockCpuInfo({ pc: "0x1000", a7: "0x8000" });
-      mockVAmiga.getCpuInfo.resolves(mockCpuInfo);
-
+      // Setup: Mock stack containing BSR return
       const stackBuffer = Buffer.alloc(128);
       stackBuffer.writeInt32BE(0x2004, 0); // Return address after BSR
       mockVAmiga.readMemory.withArgs(0x8000, 128).resolves(stackBuffer);
@@ -240,8 +234,8 @@ describe("StackManager - Comprehensive Tests", () => {
       instrBuffer.writeUInt16BE(0x6100, 2); // BSR instruction at offset 2
       mockVAmiga.readMemory.withArgs(0x2004 - 6, 6).resolves(instrBuffer);
 
-      // Test: Analyze stack
-      const addresses = await stackManager.guessStack(5);
+      // Test: Analyze stack with explicit pc and stackAddress
+      const addresses = await stackManager.guessStack(0x1000, 0x8000, 5);
 
       // Verify: Finds BSR call site
       assert.strictEqual(addresses.length, 2);
@@ -249,10 +243,7 @@ describe("StackManager - Comprehensive Tests", () => {
     });
 
     it("should skip invalid addresses and odd addresses", async () => {
-      // Setup: Mock CPU and stack with invalid data
-      const mockCpuInfo = createMockCpuInfo({ pc: "0x1000", a7: "0x8000" });
-      mockVAmiga.getCpuInfo.resolves(mockCpuInfo);
-
+      // Setup: Mock stack with invalid data
       const stackBuffer = Buffer.alloc(128);
       stackBuffer.writeInt32BE(0x1001, 0); // Odd address - should skip
       stackBuffer.writeInt32BE(0x2000, 4); // Valid even address
@@ -269,8 +260,8 @@ describe("StackManager - Comprehensive Tests", () => {
       instrBuffer.writeUInt16BE(0x4e80, 4);
       mockVAmiga.readMemory.withArgs(0x2000 - 6, 6).resolves(instrBuffer);
 
-      // Test: Analyze stack
-      const addresses = await stackManager.guessStack(5);
+      // Test: Analyze stack with explicit pc and stackAddress
+      const addresses = await stackManager.guessStack(0x1000, 0x8000, 5);
 
       // Verify: Only processes valid even addresses
       assert.strictEqual(addresses.length, 2);
@@ -278,10 +269,7 @@ describe("StackManager - Comprehensive Tests", () => {
     });
 
     it("should handle memory read errors gracefully", async () => {
-      // Setup: Mock CPU state
-      const mockCpuInfo = createMockCpuInfo({ pc: "0x1000", a7: "0x8000" });
-      mockVAmiga.getCpuInfo.resolves(mockCpuInfo);
-
+      // Setup: Mock stack with return address
       const stackBuffer = Buffer.alloc(128);
       stackBuffer.writeInt32BE(0x2000, 0);
       mockVAmiga.readMemory.withArgs(0x8000, 128).resolves(stackBuffer);
@@ -294,7 +282,7 @@ describe("StackManager - Comprehensive Tests", () => {
         .rejects(new Error("Invalid memory"));
 
       // Test: Analyze stack (should not throw)
-      const addresses = await stackManager.guessStack(5);
+      const addresses = await stackManager.guessStack(0x1000, 0x8000, 5);
 
       // Verify: Gracefully handles error, returns at least current PC
       assert.strictEqual(addresses.length, 1);
@@ -303,9 +291,6 @@ describe("StackManager - Comprehensive Tests", () => {
 
     it("should respect maxLength parameter", async () => {
       // Setup: Mock stack with many potential return addresses
-      const mockCpuInfo = createMockCpuInfo({ pc: "0x1000", a7: "0x8000" });
-      mockVAmiga.getCpuInfo.resolves(mockCpuInfo);
-
       const stackBuffer = Buffer.alloc(128);
       // Fill with many valid return addresses
       for (let i = 0; i < 20; i++) {
@@ -324,8 +309,8 @@ describe("StackManager - Comprehensive Tests", () => {
         mockVAmiga.readMemory.withArgs(retAddr - 6, 6).resolves(instrBuffer);
       }
 
-      // Test: Limit to 3 frames
-      const addresses = await stackManager.guessStack(3);
+      // Test: Limit to 3 frames with explicit pc and stackAddress
+      const addresses = await stackManager.guessStack(0x1000, 0x8000, 3);
 
       // Verify: Respects limit (1 current + 2 from stack = 3)
       assert.strictEqual(addresses.length, 3);
@@ -334,7 +319,9 @@ describe("StackManager - Comprehensive Tests", () => {
 
   describe("Integration with Source Maps", () => {
     it("should use source map for frame naming when available", async () => {
-      // Setup: Mock with source mapping
+      // Setup: Mock CPU info and stub guessStack
+      const mockCpuInfo = createMockCpuInfo({ pc: "0x1000", a7: "0x8000" });
+      mockVAmiga.getCpuInfo.resolves(mockCpuInfo);
       sinon.stub(stackManager, "guessStack").resolves([[0x1000, 0x1000]]);
 
       mockSourceMap.lookupAddress.withArgs(0x1000).returns({
@@ -360,7 +347,9 @@ describe("StackManager - Comprehensive Tests", () => {
     });
 
     it("should fall back to disassembly frames when source map has no info", async () => {
-      // Setup: SourceMap exists but returns no location for address
+      // Setup: Mock CPU info and stub guessStack
+      const mockCpuInfo = createMockCpuInfo({ pc: "0x1000", a7: "0x8000" });
+      mockVAmiga.getCpuInfo.resolves(mockCpuInfo);
       sinon.stub(stackManager, "guessStack").resolves([[0x1000, 0x1000]]);
 
       // Mock source map returns null (no debug info for this address)

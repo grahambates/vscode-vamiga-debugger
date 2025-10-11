@@ -72,6 +72,13 @@ export interface MemoryInfo {
   agnusMemSrc: MemSrc[];
 }
 
+export interface CpuTraceItem {
+  pc: string;
+  instruction: string;
+  flags: string;
+  length: number;
+}
+
 export interface CustomRegisters {
   [name: string]: {
     value: string;
@@ -575,6 +582,23 @@ export class VAmiga {
   }
 
   /**
+   * Enables/disables CPU instruction logging
+   * @param enabled True to enable logging, false to disable
+   */
+  public enableCpuLogging(enabled: boolean): void {
+    this.sendCommand("enableCpuLogging", { enabled });
+  }
+
+  /**
+   * Get CPU instruction trace log
+   * @returns Promise resolving to array of CPU trace items
+   */
+  public async getCpuTrace(count = 256): Promise<CpuTraceItem[]> {
+    const res = await this.sendRpcCommand("getCpuTrace", { count });
+    return res.trace;
+  }
+
+  /**
    * Gets the current CPU state including registers and flags
    * @returns Promise resolving to CPU information
    */
@@ -779,7 +803,9 @@ export class VAmiga {
    * Get the contiguous memory region bounds for a given address
    * Returns the start and end addresses of the continuous block of the same memory type
    */
-  public getMemoryRegion(address: number): { start: number; end: number } | null {
+  public getMemoryRegion(
+    address: number,
+  ): { start: number; end: number } | null {
     if (!this.memoryInfo) {
       // Default to 16MB address space
       return { start: 0, end: 0x1000_0000 };
