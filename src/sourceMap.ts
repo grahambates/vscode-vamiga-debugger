@@ -45,9 +45,11 @@ export class SourceMap {
       const linesMap =
         this.locationsBySource.get(pathKey) || new Map<number, Location>();
 
-      // For source->address mapping, we do want to update to get the latest mapping
-      // for that source line (in case a line maps to multiple addresses)
-      linesMap.set(location.line, location);
+      // For source->address mapping, use first wins to get the earliest address for each line
+      // This ensures breakpoints are set at the first instruction of a statement
+      if (!linesMap.has(location.line)) {
+        linesMap.set(location.line, location);
+      }
       this.locationsBySource.set(pathKey, linesMap);
     }
   }
@@ -83,9 +85,14 @@ export class SourceMap {
     }
     let location = fileMap.get(line);
     if (!location) {
+      // Map entries are in insertion order, not sorted by line number
+      // So we need to find the highest line number <= requested line
+      let bestLine = -1;
       for (const [ln, loc] of fileMap.entries()) {
-        if (ln > line) break;
-        location = loc;
+        if (ln <= line && ln > bestLine) {
+          bestLine = ln;
+          location = loc;
+        }
       }
     }
     if (!location) {

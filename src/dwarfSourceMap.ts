@@ -74,11 +74,22 @@ export function sourceMapFromDwarf(
     }
   }
 
-  // Process line number programs, sorted by DWARF version (descending)
-  // This ensures DWARF 5 programs (more accurate) are processed first
-  // and establish primary address->source mappings before DWARF 2 programs
-  // (which may include macro expansions from C files in assembly code)
-  const sortedPrograms = [...dwarfData.lineNumberPrograms].sort((a, b) => b.version - a.version);
+  // Process line number programs, prioritizing C/C++ files over assembly files
+  // Assembly files often have confusing line info (macro expansions, etc.)
+  // Sort by: 1) Non-assembly files first, 2) Higher DWARF version first (within same category)
+  const sortedPrograms = [...dwarfData.lineNumberPrograms].sort((a, b) => {
+    // Check if programs contain assembly files
+    const aHasAsm = a.fileNames.some(f => f.name.endsWith('.s') || f.name.endsWith('.S'));
+    const bHasAsm = b.fileNames.some(f => f.name.endsWith('.s') || f.name.endsWith('.S'));
+
+    // Non-assembly programs come first
+    if (aHasAsm !== bHasAsm) {
+      return aHasAsm ? 1 : -1;
+    }
+
+    // Within same category, prefer higher DWARF version
+    return b.version - a.version;
+  });
 
   for (const program of sortedPrograms) {
     const state: LineNumberState = {
