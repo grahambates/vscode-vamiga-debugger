@@ -47,21 +47,24 @@ export function DisassemblyView({
   });
   const requestedChunksRef = useRef<Set<number>>(new Set());
 
+  // Start disassembly at target address (must be even-aligned)
+  const startAddress = target.address & ~1;
+  const endAddress = range.address + range.size;
+
+  // Track the current start address to detect changes
+  const [currentStartAddress, setCurrentStartAddress] = useState(startAddress);
+
   // Accumulate instructions as we disassemble
   const [instructions, setInstructions] = useState<CPUInstruction[]>([]);
 
   // Track the next address to disassemble from (use ref to avoid stale closures)
-  const nextAddressRef = useRef<number>(0);
+  const nextAddressRef = useRef<number>(startAddress);
 
   // Track if we've reached the end of the region
   const [reachedEnd, setReachedEnd] = useState(false);
 
   // Track if we're currently loading more instructions
   const isLoadingRef = useRef(false);
-
-  // Start disassembly at target address (must be even-aligned)
-  const startAddress = target.address & ~1;
-  const endAddress = range.address + range.size;
 
   // Get contiguous bytes starting from an address
   // Handles cross-chunk boundaries by concatenating adjacent chunks
@@ -292,13 +295,21 @@ export function DisassemblyView({
   }, [visibleRange, instructions, symbols, reachedEnd]);
 
   // Reset state when target address changes
-  useEffect(() => {
-    requestedChunksRef.current.clear();
+  if (currentStartAddress !== startAddress) {
+    // Reset state when startAddress prop changes (during render)
+    setCurrentStartAddress(startAddress);
     setInstructions([]);
-    nextAddressRef.current = startAddress;
     setReachedEnd(false);
-    isLoadingRef.current = false;
-  }, [startAddress]);
+  }
+
+  // Sync refs when startAddress changes (in effect)
+  useEffect(() => {
+    if (currentStartAddress === startAddress) {
+      requestedChunksRef.current.clear();
+      nextAddressRef.current = startAddress;
+      isLoadingRef.current = false;
+    }
+  }, [currentStartAddress, startAddress]);
 
   // Scroll to target
   useEffect(() => {
@@ -316,7 +327,10 @@ export function DisassemblyView({
       instructions.length < INSTRUCTIONS_PER_LOAD;
 
     if (shouldLoad) {
-      loadMoreInstructions();
+      // Use queueMicrotask to schedule for next tick to avoid cascading renders
+      queueMicrotask(() => {
+        loadMoreInstructions();
+      });
     }
   }, [memoryChunks, instructions.length, reachedEnd, loadMoreInstructions]);
 

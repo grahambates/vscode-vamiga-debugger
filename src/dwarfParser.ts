@@ -792,12 +792,12 @@ export function parseDwarf(elfBuffer: Buffer): DWARFData {
     offset += 2;
 
     let addressSize = 4; // Default for DWARF 2-4
-    let segmentSelectorSize = 0;
+    let _segmentSelectorSize = 0;
 
     // DWARF 5 has additional header fields
     if (version >= 5) {
       addressSize = elfBuffer[offset++] || 4;
-      segmentSelectorSize = elfBuffer[offset++] || 0;
+      _segmentSelectorSize = elfBuffer[offset++] || 0;
     }
 
     const headerLength = readUInt32(offset);
@@ -806,9 +806,9 @@ export function parseDwarf(elfBuffer: Buffer): DWARFData {
     const minimumInstructionLength = elfBuffer[offset++];
 
     // DWARF 4+ has maximum_operations_per_instruction
-    let maxOpsPerInstruction = 1;
+    let _maxOpsPerInstruction = 1;
     if (version >= 4) {
-      maxOpsPerInstruction = elfBuffer[offset++] || 1;
+      _maxOpsPerInstruction = elfBuffer[offset++] || 1;
     }
 
     const defaultIsStmt = elfBuffer[offset++] === 1;
