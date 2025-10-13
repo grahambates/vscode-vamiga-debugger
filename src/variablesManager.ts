@@ -160,12 +160,12 @@ export class VariablesManager {
     const name = id.replace("data_reg_", "");
     const value = Number(info[name as keyof CpuInfo]);
     return [
-      this.castIntVar(value, i32),
-      this.castIntVar(value, u32),
-      this.castIntVar(value, i16),
-      this.castIntVar(value, u16),
-      this.castIntVar(value, i8),
-      this.castIntVar(value, u8),
+      this.castIntVar(value, i32, 'i32'),
+      this.castIntVar(value, u32, 'u32'),
+      this.castIntVar(value, i16, 'i16'),
+      this.castIntVar(value, u16, 'u16'),
+      this.castIntVar(value, i8, 'i8'),
+      this.castIntVar(value, u8, 'u8'),
     ];
   }
 
@@ -209,10 +209,10 @@ export class VariablesManager {
     const name = id.replace("addr_reg_", "");
     const value = Number(info[name as keyof CpuInfo]);
     const variables = [
-      this.castIntVar(value, i32),
-      this.castIntVar(value, u32),
-      this.castIntVar(value, i16),
-      this.castIntVar(value, u16),
+      this.castIntVar(value, i32, 'i32'),
+      this.castIntVar(value, u32, 'u32'),
+      this.castIntVar(value, i16, 'i16'),
+      this.castIntVar(value, u16, 'u16'),
     ];
     const symbolOffset = this.sourceMap?.findSymbolOffset(value);
     if (symbolOffset) {
@@ -354,11 +354,11 @@ export class VariablesManager {
     const value = Number(valueStr);
 
     if (length === 4) {
-      return [this.castIntVar(value, u32), this.castIntVar(value, i32)];
+      return [this.castIntVar(value, u32, 'u32'), this.castIntVar(value, i32, 'i32')];
     } else if (length === 2) {
-      return [this.castIntVar(value, u16), this.castIntVar(value, i16)];
+      return [this.castIntVar(value, u16, 'u16'), this.castIntVar(value, i16, 'i16')];
     } else {
-      return [this.castIntVar(value, u8), this.castIntVar(value, i8)];
+      return [this.castIntVar(value, u8, 'u8'), this.castIntVar(value, i8, 'i8')];
     }
   }
 
@@ -431,9 +431,10 @@ export class VariablesManager {
   private castIntVar(
     value: number,
     fn: (v: number) => number,
+    name: string,
   ): DebugProtocol.Variable {
     return {
-      name: fn.name,
+      name,
       value: fn(value).toString(),
       variablesReference: 0,
       presentationHint: { attributes: ["readOnly"] },
