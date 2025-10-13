@@ -34,10 +34,6 @@ export function App() {
     };
   }, []);
 
-  const handleRefresh = () => {
-    vscode.postMessage({ command: "refresh" });
-  };
-
   return (
     <div className="state-viewer">
       {displayState ? (
@@ -57,11 +53,6 @@ export function App() {
       ) : (
         <div className="loading">Loading state...</div>
       )}
-
-      <vscode-button onClick={handleRefresh}>
-        <span className="codicon codicon-refresh"></span>
-        Refresh
-      </vscode-button>
     </div>
   );
 }
