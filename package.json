@@ -51,6 +51,11 @@
       {
         "command": "vamiga-debugger.viewVariableInMemory",
         "title": "View in Memory Viewer"
+      },
+      {
+        "command": "vamiga-debugger.openStateViewer",
+        "title": "VAmiga: Open State Viewer",
+        "icon": "$(symbol-misc)"
       }
     ],
     "menus": {
@@ -62,6 +67,10 @@
         {
           "command": "vamiga-debugger.viewVariableInMemory",
           "when": "false"
+        },
+        {
+          "command": "vamiga-debugger.openStateViewer",
+          "when": "debugType == 'vamiga'"
         }
       ],
       "debug/toolBar": [
@@ -79,6 +88,11 @@
           "command": "vamiga-debugger.openMemoryViewer",
           "when": "debugType == 'vamiga'",
           "group": "navigation@53"
+        },
+        {
+          "command": "vamiga-debugger.openStateViewer",
+          "when": "debugType == 'vamiga'",
+          "group": "navigation@54"
         }
       ],
       "debug/variables/context": [

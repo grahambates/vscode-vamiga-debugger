@@ -199,6 +199,7 @@ export function parseBplcon0Register(bplcon0: number): RegisterBitField[] {
     { name: "03: LIGHTPEN", value: (bplcon0 & 0x0008) !== 0 },
     { name: "02: INTERLACE", value: (bplcon0 & 0x0004) !== 0 },
     { name: "01: EXTERNAL_RESYNC", value: (bplcon0 & 0x0002) !== 0 },
+    { name: "00: ECSENA", value: (bplcon0 & 0x0001) !== 0 },
   ];
 }
 

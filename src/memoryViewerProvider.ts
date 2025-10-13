@@ -504,10 +504,10 @@ export class MemoryViewerProvider {
   private getHtmlContent(webview: vscode.Webview): string {
     // Get URIs for bundled resources
     const scriptUri = webview.asWebviewUri(
-      vscode.Uri.joinPath(this.extensionUri, "out", "webview", "main.js"),
+      vscode.Uri.joinPath(this.extensionUri, "out", "memoryViewer.js"),
     );
     const styleUri = webview.asWebviewUri(
-      vscode.Uri.joinPath(this.extensionUri, "out", "webview", "main.css"),
+      vscode.Uri.joinPath(this.extensionUri, "out", "memoryViewer.css"),
     );
     const codiconsUri = webview.asWebviewUri(
       vscode.Uri.joinPath(

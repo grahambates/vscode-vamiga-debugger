@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import { VamigaDebugAdapter } from "./vAmigaDebugAdapter";
 import { VAmiga } from "./vAmiga";
 import { MemoryViewerProvider } from "./memoryViewerProvider";
+import { StateViewerProvider } from "./stateViewerProvider";
 
 /**
  * Activates the VAmiga debugger VS Code extension.
@@ -15,6 +16,7 @@ import { MemoryViewerProvider } from "./memoryViewerProvider";
 export function activate(context: vscode.ExtensionContext) {
   const vAmiga = new VAmiga(context.extensionUri);
   const memoryViewer = new MemoryViewerProvider(context.extensionUri, vAmiga);
+  const stateViewer = new StateViewerProvider(context.extensionUri, vAmiga);
 
   // Register the debug adapter
   context.subscriptions.push(
@@ -101,9 +103,28 @@ export function activate(context: vscode.ExtensionContext) {
     ),
   );
 
-  // Clean up memory viewer on deactivation
+  // Register state viewer command
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      "vamiga-debugger.openStateViewer",
+      async () => {
+        try {
+          await stateViewer.show();
+        } catch (error) {
+          vscode.window.showErrorMessage(
+            `Failed to open state viewer: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
+      },
+    ),
+  );
+
+  // Clean up viewers on deactivation
   context.subscriptions.push({
-    dispose: () => memoryViewer.dispose(),
+    dispose: () => {
+      memoryViewer.dispose();
+      stateViewer.dispose();
+    },
   });
 }
 

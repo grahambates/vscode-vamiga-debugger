@@ -63,10 +63,11 @@ async function main() {
     ],
   });
 
-  // Build webview
+  // Build webviews
   const webviewCtx = await esbuild.context({
     entryPoints: [
-      'src/webview/memoryViewer/main.tsx'
+      'src/webview/memoryViewer/main.tsx',
+      'src/webview/stateViewer/main.tsx'
     ],
     bundle: true,
     format: 'iife',
@@ -74,7 +75,8 @@ async function main() {
     sourcemap: production ? false : 'inline', // Inline sourcemap for webview debugging
     sourcesContent: !production, // Embed sources in sourcemap for webview debugging
     platform: 'browser',
-    outdir: 'out/webview',
+    outdir: 'out',
+    entryNames: '[dir]',
     logLevel: 'silent',
     jsx: 'automatic',
     jsxDev: !production,
