@@ -25,7 +25,7 @@ export const exceptionBreakpointFilters: DebugProtocol.ExceptionBreakpointsFilte
     { filter: "5", label: "Zero divide", default: true },
     // { filter: '6', label: 'CHK instruction', default: false },
     // { filter: '7', label: 'TRAPV instruction', default: false },
-    { filter: "8", label: "Privilege violation", default: true },
+    { filter: "8", label: "Privilege violation", default: false },
   ];
 
 // What's your vector Victor?
