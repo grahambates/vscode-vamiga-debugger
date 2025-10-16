@@ -77,3 +77,9 @@ The debug console can be used to evaluate expressions and read or write the emul
 ### Reverse stepping
 
 The debugger supports stepping backwards to previous points where the emulator was stopped. While this isn't full time-travel debugging where the program can be run entirely in reverse, it does act as an undo button for stepping forwards in the code. It works by taking a snapshot each time the emulator stops.
+
+---
+
+vAmigaWeb © mithrendal https://vamigaweb.github.io/doc/
+
+vAmiga © Dirk W. Hoffmann https://dirkwhoffmann.github.io/vAmiga/
