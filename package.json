@@ -133,6 +133,11 @@
         }
       }
     },
+    "breakpoints": [
+      {
+        "language": "m68k"
+      }
+    ],
     "debuggers": [
       {
         "type": "vamiga",
