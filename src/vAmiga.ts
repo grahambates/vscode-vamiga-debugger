@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import * as vscode from "vscode";
 import { existsSync, readFileSync } from "fs";
-import { join } from "path";
+import { dirname, join } from "path";
 import { u32, u16, u8 } from "./numbers";
 
 export interface CpuInfo {
@@ -841,6 +841,39 @@ export class VAmiga {
   private initPanel(options: OpenOptions) {
     const column = this.getConfiguredViewColumn();
 
+    const localResourceRoots = [
+      this.extensionUri,
+      ...(vscode.workspace.workspaceFolders?.map((folder) => folder.uri) || []),
+    ];
+
+    if (options.programPath) {
+      if (!existsSync(options.programPath)) {
+        throw new Error(
+          `Program file not found: ${options.programPath}`,
+        );
+      }
+      const progDir = dirname(options.programPath);
+      localResourceRoots.push(vscode.Uri.file(progDir));
+    }
+    if (options.kickstartRomPath) {
+      if (!existsSync(options.kickstartRomPath)) {
+        throw new Error(
+          `Kickstart ROM file not found: ${options.kickstartRomPath}`,
+        );
+      }
+      const romDir = dirname(options.kickstartRomPath);
+      localResourceRoots.push(vscode.Uri.file(romDir));
+    }
+    if (options.kickstartExtPath) {
+      if (!existsSync(options.kickstartExtPath)) {
+        throw new Error(
+          `Kickstart extension ROM file not found: ${options.kickstartExtPath}`,
+        );
+      }
+      const extDir = dirname(options.kickstartExtPath);
+      localResourceRoots.push(vscode.Uri.file(extDir));
+    }
+
     // Create new panel
     this.panel = vscode.window.createWebviewPanel(
       VAmiga.viewType,
@@ -852,11 +885,7 @@ export class VAmiga {
       {
         enableScripts: true,
         retainContextWhenHidden: true, // Keep webview alive when hidden
-        localResourceRoots: [
-          this.extensionUri,
-          ...(vscode.workspace.workspaceFolders?.map((folder) => folder.uri) ||
-            []),
-        ],
+        localResourceRoots,
       },
     );
 
