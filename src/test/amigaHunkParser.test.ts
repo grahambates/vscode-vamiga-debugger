@@ -78,4 +78,25 @@ describe("AmigaHunkFile", function () {
     expect(sourceFile?.lines).toHaveLength(11);
     expect(sourceFile?.sourceFilename).toBe("hello.c");
   });
+
+  it("Should parse kickstart 2+ executable", async function () {
+    const programFilename = Path.join(
+      FIXTURES_PATH,
+      "amigaPrograms",
+      "ks2.exe",
+    );
+    const hunks = await parseHunksFromFile(programFilename);
+    expect(hunks.length).toBe(3);
+
+    // Verify first hunk has code and relocations
+    const hunk = hunks[0];
+    expect(hunk.hunkType).toBe(HunkType.CODE);
+    expect(hunk.data).toBeDefined();
+    expect(hunk.dataSize).toBe(2940);
+
+    // Verify DREL32 relocations were parsed correctly
+    expect(hunk.reloc32.length).toBeGreaterThan(0);
+    expect(hunk.reloc32[0].target).toBe(0);
+    expect(hunk.reloc32[0].offsets).toContain(188);
+  });
 });

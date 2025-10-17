@@ -74,6 +74,9 @@ const BlockTypes = {
   DEBUG: 0x3f1,
   END: 0x3f2,
   HEADER: 0x3f3,
+  DREL32: 0x3f7,
+  DREL16: 0x3f8,
+  DREL8: 0x3f9,
 };
 
 /**
@@ -206,6 +209,15 @@ function createHunk(
       case BlockTypes.RELOC32:
         hunk.reloc32.push(...parseReloc32(reader));
         break;
+      case BlockTypes.DREL32:
+        hunk.reloc32.push(...parseDrel32(reader));
+        break;
+      case BlockTypes.DREL16:
+        parseDrel16(reader);
+        break;
+      case BlockTypes.DREL8:
+        parseDrel8(reader);
+        break;
       case BlockTypes.SYMBOL:
         hunk.symbols.push(...parseSymbols(reader));
         break;
@@ -312,6 +324,90 @@ function parseReloc32(reader: BufferReader): RelocInfo32[] {
   return relocs;
 }
 
+function parseDrel32(reader: BufferReader): RelocInfo32[] {
+  // HUNK_DREL32 [0x3F7]:
+  // Similar to HUNK_RELOC32 but uses 16-bit values instead of 32-bit
+  // uint16   N   The number of offsets for a given hunk.
+  //              If this value is zero, then it indicates the immediate end of this block.
+  // uint16       The number of the hunk the offsets are to point into.
+  // uint16 * N   Offsets in the current CODE or DATA hunk to relocate.
+  // If total number of 16-bit words read is odd, a padding word is added for alignment
+  const relocs: RelocInfo32[] = [];
+  let wordCount = 0;
+  let count = reader.readWord();
+  wordCount++;
+
+  while (count !== 0) {
+    const target = reader.readWord();
+    wordCount++;
+    const offsets: number[] = [];
+    for (let i = 0; i < count; i++) {
+      offsets.push(reader.readWord());
+      wordCount++;
+    }
+    relocs.push({ target, offsets });
+    count = reader.readWord();
+    wordCount++;
+  }
+
+  // Add padding if odd number of words to maintain longword alignment
+  if (wordCount % 2 === 1) {
+    reader.skip(2);
+  }
+
+  return relocs;
+}
+
+function parseDrel16(reader: BufferReader): void {
+  // HUNK_DREL16 [0x3F8]: 16-bit relative relocations
+  // Same format as DREL32 but for 16-bit relocations
+  // We parse but don't currently use these relocations
+  let wordCount = 0;
+  let count = reader.readWord();
+  wordCount++;
+
+  while (count !== 0) {
+    reader.readWord(); // target hunk
+    wordCount++;
+    for (let i = 0; i < count; i++) {
+      reader.readWord(); // offset
+      wordCount++;
+    }
+    count = reader.readWord();
+    wordCount++;
+  }
+
+  // Add padding if odd number of words
+  if (wordCount % 2 === 1) {
+    reader.skip(2);
+  }
+}
+
+function parseDrel8(reader: BufferReader): void {
+  // HUNK_DREL8 [0x3F9]: 8-bit relative relocations
+  // Same format as DREL32 but for 8-bit relocations
+  // We parse but don't currently use these relocations
+  let wordCount = 0;
+  let count = reader.readWord();
+  wordCount++;
+
+  while (count !== 0) {
+    reader.readWord(); // target hunk
+    wordCount++;
+    for (let i = 0; i < count; i++) {
+      reader.readWord(); // offset
+      wordCount++;
+    }
+    count = reader.readWord();
+    wordCount++;
+  }
+
+  // Add padding if odd number of words
+  if (wordCount % 2 === 1) {
+    reader.skip(2);
+  }
+}
+
 /**
  * Manages reading BE data from buffer and tracking offset position
  */
@@ -327,6 +423,17 @@ class BufferReader {
     }
     const value = this.buffer.readUInt32BE(this.pos);
     this.pos += 4;
+    return value;
+  }
+
+  public readWord() {
+    if (this.pos + 2 > this.buffer.length) {
+      throw new Error(
+        `Buffer overrun: trying to read 2 bytes at position ${this.pos}, buffer length is ${this.buffer.length}`,
+      );
+    }
+    const value = this.buffer.readUInt16BE(this.pos);
+    this.pos += 2;
     return value;
   }
 
