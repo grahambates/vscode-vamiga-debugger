@@ -2,6 +2,8 @@ import React, { useState, useRef, useEffect, useCallback } from "react";
 import { guessWidthsUnknownLength } from "./strideGuesser";
 import "./VisualView.css";
 import { MemoryRange } from "../../shared/memoryViewerTypes";
+import { Tooltip, TooltipProps } from "./Tooltip";
+import { convertToSigned, formatAddress } from "./lib";
 
 export interface VisualViewProps {
   target: MemoryRange;
@@ -16,6 +18,8 @@ export interface VisualViewProps {
 export function VisualView({
   target,
   range,
+  symbols,
+  symbolLengths,
   memoryChunks,
   onRequestMemory,
   scrollResetTrigger,
@@ -104,7 +108,7 @@ export function VisualView({
       line++
     ) {
       const lineAddress = alignedRangeStart + line * bytesPerRow;
-      const lineY = (line - visibleRange.firstLine);
+      const lineY = line - visibleRange.firstLine;
 
       for (let byteOffset = 0; byteOffset < bytesPerRow; byteOffset++) {
         const byteAddress = lineAddress + byteOffset;
@@ -151,8 +155,7 @@ export function VisualView({
   useEffect(() => {
     if (containerRef.current) {
       const scrollTop =
-        Math.floor((target.address - alignedRangeStart) / bytesPerRow) *
-        scale;
+        Math.floor((target.address - alignedRangeStart) / bytesPerRow) * scale;
       containerRef.current.scrollTop = scrollTop;
     }
   }, [
@@ -241,11 +244,7 @@ export function VisualView({
   }, [renderCanvas]);
 
   // Handle mouse move for showing pixel info
-  const [tooltip, setTooltip] = useState<{
-    x: number;
-    y: number;
-    text: string;
-  } | null>(null);
+  const [tooltip, setTooltip] = useState<TooltipProps | null>(null);
 
   const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
@@ -256,8 +255,7 @@ export function VisualView({
     const y = Math.floor((e.clientY - rect.top) / scale);
 
     // Calculate absolute line and byte address
-    const absoluteLine =
-      visibleRange.firstLine + Math.floor(y / scale);
+    const absoluteLine = visibleRange.firstLine + Math.floor(y / scale);
     const lineAddress = alignedRangeStart + absoluteLine * bytesPerRow;
     const pixelXInLine = x % pixelWidth;
     const byteOffset = Math.floor(pixelXInLine / 8);
@@ -266,18 +264,34 @@ export function VisualView({
 
     const byte = getByte(byteAddress);
     if (byte !== undefined) {
-      const isOn = (byte & (1 << bitPosition)) !== 0;
-      const addressHex = byteAddress
-        .toString(16)
-        .toUpperCase()
-        .padStart(6, "0");
-      const byteHex = byte.toString(16).toUpperCase().padStart(2, "0");
+      // Calculate pixel coordinates relative to target address
+      const relativeByteOffset = byteAddress - target.address;
+      const relativePixelX = (relativeByteOffset % bytesPerRow) * 8 + (7 - bitPosition);
+      const relativePixelY = Math.floor(relativeByteOffset / bytesPerRow);
 
-      setTooltip({
-        x: e.clientX,
-        y: e.clientY,
-        text: `Pixel ${x},${y} | Byte 0x${byteHex} @ ${addressHex} | Bit ${bitPosition} = ${isOn ? 1 : 0}`,
-      });
+      // Only show tooltip if coordinates are non-negative (within target range)
+      if (relativePixelX >= 0 && relativePixelY >= 0) {
+        const isOn = (byte & (1 << bitPosition)) !== 0;
+        const signedValue = convertToSigned(byte, 1);
+        const byteText =
+          signedValue === byte
+            ? byte.toString()
+            : `${byte.toString()}, ${signedValue.toString()}`;
+
+        setTooltip({
+          x: e.clientX,
+          y: e.clientY,
+          heading: formatAddress(byteAddress, symbols, symbolLengths),
+          text: (
+            <>
+            <div>Pixel ({relativePixelX},{relativePixelY}) = {isOn ? 1 : 0}</div>
+            <div>{`Byte Value = ${byteText}`}</div>
+            </>
+          )
+        });
+      } else {
+        setTooltip(null);
+      }
     } else {
       setTooltip(null);
     }
@@ -305,9 +319,7 @@ export function VisualView({
               setBytesPerRow(Math.max(1, parseInt(e.target.value) || 40))
             }
           />
-          <span className="visual-info-text">
-            ({bytesPerRow * 8} pixels)
-          </span>
+          <span className="visual-info-text">({bytesPerRow * 8} pixels)</span>
         </label>
 
         <vscode-button
@@ -376,17 +388,7 @@ export function VisualView({
         </div>
       </div>
 
-      {tooltip && (
-        <div
-          className="visual-tooltip"
-          style={{
-            left: tooltip.x + 10,
-            top: tooltip.y + 10,
-          }}
-        >
-          {tooltip.text}
-        </div>
-      )}
+      {tooltip && <Tooltip {...tooltip} />}
     </div>
   );
 }

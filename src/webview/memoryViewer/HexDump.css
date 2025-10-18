@@ -65,24 +65,6 @@
   color: var(--vscode-descriptionForeground);
 }
 
-.hex-tooltip {
-  background-color: var(--vscode-editorHoverWidget-background);
-  color: var(--vscode-editorHoverWidget-foreground);
-  border: 1px solid var(--vscode-editorHoverWidget-border);
-  padding: 4px 8px;
-  border-radius: 3px;
-  font-family: var(--vscode-editor-font-family);
-  font-size: var(--vscode-editor-font-size);
-  white-space: nowrap;
-  z-index: 1000;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
-  position: fixed;
-}
-
-.hex-tooltip-heading {
-  color: var(--vscode-editorLineNumber-foreground);
-}
-
 .hex-canvas {
   position: absolute;
   left: 0;
