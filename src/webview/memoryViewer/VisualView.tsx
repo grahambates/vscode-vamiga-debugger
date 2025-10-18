@@ -33,6 +33,7 @@ export function VisualView({
     lastLine: 0,
   });
   const requestedChunksRef = useRef<Set<number>>(new Set());
+  const currentScrollByteRef = useRef<number>(target.address); // Track current scroll position in bytes
 
   const CHUNK_SIZE = 1024;
   const BUFFER_LINES = 20; // Lines beyond visible range to fetch
@@ -151,12 +152,30 @@ export function VisualView({
     requestedChunksRef.current.clear();
   }, [target.address]);
 
-  // Scroll to target
+  // Scroll handling: preserve byte address when bytesPerRow/scale changes, reset when target changes
+  const prevBytesPerRowRef = useRef(bytesPerRow);
+  const prevScaleRef = useRef(scale);
+
   useEffect(() => {
-    if (containerRef.current) {
+    if (!containerRef.current) return;
+
+    const bytesPerRowChanged = prevBytesPerRowRef.current !== bytesPerRow;
+    const scaleChanged = prevScaleRef.current !== scale;
+
+    if (bytesPerRowChanged || scaleChanged) {
+      // When bytesPerRow or scale changes, maintain the same byte address at scroll top
+      const scrollTop =
+        Math.floor((currentScrollByteRef.current - alignedRangeStart) / bytesPerRow) * scale;
+      containerRef.current.scrollTop = scrollTop;
+
+      prevBytesPerRowRef.current = bytesPerRow;
+      prevScaleRef.current = scale;
+    } else {
+      // When target address or scrollResetTrigger changes, scroll to target
       const scrollTop =
         Math.floor((target.address - alignedRangeStart) / bytesPerRow) * scale;
       containerRef.current.scrollTop = scrollTop;
+      currentScrollByteRef.current = target.address;
     }
   }, [
     target.address,
@@ -183,6 +202,10 @@ export function VisualView({
         Math.ceil(scrollBottom / scale) + BUFFER_LINES,
       );
       setVisibleRange({ firstLine, lastLine });
+
+      // Update current scroll byte address for maintaining position on bytesPerRow changes
+      const currentScrollLine = Math.floor(scrollTop / scale);
+      currentScrollByteRef.current = alignedRangeStart + currentScrollLine * bytesPerRow;
 
       // Get byte offsets of chunks
       const firstChunk =
