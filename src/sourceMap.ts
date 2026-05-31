@@ -94,9 +94,8 @@ export class SourceMap {
     private globalVars: Variable[] = [],
   ) {
     for (const location of locations) {
-      // Don't overwrite existing address mappings - first wins
-      // This handles cases where multiple DWARF line programs map the same address
-      // (e.g., assembly files with C macro expansions)
+      // Don't overwrite existing address mappings - first wins.
+      // Deduplication for C/C++ vs assembly is handled upstream in sourceMapFromDwarf.
       if (!this.locationsByAddress.has(location.address)) {
         this.locationsByAddress.set(location.address, location);
       }
@@ -151,6 +150,23 @@ export class SourceMap {
       return this.locationsByAddress.get(floorAddr);
     }
     return undefined;
+  }
+
+  // Returns up to `max` line-table addresses that belong to the same file as `path`
+  // but a different source line, appearing after `afterAddress` in address order.
+  // Used by line-granularity step-over to place temp breakpoints at all reachable
+  // next-statement entry points (handles conditional branches without needing function boundaries).
+  public getNextLineAddresses(path: string, currentLine: number, afterAddress: number, max = 5): number[] {
+    const results: number[] = [];
+    for (const addr of this.sortedAddresses) {
+      if (addr <= afterAddress) continue;
+      const loc = this.locationsByAddress.get(addr);
+      if (loc && loc.path === path && loc.line !== currentLine) {
+        results.push(addr);
+        if (results.length >= max) break;
+      }
+    }
+    return results;
   }
 
   public lookupSourceLine(path: string, line: number): Location {

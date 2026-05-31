@@ -31,7 +31,10 @@ export function sourceMapFromDwarf(
 ): SourceMap {
   const sources = new Set<string>();
   const symbols: Record<string, number> = {};
-  const locations: Location[] = [];
+  // Keyed by final address. C/C++ source files (.c* / .h*) use last-wins so the
+  // compiler's prologue line is overwritten by the first real statement at the same
+  // address. Everything else (assembly, unknown) keeps first-wins.
+  const locationMap = new Map<number, Location>();
   const segments: Segment[] = [];
 
   // Section offsets matching original, unfiltered indexes
@@ -211,7 +214,9 @@ export function sourceMapFromDwarf(
             segmentIndex: sectionIndex,
             segmentOffset: sectionOffset,
           };
-          locations.push(location);
+          const isCpp = /\.[ch]\w*$/i.test(path);
+          if (isCpp || !locationMap.has(finalAddress))
+            locationMap.set(finalAddress, location);
 
           // Add to sources set
           sources.add(path);
@@ -246,7 +251,7 @@ export function sourceMapFromDwarf(
     : undefined;
   const inlineTable = buildInlineTable(dwarfData, relocate, baseDir);
   const globalVars = buildGlobalsTable(dwarfData, relocate);
-  return new SourceMap(segments, sources, symbols, locations, scopeTable, relocatedDebugFrame, inlineTable, globalVars);
+  return new SourceMap(segments, sources, symbols, [...locationMap.values()], scopeTable, relocatedDebugFrame, inlineTable, globalVars);
 }
 
 function relocateDebugFrame(
