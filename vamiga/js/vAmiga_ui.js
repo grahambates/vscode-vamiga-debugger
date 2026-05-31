@@ -2567,6 +2567,22 @@ postMessage({ type: 'ready' });
 
     vscode = acquireVsCodeApi();
 
+    // Forward serial port output (KPrintF etc.) to the VS Code debug console.
+    // Bytes arrive one at a time; buffer until LF, then send as emulator-output.
+    // CR is stripped so CR+LF sequences produce a single clean line.
+    let _serialBuf = '';
+    set_serial_port_out_handler((data) => {
+        const byte = data & 0xff;
+        if (byte === 0x0d || byte === 0x0a) { // CR or LF — flush line
+            if (_serialBuf.length > 0) {
+                vscode.postMessage({ type: 'emulator-output', data: _serialBuf + '\n' });
+                _serialBuf = '';
+            }
+        } else {
+            _serialBuf += String.fromCharCode(byte);
+        }
+    });
+
     // Track breakpoints for reverse continue
     const breakpoints = new Set();
 
