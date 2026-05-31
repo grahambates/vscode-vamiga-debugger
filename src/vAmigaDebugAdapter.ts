@@ -1243,7 +1243,7 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
         const cpuInfo = await this.vAmiga.getCpuInfo();
         const pc = Number(cpuInfo.pc);
         const loc = this.sourceMap?.lookupAddress(pc);
-        console.log(`[lineStep] handleStop(step): pc=0x${pc.toString(16)} loc=${loc ? `${loc.path}:${loc.line}` : "none"} start=${this.lineStepStart.path}:${this.lineStepStart.line}`);
+        
         continueLoop = loc?.path === this.lineStepStart.path && loc?.line === this.lineStepStart.line;
       } catch { /* fall through and stop */ }
       if (continueLoop) {
