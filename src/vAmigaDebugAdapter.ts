@@ -537,7 +537,7 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
     const cpuInfo = await this.vAmiga.getCpuInfo();
     const pc = Number(cpuInfo.pc);
     const disasm = await this.vAmiga.disassemble(pc, 2);
-    const currInst = disasm?.instructions[0].instruction ?? "";
+    const currInst = disasm?.instructions[0]?.instruction ?? "";
     const next = disasm?.instructions[1];
 
     // If current instruction is one of these i.e. it should eventually reach the next line,

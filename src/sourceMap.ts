@@ -152,23 +152,6 @@ export class SourceMap {
     return undefined;
   }
 
-  // Returns up to `max` line-table addresses that belong to the same file as `path`
-  // but a different source line, appearing after `afterAddress` in address order.
-  // Used by line-granularity step-over to place temp breakpoints at all reachable
-  // next-statement entry points (handles conditional branches without needing function boundaries).
-  public getNextLineAddresses(path: string, currentLine: number, afterAddress: number, max = 5): number[] {
-    const results: number[] = [];
-    for (const addr of this.sortedAddresses) {
-      if (addr <= afterAddress) continue;
-      const loc = this.locationsByAddress.get(addr);
-      if (loc && loc.path === path && loc.line !== currentLine) {
-        results.push(addr);
-        if (results.length >= max) break;
-      }
-    }
-    return results;
-  }
-
   public lookupSourceLine(path: string, line: number): Location {
     const pathKey = normalize(path).toUpperCase();
     const fileMap = this.locationsBySource.get(pathKey);
