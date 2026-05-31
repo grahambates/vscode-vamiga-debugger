@@ -400,8 +400,8 @@ describe("VamigaDebugAdapter - Simplified Tests", () => {
 
       const response = createMockResponse<DebugProtocol.NextResponse>("next");
 
-      // Test: Execute next request
-      await (adapter as any).nextRequest(response);
+      // Test: Execute next request (instruction granularity)
+      await (adapter as any).nextRequest(response, { threadId: 1, granularity: "instruction" });
 
       // Verify: Breakpoint set on next instruction and run called
       assert.ok(mockBreakpointManager.setTmpBreakpoint.called);
@@ -423,8 +423,8 @@ describe("VamigaDebugAdapter - Simplified Tests", () => {
 
       const response = createMockResponse<DebugProtocol.NextResponse>("next");
 
-      // Test: Execute next request with non-call instruction
-      await (adapter as any).nextRequest(response);
+      // Test: Execute next request with non-call instruction (instruction granularity)
+      await (adapter as any).nextRequest(response, { threadId: 1, granularity: "instruction" });
 
       // Verify: Just calls stepInto for non-call instructions
       assert.ok(mockVAmiga.stepInto.called);

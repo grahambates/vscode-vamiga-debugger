@@ -466,6 +466,16 @@ export class BreakpointManager {
   }
 
   /**
+   * Removes all temporary breakpoints with the given reason.
+   * Used to clean up line-step BPs when one fires (leaving others dangling) or on unrelated stops.
+   */
+  public clearTmpBreakpointsByReason(reason: string): void {
+    for (const bp of this.tmpBreakpoints.filter((b) => b.reason === reason))
+      this.vAmiga.removeBreakpoint(bp.address);
+    this.tmpBreakpoints = this.tmpBreakpoints.filter((b) => b.reason !== reason);
+  }
+
+  /**
    * Gets temporary breakpoints (for testing/debugging)
    */
   public getTmpBreakpoints(): TmpBreakpoint[] {

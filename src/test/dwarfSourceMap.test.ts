@@ -172,4 +172,45 @@ describe('dwarfSourceMap', () => {
     expect(charField!.type.kind).toBe('primitive');
   });
 
+  // Verifies address→line mapping for 05_line_numbers/simple_c.cpp against the DWARF line table.
+  // With -Ttext=0 the ELF .text section has addr=0, so loadSourceMap gives us
+  // ELF-virtual addresses directly (no runtime relocation needed).
+  //
+  // DWARF line table (second sequence, _start):
+  //   0x00 → line 21   _start() function header
+  //   0x02 → line 22   ptr_struct = &globals
+  //   0x08 → line 23   *ptr_struct->_int_ptr += func_a(globals)  (first instr)
+  //   0x18,0x1c,0x1e,0x22 → line 23  (remaining instrs, via Copy with discriminator)
+  //   0x26 → line 24   ptr_struct->_short = 0x8888
+  //   0x2e → line 25   ptr_struct->_char  = 0x77
+  //   0x36 → line 26   while(1) {}
+  // First sequence (_Z6func_a / func_a):
+  //   0x38 → line 16 then line 17 (same address; last-wins keeps line 17)
+  //   0x40 → line 18
+  it('should map simple_c.cpp addresses to correct line numbers', () => {
+    const sourceMap = loadSourceMap('simple_c/05_line_numbers/simple_c.elf');
+
+    const srcFile = sourceMap.getSourceFiles().find(s => s.includes('simple_c.cpp'));
+    expect(srcFile).toBeDefined();
+
+    // Exact-match entries from the line table
+    expect(sourceMap.lookupAddress(0x00)?.line).toBe(21);
+    expect(sourceMap.lookupAddress(0x02)?.line).toBe(22);
+    expect(sourceMap.lookupAddress(0x08)?.line).toBe(23);
+    expect(sourceMap.lookupAddress(0x18)?.line).toBe(23); // Copy with discriminator
+    expect(sourceMap.lookupAddress(0x1c)?.line).toBe(23);
+    expect(sourceMap.lookupAddress(0x1e)?.line).toBe(23);
+    expect(sourceMap.lookupAddress(0x22)?.line).toBe(23);
+    expect(sourceMap.lookupAddress(0x26)?.line).toBe(24); // key: next stmt after func_a call
+    expect(sourceMap.lookupAddress(0x2e)?.line).toBe(25);
+    expect(sourceMap.lookupAddress(0x36)?.line).toBe(26);
+    expect(sourceMap.lookupAddress(0x38)?.line).toBe(17); // func_a: first statement (prologue line 16 overwritten by last-wins)
+
+    // Floor-search: mid-statement addresses should resolve to the owning line
+    expect(sourceMap.lookupAddress(0x10)?.line).toBe(23); // inside line-23 range
+    expect(sourceMap.lookupAddress(0x24)?.line).toBe(23); // floor = 0x22 → 23
+    expect(sourceMap.lookupAddress(0x27)?.line).toBe(24); // floor = 0x26 → 24
+    expect(sourceMap.lookupAddress(0x30)?.line).toBe(25); // floor = 0x2e → 25
+  });
+
 });

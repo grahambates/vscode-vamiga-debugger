@@ -1257,6 +1257,11 @@ export function parseDwarf(elfBuffer: Buffer): DWARFData {
           instruction.fileName = fileName.value;
           break;
         }
+        default:
+          // Unknown extended opcode: skip the remaining body bytes.
+          // `length` includes the extOpcode byte already consumed above, so subtract 1.
+          size += length.value - 1;
+          break;
       }
     } else if (opcode < program.opcodeBase) {
       instruction.type = "standard";

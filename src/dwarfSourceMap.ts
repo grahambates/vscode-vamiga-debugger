@@ -246,7 +246,7 @@ export function sourceMapFromDwarf(
     : undefined;
   const inlineTable = buildInlineTable(dwarfData, relocate, baseDir);
   const globalVars = buildGlobalsTable(dwarfData, relocate);
-  return new SourceMap(segments, sources, symbols, locations, scopeTable, relocatedDebugFrame, inlineTable, globalVars);
+  return new SourceMap(segments, sources, symbols, locations, scopeTable, relocatedDebugFrame, inlineTable, globalVars, true);
 }
 
 function relocateDebugFrame(

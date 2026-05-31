@@ -164,6 +164,9 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
   private loadedProgram: LoadedProgram | null = null;
   private stepping = false;
   private lastStepGranularity: DebugProtocol.SteppingGranularity | undefined;
+  // Non-null while a line-granularity step is in progress; cleared when the source line changes.
+  // isOver: true = step-over (doInstructionStepOver loop), false = step-in (stepInto loop).
+  private lineStepStart: { path: string; line: number; isOver: boolean } | null = null;
 
   private variablesManager?: VariablesManager;
   private breakpointManager?: BreakpointManager;
@@ -505,9 +508,15 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
     args: DebugProtocol.StepInArguments,
   ): Promise<void> {
     try {
+      this.lastStepGranularity = args.granularity;
+      if (args.granularity !== "instruction") {
+        // Record start location so handleStep can loop until the source line changes.
+        const cpuInfo = await this.vAmiga.getCpuInfo();
+        const loc = this.sourceMap?.lookupAddress(Number(cpuInfo.pc));
+        if (loc) this.lineStepStart = { path: loc.path, line: loc.line, isOver: false };
+      }
       this.stepping = true;
       this.isRunning = true;
-      this.lastStepGranularity = args.granularity;
       this.vAmiga.stepInto();
       this.sendResponse(response);
     } catch (err) {
@@ -520,32 +529,52 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
     }
   }
 
+  // Performs one instruction-level step-over.
+  // vAmiga's built-in stepOver doesn't work correctly. It seems to only work with short branches.
+  // Need to implement this ourselves.
+  private async doInstructionStepOver(): Promise<void> {
+    // Disassemble at pc to get current and next instruction.
+    const cpuInfo = await this.vAmiga.getCpuInfo();
+    const pc = Number(cpuInfo.pc);
+    const disasm = await this.vAmiga.disassemble(pc, 2);
+    const currInst = disasm?.instructions[0].instruction ?? "";
+    const next = disasm?.instructions[1];
+
+    // If current instruction is one of these i.e. it should eventually reach the next line,
+    // set tmp breakpoint on next instruction, otherwise just use built-in stepInto.
+    const isBranch = currInst.match(/^(jsr|bsr|dbra)/i);
+    if (next && isBranch) {
+      const addr = parseInt(next.addr, 16);
+      this.getBreakpointManager().setTmpBreakpoint(addr, "step");
+      this.vAmiga.run();
+    } else {
+      this.stepping = true;
+      this.vAmiga.stepInto();
+    }
+    this.isRunning = true;
+  }
+
   protected async nextRequest(
     response: DebugProtocol.NextResponse,
+    args: DebugProtocol.NextArguments,
   ): Promise<void> {
     try {
-      // vAmiga's built-in stepOver doesn't work correctly. It seems to only work with short branches.
-      // Need to implement this ourselves.
-
-      // Disassemble at pc to get current and next instruction.
-      const cpuInfo = await this.vAmiga.getCpuInfo();
-      const pc = Number(cpuInfo.pc);
-      const disasm = await this.vAmiga.disassemble(pc, 2);
-      const currInst = disasm?.instructions[0].instruction ?? "";
-      const next = disasm?.instructions[1];
-
-      // If current intruction is one of these i.e. it should eventually reach the next line,
-      // set tmp breakpoint on next instruction, otherwise just use built-in stepInto.
-      const isBranch = currInst.match(/^(jsr|bsr|dbra)/i);
-      if (next && isBranch) {
-        const addr = parseInt(next.addr, 16);
-        this.getBreakpointManager().setTmpBreakpoint(addr, "step");
-        this.vAmiga.run();
-      } else {
-        this.stepping = true;
-        this.vAmiga.stepInto();
+      if (args.granularity !== "instruction") {
+        const cpuInfo = await this.vAmiga.getCpuInfo();
+        const pc = Number(cpuInfo.pc);
+        const loc = this.sourceMap?.lookupAddress(pc);
+        if (loc) {
+          // Line granularity: loop doInstructionStepOver until the source line changes.
+          // This correctly skips function bodies because doInstructionStepOver detects
+          // JSR/BSR and sets a temp BP at the return address (never entering the callee).
+          this.lineStepStart = { path: loc.path, line: loc.line, isOver: true };
+          await this.doInstructionStepOver();
+          this.sendResponse(response);
+          return;
+        }
+        // No source info at current PC — fall through to instruction granularity
       }
-      this.isRunning = true;
+      await this.doInstructionStepOver();
       this.sendResponse(response);
     } catch (err) {
       this.sendError(
@@ -1136,23 +1165,45 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
     // Special case for built-in stepIn function. No actual breakpoints used.
     this.isRunning = false;
     this.stepping = false;
+
+    // Fetch PC once; reused for both the line-step loop check and the disassembly-view hint below.
+    let pc: number | undefined;
+    try {
+      const cpuInfo = await this.vAmiga.getCpuInfo();
+      pc = Number(cpuInfo.pc);
+    } catch (error) {
+      // If we can't get CPU info, still send the step event to avoid hanging the debugger
+      console.warn(
+        "Failed to get CPU info during step, defaulting to step reason:",
+        error,
+      );
+    }
+
+    // Line-granularity loop: keep stepping until the source line changes.
+    if (this.lineStepStart && pc !== undefined) {
+      const loc = this.sourceMap?.lookupAddress(pc);
+      if (loc?.path === this.lineStepStart.path && loc?.line === this.lineStepStart.line) {
+        // Still on the same source line — fire another step of the appropriate kind.
+        if (this.lineStepStart.isOver) {
+          await this.doInstructionStepOver();
+        } else {
+          this.stepping = true;
+          this.isRunning = true;
+          this.vAmiga.stepInto();
+        }
+        return;
+      }
+      this.lineStepStart = null;
+    }
+
     const evt = new StoppedEvent("step", VamigaDebugAdapter.THREAD_ID);
 
     // Fake stop reason as 'instruction breakpoint' to allow selecting a stack frame with no source, and open disassembly
     // Don't need to do this for step with instruction granularity, as this is already handled
     // see: https://github.com/microsoft/vscode/pull/143649/files
-    if (this.lastStepGranularity !== "instruction") {
-      try {
-        const cpuInfo = await this.vAmiga.getCpuInfo();
-        if (!this.sourceMap?.lookupAddress(Number(cpuInfo.pc))) {
-          evt.body.reason = "instruction breakpoint";
-        }
-      } catch (error) {
-        // If we can't get CPU info, still send the step event to avoid hanging the debugger
-        console.warn(
-          "Failed to get CPU info during step, defaulting to step reason:",
-          error,
-        );
+    if (this.lastStepGranularity !== "instruction" && pc !== undefined) {
+      if (!this.sourceMap?.lookupAddress(pc)) {
+        evt.body.reason = "instruction breakpoint";
       }
     }
 
@@ -1177,11 +1228,37 @@ export class VamigaDebugAdapter extends LoggingDebugSession {
     this.isRunning = false;
 
     if (!this.breakpointManager) {
+      this.lineStepStart = null;
       this.sendEvent(evt);
       return;
     }
 
     const result = this.breakpointManager.handleBreakpointStop(message);
+
+    // Line-granularity step-over: the JSR/BSR return temp BP fired ("step").
+    // Check whether the source line has changed; if not, keep looping.
+    if (result.reason === "step" && this.lineStepStart?.isOver) {
+      let continueLoop = false;
+      try {
+        const cpuInfo = await this.vAmiga.getCpuInfo();
+        const pc = Number(cpuInfo.pc);
+        const loc = this.sourceMap?.lookupAddress(pc);
+        console.log(`[lineStep] handleStop(step): pc=0x${pc.toString(16)} loc=${loc ? `${loc.path}:${loc.line}` : "none"} start=${this.lineStepStart.path}:${this.lineStepStart.line}`);
+        continueLoop = loc?.path === this.lineStepStart.path && loc?.line === this.lineStepStart.line;
+      } catch { /* fall through and stop */ }
+      if (continueLoop) {
+        await this.doInstructionStepOver();
+        return;
+      }
+      // Line changed (or no source) — done with the step-over.
+      this.lineStepStart = null;
+      this.sendEvent(new StoppedEvent("step", VamigaDebugAdapter.THREAD_ID));
+      return;
+    }
+
+    // Any other stop: clear line-step state.
+    this.lineStepStart = null;
+
     evt.body.reason = result.reason;
     if (result.text) {
       evt.body.text = result.text;
