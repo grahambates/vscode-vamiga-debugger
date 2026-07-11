@@ -120,4 +120,6 @@ Full schema with inline documentation is available via IntelliSense in `launch.j
 
 ## License
 
-See [LICENSE.txt](LICENSE.txt) (GPLv3). Emulation is powered by [PUAE](https://github.com/libretro/libretro-uae) (libretro-uae), derived from WinUAE by Toni Wilen and contributors.
+This project is licensed under the [GNU General Public License version 2](LICENSE.txt). See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for attribution, component licensing, and source provenance.
+
+Emulation is powered by [PUAE](https://github.com/libretro/libretro-uae) (libretro-uae), derived from WinUAE by Toni Wilen and contributors.
