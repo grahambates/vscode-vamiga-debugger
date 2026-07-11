@@ -398,7 +398,6 @@ export function VisualView({
                 ? guessWidthsKnownLength(sample)
                 : guessWidthsUnknownLength(sample);
             if (guess) {
-              console.log("Width guess:", guess);
               setBytesPerRow(guess.widthBytes);
             }
           }}

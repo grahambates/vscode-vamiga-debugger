@@ -155,7 +155,6 @@ export async function main(config: MainConfig = {}): Promise<void> {
   // keeps it for boot/fps diagnostics.
   const status = document.getElementById("status");
   function log(msg: string): void {
-    console.log(msg);
     if (status) status.textContent = msg;
   }
 
@@ -357,9 +356,6 @@ export async function main(config: MainConfig = {}): Promise<void> {
 
     audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     audioCtxRate = audioCtx.sampleRate;
-    console.log("[audio] sampleRate=" + audioCtxRate + " (PUAE=" + audioPuaeRate + ")" +
-                (audioCtxRate !== audioPuaeRate ? " — resampling active" : " — pass-through"));
-
     // If the context gets re-suspended (e.g. tab hidden), resume it
     // automatically when the user next clicks the audio button — no blanket
     // document listeners needed since the button is the explicit gesture.
@@ -1037,12 +1033,6 @@ export async function main(config: MainConfig = {}): Promise<void> {
         }
       } else {
         log("BREAKPOINT HIT — emulator paused");
-        const n = M._wasm_read_regs();
-        const ptr = M._wasm_get_reg_buf();
-        const buf = new Uint32Array(M.HEAPU32.buffer, ptr, n);
-        const pcHex = n >= 18 ? "0x" + buf[17].toString(16).toUpperCase() : "?";
-        console.log("[debug] halt at PC=" + pcHex);
-
         if (onBreakpoint) onBreakpoint(M);
 
         // Tells the DAP adapter a breakpoint/watchpoint was hit during
@@ -1089,19 +1079,6 @@ export async function main(config: MainConfig = {}): Promise<void> {
         const msSet = (tBlitStart - tSetStart).toFixed(1);
         const msBlit = (tBlitEnd - tBlitStart).toFixed(1);
         if (status) status.textContent = `${fps} fps | wasm=${msWasm}ms set=${msSet}ms blit=${msBlit}ms`;
-        if (blitTrackingEnabled) {
-          const s = M._wasm_blit_vis_debug(0) as number;
-          const n = M._wasm_blit_vis_debug(1) as number;
-          const b = M._wasm_blit_vis_debug(2) as number;
-          const stamps = M._wasm_blit_vis_debug(3) as number;
-          const fCalls = M._wasm_blit_vis_debug(4) as number;
-          const fHits = M._wasm_blit_vis_debug(5) as number;
-          const mkCalls = M._wasm_blit_vis_debug(6) as number;
-          const rejLine = M._wasm_blit_vis_debug(7) as number;
-          const rejRange = M._wasm_blit_vis_debug(8) as number;
-          const maxPs = M._wasm_blit_vis_debug(9) as number;
-          console.log(`[blit-vis] srcMarks=${s} nativePx=${n} blendPx=${b} | stamps=${stamps} fetchCalls=${fCalls} fetchHits=${fHits} | markSrc=${mkCalls} rejLine=${rejLine} rejRange=${rejRange} maxPixelStart=${maxPs}`);
-        }
         fpsCnt = 0;
         fpsTime = ts;
       }

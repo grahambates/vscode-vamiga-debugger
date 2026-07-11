@@ -40,15 +40,6 @@ export function CopperView({
   const totalBytes = endAddress - startAddress;
   const totalInstructions = Math.floor(totalBytes / INSTRUCTION_SIZE);
 
-  console.log('CopperView render', {
-    target,
-    range,
-    startAddress,
-    endAddress,
-    totalInstructions,
-    memoryChunks: memoryChunks.size,
-  });
-
   // Helper to get word (2 bytes, big-endian) from chunks
   const getWord = useCallback(
     (address: number): number | undefined => {
@@ -90,7 +81,6 @@ export function CopperView({
     if (!ctx) return;
 
     if (visibleRange.firstLine >= visibleRange.lastLine) {
-      console.log("CopperView: No visible range", visibleRange);
       return;
     }
 

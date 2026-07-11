@@ -876,10 +876,6 @@ export class ProfilerManager {
 
         const { model, samples } = buildModelFromCapture(raw, sourceMap);
 
-        console.log(
-          `[profiler] frame 0: total=${res.total} instr, inRange=${res.inRange}, ` +
-            `samples=${samples.length}, range=[0x${(res.start >>> 0).toString(16)},0x${(res.end >>> 0).toString(16)})`,
-        );
         if (samples.length === 0) {
           const range = `[0x${(res.start >>> 0).toString(16)}, 0x${(res.end >>> 0).toString(16)})`;
           const hint =
@@ -897,11 +893,6 @@ export class ProfilerManager {
 
         raw.disassembly = fetchDisassembly(model, samples, sourceMap, raw.snapshot?.chip, raw.snapshot?.slow, raw.snapshot?.fast, raw.snapshot?.fastAddr);
         if (raw.disassembly.length) model.disassembly = attachDisassembly(raw.disassembly, sourceMap);
-
-        if (model.dma) {
-          const writes = model.dma.flags.reduce((n, f) => n + (f & 1), 0);
-          console.log(`[profiler] frame 0 dma: ${model.dma.owner.length} slots, ${writes} writes`);
-        }
 
         frames.push({ model, raw });
       } else {
@@ -1098,11 +1089,6 @@ export class ProfilerManager {
             raw.disassembly = reweightDisassembly(frames[0].raw.disassembly, samples);
             model.disassembly = attachDisassembly(raw.disassembly, sourceMap);
           }
-
-          console.log(
-            `[profiler] frame ${fi}: samples=${samples.length}` +
-              (model.dma ? `, dma=${model.dma.owner.length} slots` : ""),
-          );
 
           frames.push({ model, raw });
         }

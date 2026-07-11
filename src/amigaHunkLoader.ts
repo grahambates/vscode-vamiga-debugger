@@ -57,10 +57,6 @@ export class AmigaHunkLoader {
     const allocations: AllocatedHunk[] = [];
 
     for (const hunk of hunks) {
-      console.log(
-        `Allocating ${hunk.allocSize} bytes of ${hunk.memType} memory for hunk ${hunk.index}`,
-      );
-
       const address = await this.memoryMapper.allocateMemory(
         hunk.allocSize,
         hunk.memType,
@@ -71,10 +67,6 @@ export class AmigaHunkLoader {
         address,
         size: hunk.allocSize,
       });
-
-      console.log(
-        `Hunk ${hunk.index} allocated at address $${address.toString(16)}`,
-      );
     }
 
     return allocations;
@@ -97,10 +89,6 @@ export class AmigaHunkLoader {
       const hunk = alloc.hunk;
 
       if (hunk.reloc32.length > 0) {
-        console.log(
-          `Applying ${hunk.reloc32.length} relocation groups for hunk ${hunk.index}`,
-        );
-
         for (const relocInfo of hunk.reloc32) {
           const targetAddress = hunkAddresses.get(relocInfo.target);
           if (targetAddress === undefined) {
@@ -134,12 +122,6 @@ export class AmigaHunkLoader {
 
       // Write back the relocated value
       await this.emulator.poke32(relocAddress, relocatedValue);
-
-      console.log(
-        `Relocation at $${relocAddress.toString(16)}: ` +
-          `$${currentValue.toString(16)} + $${targetAddress.toString(16)} = ` +
-          `$${relocatedValue.toString(16)}`,
-      );
     }
   }
 
@@ -152,17 +134,9 @@ export class AmigaHunkLoader {
 
       if (hunk.hunkType === HunkType.BSS) {
         // BSS hunks need to be zeroed
-        console.log(
-          `Zeroing BSS hunk ${hunk.index} at $${alloc.address.toString(16)}`,
-        );
         await this.zeroMemory(alloc.address, alloc.size);
       } else if (hunk.data) {
         // CODE and DATA hunks have binary content
-        console.log(
-          `Writing ${hunk.data.length} bytes for ${hunk.hunkType} hunk ${hunk.index} ` +
-            `at $${alloc.address.toString(16)}`,
-        );
-
         await this.emulator.writeMemory(alloc.address, hunk.data);
       }
     }
@@ -181,12 +155,7 @@ export class AmigaHunkLoader {
    * Free all allocated memory when program is unloaded
    */
   async unloadProgram(program: LoadedProgram): Promise<void> {
-    console.log(`Unloading program with ${program.allocations.length} hunks`);
-
     for (const alloc of program.allocations) {
-      console.log(
-        `Freeing hunk ${alloc.hunk.index} at $${alloc.address.toString(16)}`,
-      );
       await this.memoryMapper.freeMemory(alloc.address, alloc.size);
     }
   }
@@ -218,9 +187,6 @@ export class AmigaHunkLoader {
     await this.clearInterruptMask();
     // Jump pc to entrypoint
     await this.emulator.jump(program.entryPoint);
-    console.log(
-      `Program entry point set to $${program.entryPoint.toString(16)}`,
-    );
   }
 
   /**
@@ -290,9 +256,6 @@ export class AmigaHunkLoader {
       size: STACK_RESERVE_SIZE + TRAMPOLINE_CODE.length + 4,
     };
 
-    console.log(
-      `Set up return trampoline at $${trampolineAddress.toString(16)}, a7=$${returnAddress.toString(16)}`,
-    );
   }
 }
 
@@ -303,8 +266,6 @@ export async function loadAmigaProgram(
   emulator: Emulator,
   hunks: Hunk[],
 ): Promise<LoadedProgram> {
-  console.log(`Loading Amiga program with ${hunks.length} hunks`);
-
   const loader = new AmigaHunkLoader(emulator);
   const program = await loader.loadProgram(hunks);
 
